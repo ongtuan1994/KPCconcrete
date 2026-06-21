@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
+import { NewReceiptForm } from '../components/documents/NewReceiptForm'
+import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
+import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
+import { IconDownload } from '../components/icons'
 import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
 import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
 
@@ -23,6 +27,11 @@ export function Invoices() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [downloading, setDownloading] = useState<Invoice | null>(null)
+  const [receiptForInvoice, setReceiptForInvoice] = useState<Invoice | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [zipQueue, setZipQueue] = useState<Invoice[] | null>(null)
+  const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
 
   const hiddenSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
@@ -44,7 +53,34 @@ export function Invoices() {
   const netSales = monthRows.reduce((s, i) => s + i.subtotal, 0)
   const outstanding = monthRows.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
 
+  const toggleOne = (no: string) => {
+    const next = new Set(selected)
+    if (next.has(no)) next.delete(no); else next.add(no)
+    setSelected(next)
+  }
+  const allFilteredSelected = rows.length > 0 && rows.every((r) => selected.has(r.no))
+  const toggleAllFiltered = () => {
+    const next = new Set(selected)
+    if (allFilteredSelected) rows.forEach((r) => next.delete(r.no))
+    else rows.forEach((r) => next.add(r.no))
+    setSelected(next)
+  }
+  const startZipDownload = () => {
+    if (selected.size === 0) return
+    /* Build the list in the order they appear in the current filtered view. */
+    const queue = rows.filter((r) => selected.has(r.no))
+    if (queue.length === 0) return
+    setZipProgress({ done: 0, total: queue.length })
+    setZipQueue(queue)
+  }
+
   const columns: Column<Invoice>[] = [
+    {
+      key: 'sel',
+      header: <Checkbox checked={allFilteredSelected} onChange={toggleAllFiltered}>{''}</Checkbox>,
+      align: 'center',
+      cell: (r) => <Checkbox checked={selected.has(r.no)} onChange={() => toggleOne(r.no)}>{''}</Checkbox>,
+    },
     { key: 'no', header: 'เลขที่ใบกำกับ', cell: (r) => r.no, className: 'docno' },
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
     { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
@@ -53,6 +89,23 @@ export function Invoices() {
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
     { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].th}</Badge> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    {
+      key: 'dl',
+      header: '',
+      align: 'center',
+      cell: (r) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setDownloading(r)}
+          disabled={downloading?.no === r.no}
+          aria-label={`ดาวน์โหลด PDF ${r.no}`}
+          title="ดาวน์โหลด PDF"
+        >
+          <IconDownload />
+        </Button>
+      ),
+    },
     ...(CAN_DELETE ? [{
       key: 'del',
       header: '',
@@ -95,9 +148,37 @@ export function Invoices() {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', marginBottom: 12, borderRadius: 8, background: 'var(--kpc-primary-50)', border: '1px solid var(--kpc-primary-100)' }}>
+          <span style={{ fontSize: 14 }}>
+            เลือก <strong>{selected.size}</strong> ใบกำกับ
+            {zipProgress && <span style={{ marginLeft: 12, color: 'var(--kpc-text-muted)', fontSize: 13 }}>
+              · กำลังสร้าง PDF {zipProgress.done}/{zipProgress.total}
+            </span>}
+          </span>
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())} disabled={!!zipQueue}>ล้างการเลือก</Button>
+            <Button variant="primary" size="sm" onClick={startZipDownload} disabled={!!zipQueue}>
+              {zipQueue ? 'กำลังสร้าง ZIP...' : `ดาวน์โหลด ZIP (${selected.size} ใบ)`}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบกำกับ`} />
 
-      <DocModal open={!!active} title={active ? `ใบกำกับภาษี ${active.no}` : ''} onClose={() => setActive(null)}>
+      <DocModal
+        open={!!active}
+        title={active ? `ใบกำกับภาษี ${active.no}` : ''}
+        onClose={() => setActive(null)}
+        extraActions={
+          active ? (
+            <Button variant="tonal" onClick={() => { const inv = active; setActive(null); setReceiptForInvoice(inv) }}>
+              ออกใบเสร็จรับเงิน
+            </Button>
+          ) : undefined
+        }
+      >
         {active && <TaxInvoiceDoc inv={active} />}
       </DocModal>
 
@@ -107,6 +188,25 @@ export function Invoices() {
         createdInvoices={created.invoices}
         onIssued={(inv) => { setShowForm(false); setActive(inv) }}
       />
+
+      <NewReceiptForm
+        open={!!receiptForInvoice}
+        onClose={() => setReceiptForInvoice(null)}
+        createdReceipts={created.receipts}
+        extraInvoices={created.invoices}
+        initialInvoiceNo={receiptForInvoice?.no}
+        onIssued={() => setReceiptForInvoice(null)}
+      />
+
+      {downloading && <InvoicePdfDownload inv={downloading} onDone={() => setDownloading(null)} />}
+
+      {zipQueue && (
+        <InvoiceZipDownload
+          invoices={zipQueue}
+          onProgress={(done, total) => setZipProgress({ done, total })}
+          onDone={() => { setZipQueue(null); setZipProgress(null); setSelected(new Set()) }}
+        />
+      )}
     </>
   )
 }

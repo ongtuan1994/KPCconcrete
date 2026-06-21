@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select, Checkbox } from '../ui'
 import { CUSTOMER_MASTER, MONTHS } from '../../data/real'
@@ -26,12 +26,15 @@ export function NewReceiptForm({
   onIssued,
   createdReceipts,
   extraInvoices,
+  initialInvoiceNo,
 }: {
   open: boolean
   onClose: () => void
   onIssued: (rc: Receipt) => void
   createdReceipts: Receipt[]
   extraInvoices: Invoice[]
+  /** When set, prefill customer / date / pay and tick this invoice on open. */
+  initialInvoiceNo?: string
 }) {
   const [customer, setCustomer] = useState('')
   const [month, setMonth] = useState<number>(LATEST_MONTH)
@@ -67,6 +70,24 @@ export function NewReceiptForm({
     setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setMethod('เงินสด')
     setPicked(new Set()); setExtraAmount(''); setErr('')
   }
+
+  /* When opened with initialInvoiceNo (from the invoices page), prefill from
+     that invoice and tick it. Stable ref prevents repeated overwrites. */
+  const lastInitialRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!open) { lastInitialRef.current = undefined; return }
+    if (initialInvoiceNo && initialInvoiceNo !== lastInitialRef.current) {
+      lastInitialRef.current = initialInvoiceNo
+      const inv = [...extraInvoices, ...INVOICES].find((i) => i.no === initialInvoiceNo)
+      if (!inv) return
+      setCustomer(inv.customer)
+      setMonth(inv.month)
+      const dd = parseInt(inv.date.slice(0, 2), 10)
+      if (dd) setDay(String(dd))
+      if (inv.pay) setMethod(inv.pay)
+      setPicked(new Set([inv.no]))
+    }
+  }, [open, initialInvoiceNo, extraInvoices])
 
   const submit = () => {
     setErr('')

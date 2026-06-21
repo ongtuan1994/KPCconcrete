@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, MonthSelect, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { ReceiptDoc } from '../components/documents/ReceiptDoc'
 import { NewReceiptForm } from '../components/documents/NewReceiptForm'
+import { ReceiptPdfDownload } from '../components/documents/ReceiptPdfDownload'
+import { ReceiptZipDownload } from '../components/documents/ReceiptZipDownload'
+import { IconDownload } from '../components/icons'
 import { RECEIPTS, baht, LATEST_MONTH, monthLabel, type Receipt } from '../data/selectors'
 import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
 
@@ -16,6 +19,10 @@ export function Receipts() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Receipt | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [downloading, setDownloading] = useState<Receipt | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [zipQueue, setZipQueue] = useState<Receipt[] | null>(null)
+  const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
 
   const hiddenSet = useMemo(() => new Set(created.hidden.receipts), [created.hidden.receipts])
@@ -30,7 +37,33 @@ export function Receipts() {
   )
   const total = monthRows.reduce((s, r) => s + r.amount, 0)
 
+  const toggleOne = (no: string) => {
+    const next = new Set(selected)
+    if (next.has(no)) next.delete(no); else next.add(no)
+    setSelected(next)
+  }
+  const allFilteredSelected = rows.length > 0 && rows.every((r) => selected.has(r.no))
+  const toggleAllFiltered = () => {
+    const next = new Set(selected)
+    if (allFilteredSelected) rows.forEach((r) => next.delete(r.no))
+    else rows.forEach((r) => next.add(r.no))
+    setSelected(next)
+  }
+  const startZipDownload = () => {
+    if (selected.size === 0) return
+    const queue = rows.filter((r) => selected.has(r.no))
+    if (queue.length === 0) return
+    setZipProgress({ done: 0, total: queue.length })
+    setZipQueue(queue)
+  }
+
   const columns: Column<Receipt>[] = [
+    {
+      key: 'sel',
+      header: <Checkbox checked={allFilteredSelected} onChange={toggleAllFiltered}>{''}</Checkbox>,
+      align: 'center',
+      cell: (r) => <Checkbox checked={selected.has(r.no)} onChange={() => toggleOne(r.no)}>{''}</Checkbox>,
+    },
     { key: 'no', header: 'เลขที่ใบเสร็จ', cell: (r) => r.no, className: 'docno' },
     { key: 'date', header: 'วันที่รับเงิน', cell: (r) => r.date, className: 'date' },
     { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
@@ -38,6 +71,23 @@ export function Receipts() {
     { key: 'method', header: 'วิธีชำระ', align: 'center', cell: (r) => <Badge tone={PAY_TONE[r.method] ?? 'neutral'} pip={false} square>{r.method || '—'}</Badge> },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => baht(r.amount), className: 'amt' },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    {
+      key: 'dl',
+      header: '',
+      align: 'center',
+      cell: (r) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setDownloading(r)}
+          disabled={downloading?.no === r.no}
+          aria-label={`ดาวน์โหลด PDF ${r.no}`}
+          title="ดาวน์โหลด PDF"
+        >
+          <IconDownload />
+        </Button>
+      ),
+    },
     ...(CAN_DELETE ? [{
       key: 'del',
       header: '',
@@ -68,6 +118,24 @@ export function Receipts() {
           <SearchInput placeholder="เลขที่ใบเสร็จ / ลูกค้า" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', marginBottom: 12, borderRadius: 8, background: 'var(--kpc-primary-50)', border: '1px solid var(--kpc-primary-100)' }}>
+          <span style={{ fontSize: 14 }}>
+            เลือก <strong>{selected.size}</strong> ใบเสร็จ
+            {zipProgress && <span style={{ marginLeft: 12, color: 'var(--kpc-text-muted)', fontSize: 13 }}>
+              · กำลังสร้าง PDF {zipProgress.done}/{zipProgress.total}
+            </span>}
+          </span>
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())} disabled={!!zipQueue}>ล้างการเลือก</Button>
+            <Button variant="primary" size="sm" onClick={startZipDownload} disabled={!!zipQueue}>
+              {zipQueue ? 'กำลังสร้าง ZIP...' : `ดาวน์โหลด ZIP (${selected.size} ใบ)`}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบเสร็จ`} />
 
       <DocModal open={!!active} title={active ? `ใบเสร็จรับเงิน ${active.no}` : ''} onClose={() => setActive(null)}>
@@ -81,6 +149,16 @@ export function Receipts() {
         extraInvoices={created.invoices}
         onIssued={(rc) => { setShowForm(false); setActive(rc) }}
       />
+
+      {downloading && <ReceiptPdfDownload rc={downloading} onDone={() => setDownloading(null)} />}
+
+      {zipQueue && (
+        <ReceiptZipDownload
+          receipts={zipQueue}
+          onProgress={(done, total) => setZipProgress({ done, total })}
+          onDone={() => { setZipQueue(null); setZipProgress(null); setSelected(new Set()) }}
+        />
+      )}
     </>
   )
 }

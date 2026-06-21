@@ -29,10 +29,12 @@ export interface CreatedDocs {
   hidden: Hidden
   /** Per-customer edits (keyed by Customer.id) merged on top of CUSTOMER_MASTER. */
   customerEdits: Record<string, CustomerEdit>
+  /** New customers added through quick-add forms (e.g. inside NewDeliveryTicketForm). */
+  customersAdded: Customer[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {} }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [] }
 
 function read(): CreatedDocs {
   try {
@@ -46,6 +48,7 @@ function read(): CreatedDocs {
       tickets: v.tickets ?? [],
       hidden: { ...emptyHidden, ...(v.hidden ?? {}) },
       customerEdits: v.customerEdits ?? {},
+      customersAdded: v.customersAdded ?? [],
     }
   } catch {
     return empty
@@ -111,6 +114,10 @@ export function removeTicket(dtNo: string) {
 
 export function restoreAllHidden() {
   commit({ ...state, hidden: emptyHidden })
+}
+
+export function addCustomer(c: Customer) {
+  commit({ ...state, customersAdded: [c, ...state.customersAdded] })
 }
 
 /** Merge an edit onto a customer (by id). Undefined values clear prior edits. */

@@ -9,7 +9,8 @@ import { INVOICES, baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data
 import { useCreatedDocs, removeTicket, CAN_DELETE } from '../data/createdDocs'
 import { NewDeliveryTicketForm } from '../components/documents/NewDeliveryTicketForm'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
-import { TicketDetailModal } from '../components/documents/TicketDetailModal'
+import { DocModal } from '../components/documents/DocModal'
+import { DeliveryTicketDoc } from '../components/documents/DeliveryTicketDoc'
 
 type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 'ใช้เอง'
 
@@ -198,12 +199,20 @@ export function DeliveryTickets() {
         }}
       />
 
-      <TicketDetailModal
+      <DocModal
         open={!!active}
-        ticket={active}
+        title={active ? `ใบจ่ายคอนกรีต ${active.dtNo}` : ''}
         onClose={() => setActive(null)}
-        onIssueInvoice={openInvoiceForTicket}
-      />
+        extraActions={
+          active ? (
+            <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
+              ออกใบกำกับภาษี
+            </Button>
+          ) : undefined
+        }
+      >
+        {active && <DeliveryTicketDoc ticket={active} />}
+      </DocModal>
 
       <NewInvoiceForm
         open={invoiceRefs !== null}

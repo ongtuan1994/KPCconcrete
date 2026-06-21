@@ -345,12 +345,20 @@ export function transportSurchargeForM3(m3: number): { shortfall: number; preVat
   return { shortfall, preVat: Math.round(shortfall * TRANSPORT_RATE_PRE_VAT * 100) / 100 }
 }
 
+/** Delivery-ticket issuers — staff who key in tickets at the plant. Extend
+    this list as new staff join; the form defaults to the first entry. */
+export const ISSUERS: string[] = ['พีช', 'บลิ้ง']
+
 export interface DeliveryTicket {
   month: number; date: string; dtNo: string; ref: string; type: string; customer: string
   prod: string; m3: number; price: number; amount: number
   invoice: string; billing: string; pay: PayMethod; note: string
   vehicle?: string
   driver?: string
+  /** Staff who issued the ticket (snapshot from ISSUERS at creation time). */
+  issuer?: string
+  /** Name of the person on the customer side who received the delivery. Optional. */
+  receiver?: string
 }
 export const DELIVERY_TICKETS: DeliveryTicket[] = [
   { month: 1, date: "03/01/69", dtNo: "DT26010311739", ref: "11739", type: "ขายลูกค้า", customer: "พี่แหม่ม ระวิ", prod: "KPCR2OS00240", m3: 3.0, price: 2200.0, amount: 6600.0, invoice: "690103-0001", billing: "", pay: "เงินสด" as PayMethod, note: "" },

@@ -33,9 +33,11 @@ export function CustomerMaster() {
   const [editing, setEditing] = useState<Customer | null>(null)
   const created = useCreatedDocs()
 
+  /* Quick-added customers (e.g. from delivery-ticket form) appear at the top,
+     then the seed master. Edits apply uniformly to both. */
   const list = useMemo(
-    () => CUSTOMER_MASTER.map((c) => mergeCustomer(c, created.customerEdits)),
-    [created.customerEdits],
+    () => [...created.customersAdded, ...CUSTOMER_MASTER].map((c) => mergeCustomer(c, created.customerEdits)),
+    [created.customerEdits, created.customersAdded],
   )
 
   const rows = useMemo(

@@ -113,6 +113,12 @@ export const IconPlus = ({ size = 15, stroke = '#fff' }: IconProps) => (
     <line x1="3" y1="8" x2="13" y2="8" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
   </svg>
 )
+export const IconDownload = ({ size = 16, stroke = '#6B7280' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <path d="M8 2v8m0 0l-3-3m3 3l3-3" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3 12v1.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5V12" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+)
 export const IconCheck = ({ size = 12, stroke = '#fff' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 12 12">
     <path d="M2.5 6.2l2.2 2.3 4.8-5" stroke={stroke} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
