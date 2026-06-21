@@ -81,6 +81,14 @@ export const IconTag = ({ size = 18 }: IconProps) => (
     <circle cx="6" cy="5.5" r="1.1" fill="#969CA6" />
   </svg>
 )
+export const IconTruck = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18">
+    <rect x="1.5" y="5" width="9" height="7" stroke="#969CA6" strokeWidth="1.5" fill="none" rx="0.6" />
+    <path d="M10.5 7.5h3.2l1.8 2.3V12h-5z" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+    <circle cx="5" cy="13.5" r="1.4" stroke="#969CA6" strokeWidth="1.5" fill="none" />
+    <circle cx="12.5" cy="13.5" r="1.4" stroke="#969CA6" strokeWidth="1.5" fill="none" />
+  </svg>
+)
 export const IconUsers = ({ size = 18 }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 18 18">
     <circle cx="7" cy="6" r="2.6" stroke="#969CA6" strokeWidth="1.5" fill="none" />

@@ -10,7 +10,9 @@ import { CustomerSummary } from './pages/CustomerSummary'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
+import { TransportPricing } from './pages/TransportPricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
+import { TruckFleet } from './pages/TruckFleet'
 
 export default function App() {
   return (
@@ -27,7 +29,9 @@ export default function App() {
         <Route path="/monthly-report" element={<MonthlyReport />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/transport-pricing" element={<TransportPricing />} />
         <Route path="/plant" element={<PlantMonitoring />} />
+        <Route path="/fleet" element={<TruckFleet />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </Layout>

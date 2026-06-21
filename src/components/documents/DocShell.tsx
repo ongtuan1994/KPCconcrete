@@ -41,19 +41,53 @@ export function MetaRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolea
   )
 }
 
-export function Signatures({ left = 'ผู้รับสินค้า / ผู้รับเงิน', right = 'ผู้มีอำนาจลงนาม' }: { left?: string; right?: string }) {
+export interface SignatureSlot {
+  cap: string
+  subCap?: string
+  /** Hide the "วันที่ ../../.." placeholder for slots that only need a signature
+      (e.g. ผู้อนุมัติ — approver signs without a separate date field). */
+  noDate?: boolean
+  /** Optional caption rendered ABOVE the dotted signature line — used for
+      acknowledgements ("ได้รับสินค้าแล้ว...") or company name above the
+      approver's signature. */
+  topCap?: string
+}
+
+/** Signature block — accepts either:
+    - `slots` (preferred): an array of 2-4 slots with per-column labels
+    - `left`/`right` (legacy): a quick 2-column shorthand */
+export function Signatures({
+  slots,
+  left,
+  right,
+}: {
+  slots?: SignatureSlot[]
+  left?: string
+  right?: string
+}) {
+  const resolved: SignatureSlot[] = slots ?? [
+    { cap: left ?? 'ผู้รับสินค้า / ผู้รับเงิน' },
+    { cap: right ?? 'ผู้มีอำนาจลงนาม', subCap: `ในนาม ${COMPANY.name}` },
+  ]
   return (
-    <div className="doc-sign">
-      <div className="s">
-        <div className="line" />
-        <div className="cap">{left}</div>
-        <div className="cap">วันที่ ......./......./.......</div>
-      </div>
-      <div className="s">
-        <div className="line" />
-        <div className="cap">{right}</div>
-        <div className="cap">ในนาม {COMPANY.name}</div>
-      </div>
+    <div className="doc-sign" style={{
+      gridTemplateColumns: `repeat(${resolved.length}, 1fr)`,
+      /* Tighter gap when there are more columns so signature lines stay usable. */
+      gap: resolved.length >= 4 ? 16 : resolved.length === 3 ? 24 : 40,
+    }}>
+      {resolved.map((s, i) => (
+        <div className="s" key={i}>
+          {/* Always render the top-cap slot — even when empty — so the dotted
+              line below it sits at the same Y across every column. */}
+          <div className="cap-top-slot">
+            {s.topCap && <div className="cap cap-top">{s.topCap}</div>}
+          </div>
+          <div className="line" />
+          <div className="cap">{s.cap}</div>
+          {!s.noDate && <div className="cap">วันที่ ......./......./.......</div>}
+          {s.subCap && <div className="cap">{s.subCap}</div>}
+        </div>
+      ))}
     </div>
   )
 }

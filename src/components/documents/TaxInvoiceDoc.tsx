@@ -1,11 +1,12 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
 import { baht, qm, customerLegal, type Invoice } from '../../data/selectors'
 import { bahtText } from '../../data/bahtText'
+import { COMPANY } from '../../data/real'
 
 export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
   const cust = customerLegal(inv.customer)
   return (
-    <DocShell docType="ใบกำกับภาษี / ใบส่งสินค้า" copyLabel="ต้นฉบับ / Original">
+    <DocShell docType="ใบกำกับภาษี / ใบส่งสินค้า" copyLabel="TAX INVOICE / DELIVERY NOTE">
       <div className="doc-meta-grid">
         <MetaRow k="นามลูกค้า :" v={cust.display} />
         <MetaRow k="เลขที่ :" v={inv.no} mono />
@@ -61,7 +62,12 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
         </div>
       </div>
 
-      <Signatures left="ผู้รับสินค้า" right="ผู้ส่งสินค้า / ผู้มีอำนาจลงนาม" />
+      <Signatures slots={[
+        { cap: 'ผู้รับสินค้า', topCap: 'ได้รับสินค้าแล้วในสภาพที่เรียบร้อยและถูกต้อง' },
+        { cap: 'ผู้ส่งสินค้า' },
+        { cap: 'ผู้ออกเอกสาร' },
+        { cap: 'ผู้อนุมัติ', noDate: true, topCap: COMPANY.name },
+      ]} />
     </DocShell>
   )
 }

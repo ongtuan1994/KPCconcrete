@@ -1,6 +1,6 @@
 import { Modal } from '../Modal'
 import { Button, Badge, type Tone } from '../ui'
-import { type DeliveryTicket, PRODUCT_MAP } from '../../data/real'
+import { type DeliveryTicket, PRODUCT_MAP, VEHICLE_MAP } from '../../data/real'
 import { baht, qm, monthLabel } from '../../data/selectors'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
@@ -52,6 +52,24 @@ export function TicketDetailModal({
           <span className="mono">{ticket.prod}</span>{prod && <span style={{ color: 'var(--kpc-text-muted)', marginLeft: 8 }}>— {prod.name}</span>}
         </>} />
         <Row k="ปริมาณ" v={<span className="mono">{qm(ticket.m3)} {prod?.unit ?? 'คิว'}</span>} />
+        <Row k="หมายเลขรถ" v={(() => {
+          if (!ticket.vehicle) return <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>
+          const v = VEHICLE_MAP[ticket.vehicle]
+          return (
+            <span>
+              <span className="mono">รถ {ticket.vehicle}</span>
+              {v && <span style={{ color: 'var(--kpc-text-muted)', marginLeft: 8 }}>(สูงสุด {v.maxM3} คิว)</span>}
+            </span>
+          )
+        })()} />
+        <Row k="พนักงานจัดส่ง" v={(() => {
+          /* Prefer the driver snapshot saved on the ticket; fall back to the
+             current vehicle master when the ticket pre-dates the snapshot. */
+          const driver = ticket.driver || (ticket.vehicle ? VEHICLE_MAP[ticket.vehicle]?.driver : '')
+          return driver
+            ? <span>{driver}</span>
+            : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>
+        })()} />
         <Row k="ราคา/หน่วย" v={ticket.price ? <span className="mono">{ticket.price.toLocaleString()}</span> : <span style={{ color: 'var(--kpc-text-muted)' }}>— (กำหนดตอนออกใบกำกับ)</span>} />
         <Row k="จำนวนเงิน" v={ticket.amount ? <span className="mono">{baht(ticket.amount)}</span> : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />
         <Row k="วิธีชำระ" v={ticket.pay ? <Badge tone={PAY_TONE[ticket.pay] ?? 'neutral'} pip={false} square>{ticket.pay}</Badge> : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />

@@ -23,34 +23,96 @@ export const MONTHS: Month[] = [
 export type ProductCategory = 'concrete' | 'precast' | 'lean'
 export interface Product { code: string; name: string; strengthKsc: number; unit: string; category: ProductCategory; price: number }
 export const PRODUCTS: Product[] = [
-  { code: "KPCP2OSPP-1", name: "เสาเข็ม / คานสำเร็จรูป", strengthKsc: 400, unit: "คิว", category: 'precast', price: 0 },
-  { code: "KPCPOSPP-1", name: "เสาเข็ม / คานสำเร็จรูป", strengthKsc: 400, unit: "คิว", category: 'precast', price: 2200.0 },
-  { code: "KPCR2OS00000", name: "คอนกรีต Lean (สูตร R2)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 1900.0 },
-  { code: "KPCR2OS00180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (สูตร R2)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2100.0 },
-  { code: "KPCR2OS00210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (สูตร R2)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2065.0 },
-  { code: "KPCR2OS00240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (สูตร R2)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2200.0 },
-  { code: "KPCR2OS00280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (สูตร R2)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2270.0 },
-  { code: "KPCR2OS00300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (สูตร R2)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2520.0 },
-  { code: "KPCR2OS00320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (สูตร R2)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2300.0 },
-  { code: "KPCR2OV21240", name: "คอนกรีตกำลังอัด 21240 กก./ตร.ซม. (สูตร R2)", strengthKsc: 21240, unit: "คิว", category: 'concrete', price: 2300.0 },
-  { code: "KPCR2OV21300", name: "คอนกรีตกำลังอัด 21300 กก./ตร.ซม. (สูตร R2)", strengthKsc: 21300, unit: "คิว", category: 'concrete', price: 2410.0 },
-  { code: "KPCR2OV31210", name: "คอนกรีตกำลังอัด 31210 กก./ตร.ซม. (สูตร R2)", strengthKsc: 31210, unit: "คิว", category: 'concrete', price: 2200.0 },
-  { code: "KPCR2OV31240", name: "คอนกรีตกำลังอัด 31240 กก./ตร.ซม. (สูตร R2)", strengthKsc: 31240, unit: "คิว", category: 'concrete', price: 2400.0 },
-  { code: "KPCR2OV31280", name: "คอนกรีตกำลังอัด 31280 กก./ตร.ซม. (สูตร R2)", strengthKsc: 31280, unit: "คิว", category: 'concrete', price: 2470.0 },
-  { code: "KPCR2OV41240", name: "คอนกรีตกำลังอัด 41240 กก./ตร.ซม. (สูตร R2)", strengthKsc: 41240, unit: "คิว", category: 'concrete', price: 2450.0 },
-  { code: "KPCROS00000", name: "คอนกรีต Lean", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2135.0 },
-  { code: "KPCROS00180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม.", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2425.0 },
-  { code: "KPCROS00210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม.", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2430.0 },
-  { code: "KPCROS00240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม.", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2460.0 },
-  { code: "KPCROS00280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม.", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2300.0 },
-  { code: "KPCROS00300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม.", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2600.0 },
-  { code: "KPCROV31280", name: "คอนกรีตกำลังอัด 31280 กก./ตร.ซม.", strengthKsc: 31280, unit: "คิว", category: 'concrete', price: 2745.0 },
+  /* ปูน ดอกบัว — On Site (≤20 km) */
+  { code: "KPCR2OS00000", name: "คอนกรีต Lean (ปูน ดอกบัว)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2100.0 },
+  { code: "KPCR2OS00180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2350.0 },
+  { code: "KPCR2OS00210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2380.0 },
+  { code: "KPCR2OS00240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2400.0 },
+  { code: "KPCR2OS00280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2450.0 },
+  { code: "KPCR2OS00300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2550.0 },
+  { code: "KPCR2OS00320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2580.0 },
+  { code: "KPCR2OS00350", name: "คอนกรีตกำลังอัด 350 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 350, unit: "คิว", category: 'concrete', price: 2580.0 },
+  { code: "KPCR2OS00380", name: "คอนกรีตกำลังอัด 380 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 380, unit: "คิว", category: 'concrete', price: 2650.0 },
+  { code: "KPCP2OSPP-1", name: "คอนกรีตกำลังอัด 400 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 400, unit: "คิว", category: 'concrete', price: 0 },
+
+  /* ปูน ดอกบัว — Over 21–30 km */
+  { code: "KPCR2OV21000", name: "คอนกรีต Lean (ปูน ดอกบัว)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2200.0 },
+  { code: "KPCR2OV21180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2450.0 },
+  { code: "KPCR2OV21210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2480.0 },
+  { code: "KPCR2OV21240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2500.0 },
+  { code: "KPCR2OV21280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2550.0 },
+  { code: "KPCR2OV21300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2650.0 },
+  { code: "KPCR2OV21320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2680.0 },
+  { code: "KPCR2OV21350", name: "คอนกรีตกำลังอัด 350 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 350, unit: "คิว", category: 'concrete', price: 2750.0 },
+
+  /* ปูน ดอกบัว — Over 31–40 km */
+  { code: "KPCR2OV31000", name: "คอนกรีต Lean (ปูน ดอกบัว)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2300.0 },
+  { code: "KPCR2OV31180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2550.0 },
+  { code: "KPCR2OV31210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2580.0 },
+  { code: "KPCR2OV31240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2600.0 },
+  { code: "KPCR2OV31280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2650.0 },
+  { code: "KPCR2OV31300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2750.0 },
+  { code: "KPCR2OV31320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2780.0 },
+  { code: "KPCR2OV31350", name: "คอนกรีตกำลังอัด 350 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 350, unit: "คิว", category: 'concrete', price: 2850.0 },
+
+  /* ปูน ดอกบัว — Over 41–50 km */
+  { code: "KPCR2OV41000", name: "คอนกรีต Lean (ปูน ดอกบัว)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2400.0 },
+  { code: "KPCR2OV41180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2650.0 },
+  { code: "KPCR2OV41210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2680.0 },
+  { code: "KPCR2OV41240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2700.0 },
+  { code: "KPCR2OV41280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2750.0 },
+  { code: "KPCR2OV41300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2850.0 },
+  { code: "KPCR2OV41320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2880.0 },
+  { code: "KPCR2OV41350", name: "คอนกรีตกำลังอัด 350 กก./ตร.ซม. (ปูน ดอกบัว)", strengthKsc: 350, unit: "คิว", category: 'concrete', price: 2950.0 },
+
+  /* ปูน SCG — On Site (≤20 km) */
+  { code: "KPCROS00000", name: "คอนกรีต Lean (ปูน SCG)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2135.0 },
+  { code: "KPCROS00180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2425.0 },
+  { code: "KPCROS00210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2430.0 },
+  { code: "KPCROS00240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2460.0 },
+  { code: "KPCROS00280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2545.0 },
+  { code: "KPCROS00300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2650.0 },
+  { code: "KPCROS00320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2680.0 },
+  { code: "KPCROS00350", name: "คอนกรีตกำลังอัด 350 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 350, unit: "คิว", category: 'concrete', price: 2750.0 },
+  { code: "KPCPOSPP-1", name: "คอนกรีตกำลังอัด 400 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 400, unit: "คิว", category: 'concrete', price: 0 },
+
+  /* ปูน SCG — Over 21–30 km */
+  { code: "KPCROV21000", name: "คอนกรีต Lean (ปูน SCG)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2235.0 },
+  { code: "KPCROV21180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2525.0 },
+  { code: "KPCROV21210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2530.0 },
+  { code: "KPCROV21240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2560.0 },
+  { code: "KPCROV21280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2645.0 },
+  { code: "KPCROV21300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2750.0 },
+  { code: "KPCROV21320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2780.0 },
+
+  /* ปูน SCG — Over 31–40 km */
+  { code: "KPCROV31000", name: "คอนกรีต Lean (ปูน SCG)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2335.0 },
+  { code: "KPCROV31180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2625.0 },
+  { code: "KPCROV31210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2630.0 },
+  { code: "KPCROV31240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2660.0 },
+  { code: "KPCROV31280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2745.0 },
+  { code: "KPCROV31300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2850.0 },
+  { code: "KPCROV31320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2880.0 },
+
+  /* ปูน SCG — Over 41–50 km */
+  { code: "KPCROV41000", name: "คอนกรีต Lean (ปูน SCG)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2435.0 },
+  { code: "KPCROV41180", name: "คอนกรีตกำลังอัด 180 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 180, unit: "คิว", category: 'concrete', price: 2725.0 },
+  { code: "KPCROV41210", name: "คอนกรีตกำลังอัด 210 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 210, unit: "คิว", category: 'concrete', price: 2730.0 },
+  { code: "KPCROV41240", name: "คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 240, unit: "คิว", category: 'concrete', price: 2760.0 },
+  { code: "KPCROV41280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2845.0 },
+  { code: "KPCROV41300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2950.0 },
+  { code: "KPCROV41320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2980.0 },
 ]
 export const PRODUCT_MAP: Record<string, Product> = Object.fromEntries(PRODUCTS.map(p => [p.code, p]))
 
 export interface Customer {
   id: string; name: string; type: string; terms: string
   legalName: string; address: string; taxId: string
+  /* Contact + credit profile — added incrementally. Edited via CustomerMaster
+     and merged from the createdDocs store at display time. */
+  phone?: string
+  creditLimit?: number /* บาท */
+  creditDays?: number /* วัน */
 }
 export const CUSTOMER_MASTER: Customer[] = [
   { id: "C0001", name: "กรีนรีไซเคิล/พี่หนึ่ง", type: "ขายลูกค้า", terms: "เครดิต", legalName: "บจก.กรีนรีไซเคิลระนอง", address: "—", taxId: "—" },
@@ -220,10 +282,75 @@ export const CUSTOMER_MASTER: Customer[] = [
 export const CUSTOMER_MAP: Record<string, Customer> = Object.fromEntries(CUSTOMER_MASTER.map(c => [c.name, c]))
 
 export type PayMethod = 'เครดิต' | 'เงินสด' | 'โอน' | ''
+
+export interface Vehicle { id: string; maxM3: number; driver: string }
+export const VEHICLES: Vehicle[] = [
+  { id: '001', maxM3: 6, driver: 'มนตรี ธนบัตร' },
+  { id: '002', maxM3: 6, driver: 'เจนภพ เย็นกลาง' },
+  { id: '003', maxM3: 3, driver: '' },
+  { id: '004', maxM3: 3, driver: '' },
+]
+export const VEHICLE_MAP: Record<string, Vehicle> = Object.fromEntries(VEHICLES.map((v) => [v.id, v]))
+
+/* Fuel cost assumptions for transport-cost estimation on the truck fleet page.
+   Concrete mixer trucks typically achieve ~3 km/L; Thai B7 diesel is ~32 ฿/L. */
+export const FUEL_KM_PER_LITER = 3
+export const DIESEL_PRICE_PER_LITER = 32
+
+/* Round-trip distance midpoint per delivery zone (used to estimate fuel use). */
+export const ZONE_ROUNDTRIP_KM: Record<'OS' | 'OV21' | 'OV31' | 'OV41', number> = {
+  OS:   20, /* avg one-way 10 → round-trip 20 */
+  OV21: 50, /* avg 25 → 50 */
+  OV31: 70, /* avg 35 → 70 */
+  OV41: 90, /* avg 45 → 90 */
+}
+
+/* ค่าขนส่งไม่เต็มเที่ยว — fee charged when delivery falls short of a full 3-คิว load.
+   Each 0.25 คิว short adds 107 บาท (รวม VAT 7%) ≡ 400 บาท/คิว ก่อน VAT.
+   Used at tax-invoice time for under-load surcharge. */
+export interface TransportFee { m3: number; totalWithVat: number }
+export const TRANSPORT_FEES: TransportFee[] = [
+  { m3: 0.25, totalWithVat: 1177.0 },
+  { m3: 0.50, totalWithVat: 1070.0 },
+  { m3: 0.75, totalWithVat:  963.0 },
+  { m3: 1.00, totalWithVat:  856.0 },
+  { m3: 1.25, totalWithVat:  749.0 },
+  { m3: 1.50, totalWithVat:  642.0 },
+  { m3: 1.75, totalWithVat:  535.0 },
+  { m3: 2.00, totalWithVat:  428.0 },
+  { m3: 2.25, totalWithVat:  321.0 },
+  { m3: 2.50, totalWithVat:  214.0 },
+  { m3: 2.75, totalWithVat:  107.0 },
+]
+export const TRANSPORT_FULL_M3 = 3.0
+/** Per-คิว pre-VAT transport rate (400 ฿/คิว → 428 ฿/คิว incl. VAT 7%). */
+export const TRANSPORT_RATE_PRE_VAT = 400
+
+/** Look up the partial-load fee (VAT-inclusive) for a delivery quantity in คิว.
+    Returns 0 for full loads (≥3 คิว) or zero/negative inputs. */
+export function transportFeeForM3(m3: number): number {
+  if (!m3 || m3 <= 0 || m3 >= TRANSPORT_FULL_M3) return 0
+  /* Round to nearest 0.25 then look up the exact row. */
+  const stepped = Math.round(m3 * 4) / 4
+  return TRANSPORT_FEES.find((f) => f.m3 === stepped)?.totalWithVat ?? 0
+}
+
+/** Pre-VAT under-load surcharge for invoice math. Returns the shortfall (in คิว
+    rounded to 0.25) and the pre-VAT amount (=shortfall × 400). Returns null for
+    full loads or non-positive inputs. */
+export function transportSurchargeForM3(m3: number): { shortfall: number; preVat: number } | null {
+  if (!m3 || m3 <= 0 || m3 >= TRANSPORT_FULL_M3) return null
+  const shortfall = Math.round((TRANSPORT_FULL_M3 - m3) * 4) / 4
+  if (shortfall <= 0) return null
+  return { shortfall, preVat: Math.round(shortfall * TRANSPORT_RATE_PRE_VAT * 100) / 100 }
+}
+
 export interface DeliveryTicket {
   month: number; date: string; dtNo: string; ref: string; type: string; customer: string
   prod: string; m3: number; price: number; amount: number
   invoice: string; billing: string; pay: PayMethod; note: string
+  vehicle?: string
+  driver?: string
 }
 export const DELIVERY_TICKETS: DeliveryTicket[] = [
   { month: 1, date: "03/01/69", dtNo: "DT26010311739", ref: "11739", type: "ขายลูกค้า", customer: "พี่แหม่ม ระวิ", prod: "KPCR2OS00240", m3: 3.0, price: 2200.0, amount: 6600.0, invoice: "690103-0001", billing: "", pay: "เงินสด" as PayMethod, note: "" },

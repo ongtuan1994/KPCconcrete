@@ -3,7 +3,7 @@
    for a day; this module reproduces that roll-up, plus receipts, billing notes,
    customer aggregates and dashboard figures — all from real data, month-aware. */
 
-import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, type DeliveryTicket } from './real'
+import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, VEHICLES, ZONE_ROUNDTRIP_KM, type DeliveryTicket } from './real'
 
 export { MONTHS }
 export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
@@ -25,6 +25,28 @@ export const qm = (n: number) => n.toLocaleString('en-US', { maximumFractionDigi
 const dd = (date: string) => parseInt(date.slice(0, 2), 10) || 0
 export const TODAY = '21/06/69'
 
+/* ---------- delivery-zone & vehicle helpers ---------- */
+/** Round-trip distance (km) inferred from the product code's distance band. */
+export function ticketDistanceKm(t: DeliveryTicket): number {
+  const c = t.prod
+  if (c.includes('OV41')) return ZONE_ROUNDTRIP_KM.OV41
+  if (c.includes('OV31')) return ZONE_ROUNDTRIP_KM.OV31
+  if (c.includes('OV21')) return ZONE_ROUNDTRIP_KM.OV21
+  if (c.includes('OS00')) return ZONE_ROUNDTRIP_KM.OS
+  return 0
+}
+
+/** Deterministic vehicle fallback for seed tickets (which lack `vehicle`).
+    Tickets with m3 > 3 must go to a 6-คิว truck (001/002); smaller loads
+    round-robin across all four. Uses the numeric tail of dtNo as the seed
+    so the assignment is stable across renders. */
+export function vehicleForTicket(t: DeliveryTicket): string {
+  if (t.vehicle) return t.vehicle
+  const hash = (parseInt(t.ref || t.dtNo.slice(-5), 10) || 0)
+  if (t.m3 > 3) return VEHICLES[hash % 2].id /* '001' or '002' */
+  return VEHICLES[hash % VEHICLES.length].id
+}
+
 /* ---------- product display ---------- */
 export function prodName(code: string) {
   return PRODUCT_MAP[code]?.name ?? code
@@ -33,8 +55,10 @@ export function prodShort(code: string) {
   const p = PRODUCT_MAP[code]
   if (!p) return code
   if (p.category === 'precast') return 'เสาเข็ม/คาน'
-  if (p.category === 'lean') return 'Lean' + (code.includes('R2') ? ' R2' : '')
-  return `${p.strengthKsc} ksc` + (code.includes('R2') ? ' R2' : '')
+  /* Cement brand from product code: R2/P2 prefix = ดอกบัว, RO/PO = SCG */
+  const brand = /^KPC[RP]2/.test(code) ? '(ดอกบัว)' : '(SCG)'
+  if (p.category === 'lean') return `Lean ${brand}`
+  return `${p.strengthKsc} ksc ${brand}`
 }
 
 /* ---------- customer master ---------- */

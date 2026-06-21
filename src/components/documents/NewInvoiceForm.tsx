@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { PRODUCTS, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, type DeliveryTicket } from '../../data/real'
+import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FULL_M3, TRANSPORT_RATE_PRE_VAT, transportSurchargeForM3, type DeliveryTicket } from '../../data/real'
 import { INVOICES, baht, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
 
@@ -70,21 +70,52 @@ export function NewInvoiceForm({
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
 
+  /* Prices entered (and in PRODUCTS / TRANSPORT_FEES) are VAT-inclusive.
+     For the printed Thai tax invoice we still need line items in pre-VAT form
+     so VAT can be broken out at the bottom — so we divide each line by 1.07
+     before pushing it into the Invoice. The form summary shows both:
+     ฐานภาษี (subtotal) + VAT 7% + total (which equals what the user typed). */
   const computed = useMemo(() => {
     const ls: InvoiceLine[] = []
+    let totalInclVat = 0
+    let concreteQty = 0
     for (const ld of lines) {
       const p = PRODUCTS.find((x) => x.code === ld.code)
       if (!p) continue
       const qty = Number(ld.qty)
-      const price = Number(ld.price)
-      if (!qty || !price) continue
-      const amount = Math.round(qty * price * 100) / 100
-      ls.push({ code: p.code, name: p.name, unit: p.unit, qty, price, amount })
+      const priceInclVat = Number(ld.price)
+      if (!qty || !priceInclVat) continue
+      const amountInclVat = Math.round(qty * priceInclVat * 100) / 100
+      const pricePreVat = Math.round((priceInclVat / 1.07) * 100) / 100
+      const amountPreVat = Math.round((amountInclVat / 1.07) * 100) / 100
+      ls.push({ code: p.code, name: p.name, unit: p.unit, qty, price: pricePreVat, amount: amountPreVat })
+      totalInclVat += amountInclVat
+      concreteQty += qty
     }
-    const subtotal = Math.round(ls.reduce((s, l) => s + l.amount, 0) * 100) / 100
-    const vat = Math.round(subtotal * 0.07 * 100) / 100
-    const total = Math.round((subtotal + vat) * 100) / 100
-    return { ls, subtotal, vat, total }
+
+    /* Auto-add the under-load transport surcharge when total qty < 3 คิว.
+       TRANSPORT_FEES are stored as totalWithVat, so surcharge.preVat is the
+       pre-VAT amount; we add (preVat × 1.07) to the running incl-VAT total. */
+    const surcharge = transportSurchargeForM3(concreteQty)
+    const transportLine: InvoiceLine | null = surcharge
+      ? {
+          code: 'TRANSPORT',
+          name: `ค่าขนส่งไม่เต็มเที่ยว (ขาด ${surcharge.shortfall.toFixed(2)} คิว จาก ${TRANSPORT_FULL_M3} คิว)`,
+          unit: 'ครั้ง',
+          qty: 1,
+          price: surcharge.preVat,
+          amount: surcharge.preVat,
+        }
+      : null
+    if (transportLine) {
+      ls.push(transportLine)
+      totalInclVat += Math.round(surcharge!.preVat * 1.07 * 100) / 100
+    }
+
+    const total = Math.round(totalInclVat * 100) / 100
+    const subtotal = Math.round((total / 1.07) * 100) / 100
+    const vat = Math.round((total - subtotal) * 100) / 100
+    return { ls, subtotal, vat, total, transportLine, concreteQty }
   }, [lines])
 
   const reset = () => {
@@ -139,24 +170,32 @@ export function NewInvoiceForm({
     setDay(String(Number(dStr) || ''))
     if (first.pay) setPay(first.pay)
 
+    /* Build invoice lines from the matched tickets. Price-per-unit precedence:
+       1) the ticket's own price (when set, e.g. seed tickets)
+       2) the PRODUCTS master price (incl. VAT) for that product code
+       3) blank — falls through if the product code is unknown */
     const byKey = new Map<string, LineDraft>()
+    let priceFilledFromMaster = 0
     for (const t of matched) {
-      const key = `${t.prod}__${t.price || 0}`
+      const masterPrice = PRODUCT_MAP[t.prod]?.price || 0
+      const effPrice = t.price || masterPrice
+      const key = `${t.prod}__${effPrice}`
       const existing = byKey.get(key)
       if (existing) {
         existing.qty = String((Number(existing.qty) || 0) + t.m3)
       } else {
+        if (!t.price && masterPrice) priceFilledFromMaster += 1
         byKey.set(key, {
           code: t.prod,
           qty: String(t.m3),
-          /* User-created tickets save price=0; leave blank so the issuer fills it in. */
-          price: t.price ? String(t.price) : '',
+          price: effPrice ? String(effPrice) : '',
         })
       }
     }
     setLines([...byKey.values()])
 
     const parts: string[] = [`ดึงข้อมูลจาก ${matched.length} ใบจ่าย`]
+    if (priceFilledFromMaster > 0) parts.push(`เติมราคาจากตารางสินค้า ${priceFilledFromMaster} รายการ`)
     if (missed.length) parts.push(`ไม่พบ: ${missed.join(', ')}`)
     setPullInfo(parts.join(' · '))
   }
@@ -269,7 +308,7 @@ export function NewInvoiceForm({
                   const next = [...lines]; next[i] = { ...ld, qty: e.target.value }; setLines(next)
                 }} />
               </Field>
-              <Field label={i === 0 ? 'ราคา/หน่วย' : undefined}>
+              <Field label={i === 0 ? 'ราคา/หน่วย (รวม VAT)' : undefined}>
                 <Input type="number" step="0.01" value={ld.price} onChange={(e) => {
                   const next = [...lines]; next[i] = { ...ld, price: e.target.value }; setLines(next)
                 }} />
@@ -283,10 +322,34 @@ export function NewInvoiceForm({
         })}
       </div>
 
+      {computed.transportLine && (
+        <div style={{
+          marginBottom: 16,
+          padding: '10px 12px',
+          background: 'var(--kpc-primary-50)',
+          border: '1px dashed var(--kpc-primary-100)',
+          borderRadius: 8,
+          fontSize: 13,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        }}>
+          <div>
+            <strong>+ {computed.transportLine.name}</strong>
+            <div style={{ color: 'var(--kpc-text-muted)', fontSize: 12, marginTop: 2 }}>
+              เพิ่มอัตโนมัติ — รวมคอนกรีต {computed.concreteQty.toFixed(2)} คิว ไม่ถึง {TRANSPORT_FULL_M3} คิว · {(TRANSPORT_RATE_PRE_VAT * 1.07).toLocaleString()} ฿/คิว (รวม VAT)
+            </div>
+          </div>
+          <strong className="mono">{baht(Math.round(computed.transportLine.amount * 1.07 * 100) / 100)}</strong>
+        </div>
+      )}
+
       <div style={{ borderTop: '1px solid var(--kpc-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', fontSize: 14 }}>
-        <div>รวมเป็นเงิน: <strong className="mono">{baht(computed.subtotal)}</strong></div>
+        <div style={{ fontSize: 11, color: 'var(--kpc-text-muted)', marginBottom: 2 }}>* ราคาที่กรอกเป็นราคารวม VAT 7% แล้ว — แยกฐานภาษีและ VAT ออกตามนี้</div>
+        <div>ฐานภาษี (ก่อน VAT): <strong className="mono">{baht(computed.subtotal)}</strong></div>
         <div>ภาษีมูลค่าเพิ่ม 7%: <strong className="mono">{baht(computed.vat)}</strong></div>
-        <div style={{ fontSize: 16 }}>จำนวนเงินรวมทั้งสิ้น: <strong className="mono" style={{ color: 'var(--kpc-primary-ink)' }}>{baht(computed.total)}</strong></div>
+        <div style={{ fontSize: 16 }}>จำนวนเงินรวมทั้งสิ้น (รวม VAT): <strong className="mono" style={{ color: 'var(--kpc-primary-ink)' }}>{baht(computed.total)}</strong></div>
       </div>
     </Modal>
   )

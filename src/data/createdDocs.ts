@@ -7,7 +7,10 @@
 
 import { useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import type { DeliveryTicket } from './real'
+import type { DeliveryTicket, Customer } from './real'
+
+/** Editable subset of Customer fields — phone/credit kept on top of the master. */
+export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName'>>
 
 const KEY = 'kpc.createdDocs.v1'
 
@@ -24,10 +27,12 @@ export interface CreatedDocs {
   receipts: Receipt[]
   tickets: DeliveryTicket[]
   hidden: Hidden
+  /** Per-customer edits (keyed by Customer.id) merged on top of CUSTOMER_MASTER. */
+  customerEdits: Record<string, CustomerEdit>
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {} }
 
 function read(): CreatedDocs {
   try {
@@ -40,6 +45,7 @@ function read(): CreatedDocs {
       receipts: v.receipts ?? [],
       tickets: v.tickets ?? [],
       hidden: { ...emptyHidden, ...(v.hidden ?? {}) },
+      customerEdits: v.customerEdits ?? {},
     }
   } catch {
     return empty
@@ -105,6 +111,21 @@ export function removeTicket(dtNo: string) {
 
 export function restoreAllHidden() {
   commit({ ...state, hidden: emptyHidden })
+}
+
+/** Merge an edit onto a customer (by id). Undefined values clear prior edits. */
+export function updateCustomer(id: string, edit: CustomerEdit) {
+  const merged = { ...(state.customerEdits[id] ?? {}), ...edit }
+  /* Drop keys that are explicitly empty strings / undefined so display falls
+     back to the master record. */
+  for (const k of Object.keys(merged) as (keyof CustomerEdit)[]) {
+    const v = merged[k]
+    if (v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v))) delete merged[k]
+  }
+  const next = { ...state.customerEdits }
+  if (Object.keys(merged).length === 0) delete next[id]
+  else next[id] = merged
+  commit({ ...state, customerEdits: next })
 }
 
 export function useCreatedDocs(): CreatedDocs {

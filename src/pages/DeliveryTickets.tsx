@@ -5,7 +5,7 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
-import { baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
+import { INVOICES, baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
 import { useCreatedDocs, removeTicket, CAN_DELETE } from '../data/createdDocs'
 import { NewDeliveryTicketForm } from '../components/documents/NewDeliveryTicketForm'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
@@ -28,6 +28,20 @@ export function DeliveryTickets() {
 
   const newSet = useMemo(() => new Set(created.tickets.map((t) => t.dtNo)), [created.tickets])
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
+
+  /* Reverse lookup: dtNo / ref → IV69 invoice number, built from every invoice's
+     refs[] (matches both user-created tickets via dtNo and seed tickets via ref). */
+  const invoiceByTicket = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const inv of [...created.invoices, ...INVOICES]) {
+      for (const r of inv.refs) {
+        if (r && !map.has(r)) map.set(r, inv.no)
+      }
+    }
+    return map
+  }, [created.invoices])
+  const ticketInvoiceNo = (t: DeliveryTicket): string =>
+    invoiceByTicket.get(t.dtNo) || invoiceByTicket.get(t.ref) || ''
   const allTickets = useMemo(
     () => [...created.tickets, ...DELIVERY_TICKETS].filter((t) => !hiddenSet.has(t.dtNo)),
     [created.tickets, hiddenSet],
@@ -97,8 +111,18 @@ export function DeliveryTickets() {
     { key: 'cust', header: 'ลูกค้า / หน่วยงาน', cell: (r) => r.customer },
     { key: 'prod', header: 'สินค้า', cell: (r) => <span className="th">{prodShort(r.prod)}</span> },
     { key: 'm3', header: 'คิว', align: 'right', cell: (r) => <span className="mono">{qm(r.m3)}</span> },
-    { key: 'price', header: 'ราคา', align: 'right', cell: (r) => <span className="mono" style={{ color: 'var(--kpc-text-muted)' }}>{r.price ? r.price.toLocaleString() : '—'}</span> },
-    { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => (r.amount ? baht(r.amount) : <span className="mono" style={{ color: 'var(--kpc-text-faint)' }}>—</span>), className: 'amt' },
+    { key: 'veh', header: 'หมายเลขรถ', align: 'center', cell: (r) => (r.vehicle ? <span className="mono">รถ {r.vehicle}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
+    {
+      key: 'inv',
+      header: 'เลขใบกำกับภาษี',
+      cell: (r) => {
+        const no = ticketInvoiceNo(r)
+        return no
+          ? <span className="mono" style={{ fontSize: 13 }}>{no}</span>
+          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      },
+      className: 'docno',
+    },
     { key: 'pay', header: 'ชำระโดย', align: 'center', cell: (r) => (r.pay ? <Badge tone={PAY_TONE[r.pay] ?? 'neutral'} pip={false} square>{r.pay}</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     ...(CAN_DELETE ? [{

@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, MONTHS, PRODUCTS, DELIVERY_TICKETS, type DeliveryTicket, type PayMethod } from '../../data/real'
+import { CUSTOMER_MASTER, MONTHS, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, type DeliveryTicket, type PayMethod } from '../../data/real'
 import { LATEST_MONTH } from '../../data/selectors'
 import { addTicket } from '../../data/createdDocs'
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
+
+/** Delivery tickets only cover concrete products — precast (เสาเข็ม / คานสำเร็จรูป) excluded. */
+const SELECTABLE_PRODUCTS = PRODUCTS.filter((p) => p.category !== 'precast')
 
 /** Continue the existing dtNo serial (DT26MMDD<serial>) so new tickets blend in. */
 function nextSerial(all: DeliveryTicket[]): number {
@@ -33,8 +36,9 @@ export function NewDeliveryTicketForm({
   const [day, setDay] = useState<string>('')
   const [type, setType] = useState<string>('ขายลูกค้า')
   const [customer, setCustomer] = useState<string>('')
-  const [prodCode, setProdCode] = useState<string>(PRODUCTS[0]?.code ?? '')
+  const [prodCode, setProdCode] = useState<string>(SELECTABLE_PRODUCTS[0]?.code ?? '')
   const [m3, setM3] = useState<string>('')
+  const [vehicle, setVehicle] = useState<string>(VEHICLES[0]?.id ?? '')
   const [pay, setPay] = useState<PayMethod>('เงินสด')
   const [note, setNote] = useState<string>('')
   const [err, setErr] = useState<string>('')
@@ -43,7 +47,8 @@ export function NewDeliveryTicketForm({
 
   const reset = () => {
     setMonth(LATEST_MONTH); setDay(''); setType('ขายลูกค้า'); setCustomer('')
-    setProdCode(PRODUCTS[0]?.code ?? ''); setM3(''); setPay('เงินสด')
+    setProdCode(SELECTABLE_PRODUCTS[0]?.code ?? ''); setM3('')
+    setVehicle(VEHICLES[0]?.id ?? ''); setPay('เงินสด')
     setNote(''); setErr('')
   }
 
@@ -54,6 +59,9 @@ export function NewDeliveryTicketForm({
     if (!customer.trim() && type === 'ขายลูกค้า') return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     const q = Number(m3)
     if (!q || q <= 0) return setErr('กรุณาระบุปริมาณ (คิว)')
+    if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
+    const v = VEHICLE_MAP[vehicle]
+    if (v && q > v.maxM3) return setErr(`รถ ${v.id} ขนได้สูงสุด ${v.maxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
 
     const serial = nextSerial(all)
     const date = `${pad2(dnum)}/${pad2(month)}/69`
@@ -70,6 +78,10 @@ export function NewDeliveryTicketForm({
       invoice: '', billing: '',
       pay: type === 'ขายลูกค้า' ? pay : '' as PayMethod,
       note: note.trim(),
+      vehicle,
+      /* Snapshot the driver name from the vehicle master so the ticket stays
+         accurate even if the driver assignment changes later. */
+      driver: VEHICLE_MAP[vehicle]?.driver || '',
     }
     addTicket(t)
     onSaved(t)
@@ -124,10 +136,35 @@ export function NewDeliveryTicketForm({
 
         <Field label="สินค้า" required style={{ gridColumn: '1 / -1' }}>
           <Select value={prodCode} onChange={(e) => setProdCode(e.target.value)}>
-            {PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
+            {SELECTABLE_PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
           </Select>
         </Field>
 
+        <Field label="หมายเลขรถ" required hint={(() => {
+          const v = VEHICLE_MAP[vehicle]; if (!v) return ''
+          const q = Number(m3)
+          if (q && q > v.maxM3) return `เกินพิกัด ${v.maxM3} คิว`
+          return `ขนได้สูงสุด ${v.maxM3} คิว`
+        })()} error={(() => {
+          const v = VEHICLE_MAP[vehicle]; const q = Number(m3)
+          return !!(v && q && q > v.maxM3)
+        })()}>
+          <Select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
+            {VEHICLES.map((v) => (
+              <option key={v.id} value={v.id}>รถ {v.id} (สูงสุด {v.maxM3} คิว)</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="พนักงานจัดส่ง" hint="ดึงจากหมายเลขรถอัตโนมัติ">
+          {(() => {
+            const driver = VEHICLE_MAP[vehicle]?.driver
+            return (
+              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', color: driver ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
+                {driver || 'ยังไม่ได้ระบุพนักงาน'}
+              </div>
+            )
+          })()}
+        </Field>
         <Field label="ปริมาณ (คิว)" required>
           <Input type="number" step="0.01" placeholder="เช่น 3.0" value={m3} onChange={(e) => setM3(e.target.value)} />
         </Field>
@@ -139,8 +176,8 @@ export function NewDeliveryTicketForm({
             <option value="">—</option>
           </Select>
         </Field>
-        <Field label="หมายเหตุ">
-          <Input placeholder="ระยะทาง / รหัสรถ / ผู้สั่ง ฯลฯ" value={note} onChange={(e) => setNote(e.target.value)} />
+        <Field label="หมายเหตุ" style={{ gridColumn: '1 / -1' }}>
+          <Input placeholder="ระยะทาง / ผู้สั่ง / รายละเอียดเพิ่มเติม ฯลฯ" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
       </div>
 
