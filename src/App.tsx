@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { Overview } from './pages/Overview'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { Invoices } from './pages/Invoices'
 import { BillingNotes } from './pages/BillingNotes'
@@ -18,8 +17,9 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Navigate to="/overview" replace />} />
-        <Route path="/overview" element={<Overview />} />
+        <Route path="/" element={<Navigate to="/monthly-report" replace />} />
+        {/* Legacy /overview links now land on the monthly report. */}
+        <Route path="/overview" element={<Navigate to="/monthly-report" replace />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/billing" element={<BillingNotes />} />
@@ -32,7 +32,7 @@ export default function App() {
         <Route path="/transport-pricing" element={<TransportPricing />} />
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
-        <Route path="*" element={<Navigate to="/overview" replace />} />
+        <Route path="*" element={<Navigate to="/monthly-report" replace />} />
       </Routes>
     </Layout>
   )

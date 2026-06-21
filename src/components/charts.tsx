@@ -12,7 +12,8 @@ export function KpiCard({
   invert,
 }: {
   label: string
-  value: string
+  /* Accept ReactNode so callers can colourize the value (e.g. red for AR/overdue). */
+  value: ReactNode
   unit?: string
   delta?: string
   deltaDir?: 'up' | 'down'

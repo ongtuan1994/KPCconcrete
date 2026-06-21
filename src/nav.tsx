@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconGrid, IconOrder, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconPlant, IconUsers, IconTruck } from './components/icons'
+import { IconOrder, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconPlant, IconUsers, IconTruck } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -14,7 +14,7 @@ export interface NavGroup {
 
 export const NAV: NavGroup[] = [
   {
-    items: [{ to: '/overview', label: 'ภาพรวม', en: 'Overview', icon: <IconGrid /> }],
+    items: [{ to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> }],
   },
   {
     section: 'การขาย · Sales',
@@ -26,11 +26,10 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    section: 'ลูกค้า & รายงาน · Customers',
+    section: 'ลูกค้า · Customers',
     items: [
       { to: '/customer-master', label: 'ทะเบียนลูกค้า', en: 'Customer Master', icon: <IconUsers /> },
       { to: '/customers', label: 'สรุปตามลูกค้า', en: 'Customer Summary', icon: <IconPie /> },
-      { to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> },
     ],
   },
   {
@@ -54,6 +53,6 @@ export const NAV: NavGroup[] = [
 export const ROUTE_META: Record<string, { label: string; en: string; section: string }> = {}
 for (const g of NAV) {
   for (const it of g.items) {
-    ROUTE_META[it.to] = { label: it.label, en: it.en, section: g.section?.split(' · ')[0] ?? 'ภาพรวม' }
+    ROUTE_META[it.to] = { label: it.label, en: it.en, section: g.section?.split(' · ')[0] ?? 'รายงาน' }
   }
 }
