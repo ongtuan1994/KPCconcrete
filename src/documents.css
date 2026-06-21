@@ -1,0 +1,75 @@
+/* ============================================================
+   KPC — PRINTABLE DOCUMENTS (ใบกำกับภาษี / ใบเสร็จ / ใบวางบิล)
+   Mirrors the company's real A4 forms.
+   ============================================================ */
+.doc-sheet {
+  background: #fff;
+  color: #14171B;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 32px;
+  font-size: 13px;
+  line-height: 1.45;
+  border: 1px solid var(--kpc-border);
+  border-radius: var(--kpc-radius);
+}
+.doc-sheet .doc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.doc-sheet .co { display: flex; gap: 12px; align-items: flex-start; }
+.doc-sheet .co .co-name { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+.doc-sheet .co .co-line { font-size: 12px; color: var(--kpc-text-muted); }
+.doc-sheet .doc-type {
+  text-align: right;
+}
+.doc-sheet .doc-type .tt { font-size: 16px; font-weight: 700; color: var(--kpc-primary-ink); }
+.doc-sheet .doc-type .copy { font-size: 11px; color: var(--kpc-text-faint); font-family: var(--kpc-font-mono); }
+.doc-sheet .doc-meta-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px;
+  margin-top: 18px; padding: 14px 0; border-top: 1px solid var(--kpc-neutral-900);
+  border-bottom: 1px solid var(--kpc-border);
+}
+.doc-sheet .mrow { display: flex; gap: 8px; font-size: 12.5px; }
+.doc-sheet .mrow .k { color: var(--kpc-text-muted); white-space: nowrap; }
+.doc-sheet .mrow .v { font-weight: 500; }
+.doc-sheet .mrow .v.mono { font-family: var(--kpc-font-mono); }
+
+.doc-sheet table.doc-lines { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12.5px; }
+.doc-sheet table.doc-lines th {
+  background: var(--kpc-neutral-50); border-top: 1px solid var(--kpc-neutral-300);
+  border-bottom: 1px solid var(--kpc-neutral-300);
+  padding: 8px 8px; font-size: 11px; font-weight: 600; color: var(--kpc-text-muted); text-align: left;
+}
+.doc-sheet table.doc-lines th.num, .doc-sheet table.doc-lines td.num { text-align: right; }
+.doc-sheet table.doc-lines th.ctr, .doc-sheet table.doc-lines td.ctr { text-align: center; }
+.doc-sheet table.doc-lines td { padding: 9px 8px; border-bottom: 1px solid var(--kpc-divider); vertical-align: top; }
+.doc-sheet table.doc-lines td.mono { font-family: var(--kpc-font-mono); }
+.doc-sheet table.doc-lines tbody tr.spacer td { border-bottom: none; height: 14px; }
+
+.doc-sheet .doc-foot { display: flex; justify-content: space-between; gap: 24px; margin-top: 4px; }
+.doc-sheet .doc-words {
+  flex: 1; align-self: flex-end; font-size: 12px; color: var(--kpc-text-muted);
+  background: var(--kpc-neutral-50); border-radius: 6px; padding: 10px 12px;
+}
+.doc-sheet .doc-totals { width: 280px; }
+.doc-sheet .doc-totals .trow { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12.5px; }
+.doc-sheet .doc-totals .trow .lab { color: var(--kpc-text-muted); }
+.doc-sheet .doc-totals .trow .val { font-family: var(--kpc-font-mono); font-variant-numeric: tabular-nums; }
+.doc-sheet .doc-totals .grand {
+  border-top: 1.5px solid var(--kpc-neutral-900); margin-top: 4px; padding-top: 8px; font-weight: 700; font-size: 14px;
+}
+.doc-sheet .doc-totals .grand .val { color: var(--kpc-primary-ink); }
+
+.doc-sheet .doc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; }
+.doc-sheet .doc-sign .s { text-align: center; }
+.doc-sheet .doc-sign .s .line { border-top: 1px dotted var(--kpc-neutral-400); margin-bottom: 6px; height: 40px; }
+.doc-sheet .doc-sign .s .cap { font-size: 12px; color: var(--kpc-text-muted); }
+
+.doc-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
+
+@media print {
+  body { background: #fff; }
+  .app-shell .sidebar, .topbar, .page-header, .doc-actions, .modal-head, .modal-foot { display: none !important; }
+  .modal-overlay { position: static; background: none; padding: 0; }
+  .modal { box-shadow: none; max-width: none; }
+  .doc-sheet { border: none; border-radius: 0; max-width: none; }
+}

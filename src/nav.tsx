@@ -1,0 +1,55 @@
+import type { ReactNode } from 'react'
+import { IconGrid, IconOrder, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconPlant, IconUsers } from './components/icons'
+
+export interface NavItem {
+  to: string
+  label: string // Thai
+  en: string
+  icon: ReactNode
+}
+export interface NavGroup {
+  section?: string // section header (Thai · English)
+  items: NavItem[]
+}
+
+export const NAV: NavGroup[] = [
+  {
+    items: [{ to: '/overview', label: 'ภาพรวม', en: 'Overview', icon: <IconGrid /> }],
+  },
+  {
+    section: 'การขาย · Sales',
+    items: [
+      { to: '/delivery-tickets', label: 'ใบจ่ายสินค้า', en: 'Delivery Tickets', icon: <IconOrder /> },
+      { to: '/invoices', label: 'ใบกำกับภาษี', en: 'Tax Invoices', icon: <IconInvoice /> },
+      { to: '/billing', label: 'ใบวางบิล', en: 'Billing Notes', icon: <IconBill /> },
+      { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
+    ],
+  },
+  {
+    section: 'ลูกค้า & รายงาน · Customers',
+    items: [
+      { to: '/customer-master', label: 'ทะเบียนลูกค้า', en: 'Customer Master', icon: <IconUsers /> },
+      { to: '/customers', label: 'สรุปตามลูกค้า', en: 'Customer Summary', icon: <IconPie /> },
+      { to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> },
+    ],
+  },
+  {
+    section: 'คลัง & ราคา · Inventory',
+    items: [
+      { to: '/stock', label: 'คลังวัตถุดิบ', en: 'Raw Material Stock', icon: <IconStock /> },
+      { to: '/pricing', label: 'ราคาสินค้า', en: 'Price List', icon: <IconTag /> },
+    ],
+  },
+  {
+    section: 'โรงงาน · Operations',
+    items: [{ to: '/plant', label: 'ติดตามโรงงาน', en: 'Plant Monitoring', icon: <IconPlant /> }],
+  },
+]
+
+/** Flat lookup of route -> {label, en, section} for breadcrumbs. */
+export const ROUTE_META: Record<string, { label: string; en: string; section: string }> = {}
+for (const g of NAV) {
+  for (const it of g.items) {
+    ROUTE_META[it.to] = { label: it.label, en: it.en, section: g.section?.split(' · ')[0] ?? 'ภาพรวม' }
+  }
+}

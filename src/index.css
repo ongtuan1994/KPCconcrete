@@ -1,0 +1,113 @@
+/* ============================================================
+   KPC DESIGN SYSTEM — TOKENS & BASE
+   กิจไพศาลคอนกรีต · Concrete Batching Plant
+   ============================================================ */
+
+:root {
+  /* ---- Brand: KPC Blue ---- */
+  --kpc-primary-50:  #ECECFE;
+  --kpc-primary-100: #D8D8FD;
+  --kpc-primary-200: #B4B4FB;
+  --kpc-primary-300: #8585F8;
+  --kpc-primary-400: #4A4AF4;
+  --kpc-primary-500: #1F1FEE;
+  --kpc-primary-600: #0E0EE6; /* brand ★ */
+  --kpc-primary-700: #0B0BB0;
+  --kpc-primary-900: #0A0A72;
+
+  /* Themeable primary (driven by ThemeContext) */
+  --kpc-primary: #0E0EE6;
+  --kpc-primary-ink: #0B0BB0;
+
+  /* ---- Neutral (from logo grey) ---- */
+  --kpc-neutral-50:  #F7F8FA;
+  --kpc-neutral-100: #ECEEF1;
+  --kpc-neutral-200: #DCE0E5;
+  --kpc-neutral-300: #C2C8D0;
+  --kpc-neutral-400: #969CA6;
+  --kpc-neutral-500: #696969;
+  --kpc-neutral-600: #4B515B;
+  --kpc-neutral-700: #363B43;
+  --kpc-neutral-900: #14171B;
+
+  /* ---- Semantic ---- */
+  --kpc-success:      #1E9E5A;
+  --kpc-success-bg:   #E7F6EE;
+  --kpc-success-ink:  #14724A;
+  --kpc-warning:      #C77700;
+  --kpc-warning-bg:   #FBF0D9;
+  --kpc-warning-ink:  #8A5400;
+  --kpc-danger:       #D23B3B;
+  --kpc-danger-bg:    #FBE9E9;
+  --kpc-danger-ink:   #9E2A2A;
+  --kpc-info:         var(--kpc-primary);
+  --kpc-info-bg:      var(--kpc-primary-50);
+  --kpc-info-ink:     var(--kpc-primary-ink);
+
+  /* ---- Surfaces & lines ---- */
+  --kpc-app-bg:    #F4F6F8;
+  --kpc-surface:   #ffffff;
+  --kpc-surface-alt: #FBFCFD;
+  --kpc-border:    #E6E9ED;
+  --kpc-divider:   #F0F2F5;
+  --kpc-chip-bg:   #F1F3F6;
+
+  /* ---- Text ---- */
+  --kpc-text:        #363B43;
+  --kpc-text-strong: #14171B;
+  --kpc-text-muted:  #6B7280;
+  --kpc-text-faint:  #969CA6;
+
+  /* ---- Typography ---- */
+  --kpc-font-sans: 'IBM Plex Sans', 'Sarabun', sans-serif;
+  --kpc-font-th:   'Sarabun', 'IBM Plex Sans', sans-serif;
+  --kpc-font-mono: 'IBM Plex Mono', monospace;
+
+  /* ---- Radius (cornerStyle) ---- */
+  --kpc-radius: 8px;        /* Soft (default) / Sharp = 2px */
+  --kpc-radius-sm: 6px;
+  --kpc-radius-pill: 999px;
+
+  /* ---- Spacing (4px base) ---- */
+  --kpc-space-xs: 4px;
+  --kpc-space-sm: 8px;
+  --kpc-space-md: 16px;
+  --kpc-space-lg: 24px;
+  --kpc-space-xl: 40px;
+
+  /* ---- Density ---- */
+  --kpc-pad: 20px;             /* Comfortable / Compact = 14px */
+  --kpc-cellpad: 13px 16px;    /* Comfortable / Compact = 8px 14px */
+
+  /* ---- Elevation ---- */
+  --kpc-elev-sm: 0 1px 2px rgba(20,23,27,0.08);
+  --kpc-elev-md: 0 4px 12px rgba(20,23,27,0.10);
+  --kpc-elev-lg: 0 12px 28px rgba(20,23,27,0.16);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--kpc-app-bg);
+  color: var(--kpc-text);
+  font-family: var(--kpc-font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+.mono { font-family: var(--kpc-font-mono); font-variant-numeric: tabular-nums; }
+.th { font-family: var(--kpc-font-th); }
+
+/* scrollbar polish */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--kpc-neutral-200); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--kpc-neutral-300); background-clip: content-box; }
+
+::selection { background: var(--kpc-primary-100); }
