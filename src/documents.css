@@ -16,6 +16,7 @@
 }
 .doc-sheet .doc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .doc-sheet .co { display: flex; gap: 12px; align-items: flex-start; }
+.doc-sheet .co .doc-logo { width: 84px; height: auto; object-fit: contain; flex: none; }
 .doc-sheet .co .co-name { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
 .doc-sheet .co .co-line { font-size: 12px; color: var(--kpc-text-muted); }
 .doc-sheet .doc-type {

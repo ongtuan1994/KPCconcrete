@@ -5,7 +5,9 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { ReceiptDoc } from '../components/documents/ReceiptDoc'
+import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { RECEIPTS, baht, LATEST_MONTH, monthLabel, type Receipt } from '../data/selectors'
+import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
 
 const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning' }
 
@@ -13,8 +15,15 @@ export function Receipts() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Receipt | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const created = useCreatedDocs()
 
-  const monthRows = useMemo(() => (month === 'all' ? RECEIPTS : RECEIPTS.filter((r) => r.month === month)), [month])
+  const hiddenSet = useMemo(() => new Set(created.hidden.receipts), [created.hidden.receipts])
+  const allReceipts = useMemo(
+    () => [...created.receipts, ...RECEIPTS].filter((r) => !hiddenSet.has(r.no)),
+    [created.receipts, hiddenSet],
+  )
+  const monthRows = useMemo(() => (month === 'all' ? allReceipts : allReceipts.filter((r) => r.month === month)), [month, allReceipts])
   const rows = useMemo(
     () => monthRows.filter((r) => !query || `${r.no} ${r.customer}`.toLowerCase().includes(query.toLowerCase())),
     [monthRows, query],
@@ -29,11 +38,25 @@ export function Receipts() {
     { key: 'method', header: 'วิธีชำระ', align: 'center', cell: (r) => <Badge tone={PAY_TONE[r.method] ?? 'neutral'} pip={false} square>{r.method || '—'}</Badge> },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => baht(r.amount), className: 'amt' },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    ...(CAN_DELETE ? [{
+      key: 'del',
+      header: '',
+      align: 'center' as const,
+      cell: (r: Receipt) => (
+        <Button variant="ghost" size="sm" onClick={() => {
+          if (confirm(`ลบใบเสร็จ ${r.no} ?\n(เฉพาะโหมดทดสอบ)`)) removeReceipt(r.no)
+        }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
   ]
 
   return (
     <>
-      <PageHeader title="ใบเสร็จรับเงิน" sub={`Receipts · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — เงินสด/โอน`} />
+      <PageHeader
+        title="ใบเสร็จรับเงิน"
+        sub={`Receipts · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — เงินสด/โอน`}
+        actions={<Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบเสร็จรับเงิน</Button>}
+      />
       <div className="grid g-3" style={{ marginBottom: 24 }}>
         <KpiCard label="รับเงินรวม · Collected" value={baht(total)} delta={`${monthRows.length} ใบ`} note="ใบเสร็จ" />
         <KpiCard label="จำนวนใบเสร็จ · Receipts" value={monthRows.length.toString()} note="ใบ" />
@@ -50,6 +73,14 @@ export function Receipts() {
       <DocModal open={!!active} title={active ? `ใบเสร็จรับเงิน ${active.no}` : ''} onClose={() => setActive(null)}>
         {active && <ReceiptDoc rc={active} />}
       </DocModal>
+
+      <NewReceiptForm
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        createdReceipts={created.receipts}
+        extraInvoices={created.invoices}
+        onIssued={(rc) => { setShowForm(false); setActive(rc) }}
+      />
     </>
   )
 }

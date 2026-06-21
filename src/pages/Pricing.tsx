@@ -28,7 +28,7 @@ export function Pricing() {
     <>
       <PageHeader
         title="ราคาสินค้า"
-        sub="Price List · ราคาขายต่อคิว (อ้างอิงจริงจากใบจ่ายสินค้า)"
+        sub="Price List · ราคาขายต่อคิว (อ้างอิงจริงจากใบจ่ายคอนกรีต)"
         actions={<Button variant="secondary">ปรับราคา</Button>}
       />
       <div className="row" style={{ marginBottom: 16 }}>
@@ -41,7 +41,7 @@ export function Pricing() {
       </div>
       <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
       <p className="page-sub" style={{ marginTop: 14 }}>
-        * ราคาเป็นราคาขายเฉลี่ยที่พบบ่อยที่สุดจากใบจ่ายสินค้าจริงประจำเดือน · ราคาจริงอาจปรับตามระยะทางและปริมาณสั่งซื้อ
+        * ราคาเป็นราคาขายเฉลี่ยที่พบบ่อยที่สุดจากใบจ่ายคอนกรีตจริงประจำเดือน · ราคาจริงอาจปรับตามระยะทางและปริมาณสั่งซื้อ
       </p>
     </>
   )

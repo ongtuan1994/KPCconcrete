@@ -19,7 +19,7 @@ export const NAV: NavGroup[] = [
   {
     section: 'การขาย · Sales',
     items: [
-      { to: '/delivery-tickets', label: 'ใบจ่ายสินค้า', en: 'Delivery Tickets', icon: <IconOrder /> },
+      { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
       { to: '/invoices', label: 'ใบกำกับภาษี', en: 'Tax Invoices', icon: <IconInvoice /> },
       { to: '/billing', label: 'ใบวางบิล', en: 'Billing Notes', icon: <IconBill /> },
       { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },

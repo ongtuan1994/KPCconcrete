@@ -1,9 +1,12 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
 import { baht, customerLegal, type Receipt, INVOICES } from '../../data/selectors'
 import { bahtText } from '../../data/bahtText'
+import { useCreatedDocs } from '../../data/createdDocs'
 
 export function ReceiptDoc({ rc }: { rc: Receipt }) {
-  const invs = INVOICES.filter((i) => rc.invoiceNos.includes(i.no))
+  const created = useCreatedDocs()
+  const allInv = [...created.invoices, ...INVOICES]
+  const invs = allInv.filter((i) => rc.invoiceNos.includes(i.no))
   const cust = customerLegal(rc.customer)
   return (
     <DocShell docType="ใบเสร็จรับเงิน" copyLabel="ต้นฉบับ / Original">

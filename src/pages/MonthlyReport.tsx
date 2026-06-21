@@ -61,7 +61,7 @@ export function MonthlyReport() {
 
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(t.m3All))} unit="m³" note="ทั้งเดือน" />
-        <KpiCard label="ใบจ่ายสินค้า · Tickets" value={t.tickets.toString()} note="ใบ" />
+        <KpiCard label="ใบจ่ายคอนกรีต · Tickets" value={t.tickets.toString()} note="ใบ" />
         <KpiCard label="ใบกำกับ · Invoices" value={t.invoices.toString()} note="ใบ" />
         <KpiCard label="เฉลี่ยต่อคิว · Avg / m³" value={baht(t.m3Sold ? Math.round(net / t.m3Sold) : 0)} note="ราคาขายเฉลี่ย" />
       </div>

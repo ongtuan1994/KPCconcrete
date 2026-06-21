@@ -5,7 +5,9 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
+import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
 import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
+import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
 
 type Filter = 'all' | InvStatus
 
@@ -20,8 +22,15 @@ export function Invoices() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const created = useCreatedDocs()
 
-  const monthRows = useMemo(() => (month === 'all' ? INVOICES : INVOICES.filter((i) => i.month === month)), [month])
+  const hiddenSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
+  const allInvoices = useMemo(
+    () => [...created.invoices, ...INVOICES].filter((i) => !hiddenSet.has(i.no)),
+    [created.invoices, hiddenSet],
+  )
+  const monthRows = useMemo(() => (month === 'all' ? allInvoices : allInvoices.filter((i) => i.month === month)), [month, allInvoices])
   const rows = useMemo(
     () =>
       monthRows.filter((inv) => {
@@ -44,11 +53,25 @@ export function Invoices() {
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
     { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].th}</Badge> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    ...(CAN_DELETE ? [{
+      key: 'del',
+      header: '',
+      align: 'center' as const,
+      cell: (r: Invoice) => (
+        <Button variant="ghost" size="sm" onClick={() => {
+          if (confirm(`ลบใบกำกับ ${r.no} ?\n(เฉพาะโหมดทดสอบ)`)) removeInvoice(r.no)
+        }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
   ]
 
   return (
     <>
-      <PageHeader title="ใบกำกับภาษี" sub={`Tax Invoices · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — รวมจากใบจ่ายสินค้า`} />
+      <PageHeader
+        title="ใบกำกับภาษี"
+        sub={`Tax Invoices · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — รวมจากใบจ่ายคอนกรีต`}
+        actions={<Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบกำกับภาษี</Button>}
+      />
 
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="ใบกำกับ · Invoices" value={monthRows.length.toString()} note="ใบ" />
@@ -77,6 +100,13 @@ export function Invoices() {
       <DocModal open={!!active} title={active ? `ใบกำกับภาษี ${active.no}` : ''} onClose={() => setActive(null)}>
         {active && <TaxInvoiceDoc inv={active} />}
       </DocModal>
+
+      <NewInvoiceForm
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        createdInvoices={created.invoices}
+        onIssued={(inv) => { setShowForm(false); setActive(inv) }}
+      />
     </>
   )
 }

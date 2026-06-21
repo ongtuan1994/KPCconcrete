@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
+import { useCreatedDocs, removeTicket, CAN_DELETE } from '../data/createdDocs'
+import { NewDeliveryTicketForm } from '../components/documents/NewDeliveryTicketForm'
+import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
+import { TicketDetailModal } from '../components/documents/TicketDetailModal'
 
 type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 'ใช้เอง'
 
@@ -16,8 +20,19 @@ export function DeliveryTickets() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [active, setActive] = useState<DeliveryTicket | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [invoiceRefs, setInvoiceRefs] = useState<string | null>(null)
+  const created = useCreatedDocs()
 
-  const monthRows = useMemo(() => (month === 'all' ? DELIVERY_TICKETS : DELIVERY_TICKETS.filter((t) => t.month === month)), [month])
+  const newSet = useMemo(() => new Set(created.tickets.map((t) => t.dtNo)), [created.tickets])
+  const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
+  const allTickets = useMemo(
+    () => [...created.tickets, ...DELIVERY_TICKETS].filter((t) => !hiddenSet.has(t.dtNo)),
+    [created.tickets, hiddenSet],
+  )
+  const monthRows = useMemo(() => (month === 'all' ? allTickets : allTickets.filter((t) => t.month === month)), [month, allTickets])
   const rows = useMemo(
     () =>
       monthRows.filter((t) => {
@@ -33,8 +48,50 @@ export function DeliveryTickets() {
   const totSales = sales.reduce((s, t) => s + t.amount, 0)
   const totM3 = monthRows.reduce((s, t) => s + t.m3, 0)
 
+  const toggleOne = (dtNo: string) => {
+    const next = new Set(selected)
+    if (next.has(dtNo)) next.delete(dtNo); else next.add(dtNo)
+    setSelected(next)
+  }
+
+  const allFilteredSelected = rows.length > 0 && rows.every((r) => selected.has(r.dtNo))
+  const toggleAllFiltered = () => {
+    const next = new Set(selected)
+    if (allFilteredSelected) {
+      rows.forEach((r) => next.delete(r.dtNo))
+    } else {
+      rows.forEach((r) => next.add(r.dtNo))
+    }
+    setSelected(next)
+  }
+
+  const openInvoiceForTicket = (t: DeliveryTicket) => {
+    setActive(null)
+    setInvoiceRefs(t.dtNo)
+  }
+  const openInvoiceForSelected = () => {
+    if (selected.size === 0) return
+    setInvoiceRefs([...selected].join(','))
+  }
+
   const columns: Column<DeliveryTicket>[] = [
-    { key: 'dt', header: 'เลขที่ใบจ่าย', cell: (r) => r.dtNo, className: 'docno' },
+    {
+      key: 'sel',
+      header: <Checkbox checked={allFilteredSelected} onChange={toggleAllFiltered}>{''}</Checkbox>,
+      align: 'center',
+      cell: (r) => <Checkbox checked={selected.has(r.dtNo)} onChange={() => toggleOne(r.dtNo)}>{''}</Checkbox>,
+    },
+    {
+      key: 'dt',
+      header: 'เลขที่ใบจ่าย',
+      cell: (r) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {r.dtNo}
+          {newSet.has(r.dtNo) && <Badge tone="success" pip={false} square>ใหม่</Badge>}
+        </span>
+      ),
+      className: 'docno',
+    },
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
     { key: 'type', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone={TYPE_TONE[r.type] ?? 'neutral'} square pip={false}>{r.type}</Badge> },
     { key: 'cust', header: 'ลูกค้า / หน่วยงาน', cell: (r) => r.customer },
@@ -43,16 +100,30 @@ export function DeliveryTickets() {
     { key: 'price', header: 'ราคา', align: 'right', cell: (r) => <span className="mono" style={{ color: 'var(--kpc-text-muted)' }}>{r.price ? r.price.toLocaleString() : '—'}</span> },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => (r.amount ? baht(r.amount) : <span className="mono" style={{ color: 'var(--kpc-text-faint)' }}>—</span>), className: 'amt' },
     { key: 'pay', header: 'ชำระโดย', align: 'center', cell: (r) => (r.pay ? <Badge tone={PAY_TONE[r.pay] ?? 'neutral'} pip={false} square>{r.pay}</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
+    { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    ...(CAN_DELETE ? [{
+      key: 'del',
+      header: '',
+      align: 'center' as const,
+      cell: (r: DeliveryTicket) => (
+        <Button variant="ghost" size="sm" onClick={() => {
+          if (confirm(`ลบใบจ่าย ${r.dtNo} ?\n(เฉพาะโหมดทดสอบ)`)) {
+            removeTicket(r.dtNo)
+            const next = new Set(selected); next.delete(r.dtNo); setSelected(next)
+          }
+        }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
   ]
 
   return (
     <>
       <PageHeader
-        title="ใบจ่ายสินค้า"
+        title="ใบจ่ายคอนกรีต"
         sub={`Delivery Tickets · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)}`}
         actions={
-          <Button variant="primary">
-            <IconPlus /> บันทึกใบจ่าย
+          <Button variant="primary" onClick={() => setShowForm(true)}>
+            <IconPlus /> บันทึกใบจ่ายคอนกรีต
           </Button>
         }
       />
@@ -76,7 +147,47 @@ export function DeliveryTickets() {
           <SearchInput placeholder="เลขที่ใบจ่าย / ลูกค้า / รหัสสินค้า" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', marginBottom: 12, borderRadius: 8, background: 'var(--kpc-primary-50)', border: '1px solid var(--kpc-primary-100)' }}>
+          <span style={{ fontSize: 14 }}>
+            เลือก <strong>{selected.size}</strong> ใบจ่าย
+          </span>
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>ล้างการเลือก</Button>
+            <Button variant="primary" size="sm" onClick={openInvoiceForSelected}>ออกใบกำกับภาษีจาก {selected.size} ใบจ่าย</Button>
+          </div>
+        </div>
+      )}
+
       <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบจ่าย`} />
+
+      <NewDeliveryTicketForm
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        createdTickets={created.tickets}
+        onSaved={(t) => {
+          setShowForm(false)
+          setMonth(t.month)
+          setFilter('all')
+          setQuery(t.dtNo)
+        }}
+      />
+
+      <TicketDetailModal
+        open={!!active}
+        ticket={active}
+        onClose={() => setActive(null)}
+        onIssueInvoice={openInvoiceForTicket}
+      />
+
+      <NewInvoiceForm
+        open={invoiceRefs !== null}
+        onClose={() => setInvoiceRefs(null)}
+        createdInvoices={created.invoices}
+        initialRefs={invoiceRefs ?? undefined}
+        onIssued={() => { setInvoiceRefs(null); setSelected(new Set()) }}
+      />
     </>
   )
 }

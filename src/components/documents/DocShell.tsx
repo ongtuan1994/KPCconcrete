@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { Logo } from '../icons'
 import { COMPANY } from '../../data/real'
 
 /** Shared header/wrapper for printable KPC documents. */
@@ -16,7 +15,7 @@ export function DocShell({
     <div className="doc-sheet">
       <div className="doc-top">
         <div className="co">
-          <Logo size={42} />
+          <img src="/logo.jpg" alt="KPC กิจไพศาลคอนกรีต" className="doc-logo" />
           <div>
             <div className="co-name">{COMPANY.name}</div>
             <div className="co-line">({COMPANY.branch}) {COMPANY.address}</div>
