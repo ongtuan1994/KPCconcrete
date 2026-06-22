@@ -5,9 +5,9 @@ import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANS
 import { INVOICES, baht, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
 
-interface LineDraft { code: string; qty: string; price: string }
+interface LineDraft { code: string; qty: string; price: string; discount: string }
 
-const emptyLine = (): LineDraft => ({ code: PRODUCTS[0]?.code ?? '', qty: '', price: '' })
+const emptyLine = (): LineDraft => ({ code: PRODUCTS[0]?.code ?? '', qty: '', price: '', discount: '' })
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
 function pad4(n: number) { return String(n).padStart(4, '0') }
@@ -84,11 +84,19 @@ export function NewInvoiceForm({
       if (!p) continue
       const qty = Number(ld.qty)
       const priceInclVat = Number(ld.price)
+      const discountInclVat = Math.max(0, Number(ld.discount) || 0)
       if (!qty || !priceInclVat) continue
-      const amountInclVat = Math.round(qty * priceInclVat * 100) / 100
+      const netUnitInclVat = priceInclVat - discountInclVat
+      const amountInclVat = Math.round(qty * netUnitInclVat * 100) / 100
       const pricePreVat = Math.round((priceInclVat / 1.07) * 100) / 100
+      const discountPreVat = Math.round((discountInclVat / 1.07) * 100) / 100
       const amountPreVat = Math.round((amountInclVat / 1.07) * 100) / 100
-      ls.push({ code: p.code, name: p.name, unit: p.unit, qty, price: pricePreVat, amount: amountPreVat })
+      ls.push({
+        code: p.code, name: p.name, unit: p.unit, qty,
+        price: pricePreVat,
+        amount: amountPreVat,
+        ...(discountPreVat > 0 ? { discount: discountPreVat } : {}),
+      })
       totalInclVat += amountInclVat
       concreteQty += qty
     }
@@ -129,7 +137,13 @@ export function NewInvoiceForm({
     const total = Math.round(totalInclVat * 100) / 100
     const subtotal = Math.round((total / 1.07) * 100) / 100
     const vat = Math.round((total - subtotal) * 100) / 100
-    return { ls, subtotal, vat, total, transportLine, concreteQty }
+    /* Sum of per-unit discounts × qty across all lines (VAT-inclusive) — for the form summary. */
+    const discountInclVat = lines.reduce((s, ld) => {
+      const q = Number(ld.qty) || 0
+      const d = Math.max(0, Number(ld.discount) || 0)
+      return s + q * d
+    }, 0)
+    return { ls, subtotal, vat, total, transportLine, concreteQty, discountInclVat: Math.round(discountInclVat * 100) / 100 }
   }, [lines])
 
   const reset = () => {
@@ -203,6 +217,7 @@ export function NewInvoiceForm({
           code: t.prod,
           qty: String(t.m3),
           price: effPrice ? String(effPrice) : '',
+          discount: '',
         })
       }
     }
@@ -302,35 +317,54 @@ export function NewInvoiceForm({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
         {lines.map((ld, i) => {
           const p = PRODUCTS.find((x) => x.code === ld.code)
+          const priceN = Number(ld.price) || 0
+          const discN = Number(ld.discount) || 0
+          const overDiscount = discN > 0 && discN > priceN
           return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 36px', gap: 8, alignItems: 'end' }}>
-              <Field label={i === 0 ? 'สินค้า' : undefined}>
-                <Select
-                  value={ld.code}
-                  onChange={(e) => {
-                    const np = PRODUCTS.find((x) => x.code === e.target.value)
-                    const next = [...lines]
-                    next[i] = { ...ld, code: e.target.value, price: ld.price || String(np?.price ?? '') }
-                    setLines(next)
-                  }}
-                >
-                  {PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
-                </Select>
-              </Field>
-              <Field label={i === 0 ? `จำนวน (${p?.unit ?? 'หน่วย'})` : undefined}>
-                <Input type="number" step="0.01" value={ld.qty} onChange={(e) => {
-                  const next = [...lines]; next[i] = { ...ld, qty: e.target.value }; setLines(next)
-                }} />
-              </Field>
-              <Field label={i === 0 ? 'ราคา/หน่วย (รวม VAT)' : undefined}>
-                <Input type="number" step="0.01" value={ld.price} onChange={(e) => {
-                  const next = [...lines]; next[i] = { ...ld, price: e.target.value }; setLines(next)
-                }} />
-              </Field>
-              <Button variant="ghost" size="sm" onClick={() => {
-                if (lines.length === 1) setLines([emptyLine()])
-                else setLines(lines.filter((_, k) => k !== i))
-              }} aria-label="ลบแถว">✕</Button>
+            <div key={i}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px 100px 36px', gap: 8, alignItems: 'end' }}>
+                <Field label={i === 0 ? 'สินค้า' : undefined}>
+                  <Select
+                    value={ld.code}
+                    onChange={(e) => {
+                      const np = PRODUCTS.find((x) => x.code === e.target.value)
+                      const next = [...lines]
+                      next[i] = { ...ld, code: e.target.value, price: ld.price || String(np?.price ?? '') }
+                      setLines(next)
+                    }}
+                  >
+                    {PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label={i === 0 ? `จำนวน (${p?.unit ?? 'หน่วย'})` : undefined}>
+                  <Input type="number" step="0.01" value={ld.qty} onChange={(e) => {
+                    const next = [...lines]; next[i] = { ...ld, qty: e.target.value }; setLines(next)
+                  }} />
+                </Field>
+                <Field label={i === 0 ? 'ราคา/หน่วย (รวม VAT)' : undefined}>
+                  <Input type="number" step="0.01" value={ld.price} onChange={(e) => {
+                    const next = [...lines]; next[i] = { ...ld, price: e.target.value }; setLines(next)
+                  }} />
+                </Field>
+                <Field label={i === 0 ? 'ส่วนลด/หน่วย' : undefined}>
+                  <Input
+                    type="number" step="0.01" min={0} placeholder="0"
+                    value={ld.discount}
+                    onChange={(e) => {
+                      const next = [...lines]; next[i] = { ...ld, discount: e.target.value }; setLines(next)
+                    }}
+                  />
+                </Field>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  if (lines.length === 1) setLines([emptyLine()])
+                  else setLines(lines.filter((_, k) => k !== i))
+                }} aria-label="ลบแถว">✕</Button>
+              </div>
+              {overDiscount && (
+                <div style={{ fontSize: 11, color: 'var(--kpc-danger)', marginTop: 4, paddingLeft: 4 }}>
+                  ⚠ ส่วนลดมากกว่าราคา/หน่วย — กรุณาตรวจสอบ
+                </div>
+              )}
             </div>
           )
         })}
@@ -361,6 +395,9 @@ export function NewInvoiceForm({
 
       <div style={{ borderTop: '1px solid var(--kpc-border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', fontSize: 14 }}>
         <div style={{ fontSize: 11, color: 'var(--kpc-text-muted)', marginBottom: 2 }}>* ราคาที่กรอกเป็นราคารวม VAT 7% แล้ว — แยกฐานภาษีและ VAT ออกตามนี้</div>
+        {computed.discountInclVat > 0 && (
+          <div style={{ color: '#15803d' }}>ส่วนลดรวม (รวม VAT): <strong className="mono">−{baht(computed.discountInclVat)}</strong></div>
+        )}
         <div>ฐานภาษี (ก่อน VAT): <strong className="mono">{baht(computed.subtotal)}</strong></div>
         <div>ภาษีมูลค่าเพิ่ม 7%: <strong className="mono">{baht(computed.vat)}</strong></div>
         <div style={{ fontSize: 16 }}>จำนวนเงินรวมทั้งสิ้น (รวม VAT): <strong className="mono" style={{ color: 'var(--kpc-primary-ink)' }}>{baht(computed.total)}</strong></div>

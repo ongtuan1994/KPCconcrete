@@ -74,7 +74,15 @@ export function customerLegal(name: string) {
 
 /* ---------- invoice register (derived from real delivery tickets) ---------- */
 export type InvStatus = 'paid' | 'pending' | 'overdue'
-export interface InvoiceLine { code: string; name: string; unit: string; qty: number; price: number; amount: number }
+export interface InvoiceLine {
+  code: string; name: string; unit: string; qty: number;
+  /** Pre-VAT unit price BEFORE discount. */
+  price: number;
+  /** Optional per-unit discount (pre-VAT). When set, amount = qty × (price - discount). */
+  discount?: number;
+  /** Pre-VAT line total (after discount). */
+  amount: number;
+}
 export interface Invoice {
   no: string
   month: number
