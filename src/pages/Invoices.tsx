@@ -12,6 +12,7 @@ import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
 import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
+import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
 
@@ -123,7 +124,20 @@ export function Invoices() {
       <PageHeader
         title="ใบกำกับภาษี"
         sub={`Tax Invoices · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — รวมจากใบจ่ายคอนกรีต`}
-        actions={<Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบกำกับภาษี</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['เลขที่ใบกำกับ', 'วันที่', 'ครบกำหนด', 'ลูกค้า', 'การชำระ', 'จำนวนรายการ', 'ปริมาณรวม (m³)', 'ยอดก่อน VAT', 'VAT', 'ยอดรวม', 'สถานะ']
+              const body = rows.map((r) => {
+                const m3 = r.lines.reduce((s, l) => s + (l.unit === 'คิว' ? l.qty : 0), 0)
+                return [r.no, r.date, r.dueDate, r.customer, r.pay, r.lines.length, Math.round(m3 * 100) / 100, r.subtotal, r.vat, r.total, STATUS[r.status].th]
+              })
+              const slug = `invoices-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+              downloadCsv(slug, [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบกำกับภาษี</Button>
+          </>
+        }
       />
 
       <div className="grid g-4" style={{ marginBottom: 24 }}>

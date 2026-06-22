@@ -4,6 +4,7 @@ import { Button, Badge, SearchInput, MonthSelect } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { customerAgg, baht, bahtShort, qm, monthLabel, type CustomerAgg } from '../data/selectors'
+import { downloadCsv } from '../utils/csv'
 
 export function CustomerSummary() {
   const [month, setMonth] = useState<number | 'all'>('all')
@@ -55,7 +56,17 @@ export function CustomerSummary() {
       <PageHeader
         title="สรุปตามลูกค้า"
         sub={`Customer Summary · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)}`}
-        actions={<Button variant="primary">ส่งออกรายงาน</Button>}
+        actions={
+          <Button variant="primary" onClick={() => {
+            const head = ['ลูกค้า / หน่วยงาน', 'ใบจ่าย', 'ปริมาณ (m³)', 'ยอดซื้อ', 'ค้างชำระ', 'สั่งล่าสุด', 'สถานะ']
+            const body = rows.map((r) => [
+              r.name, r.tickets, Math.round(r.m3 * 100) / 100, r.sales, r.outstanding, r.lastDate,
+              r.outstanding > 0 ? 'มียอดค้าง' : 'ปกติ',
+            ])
+            const slug = `customer-summary-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+            downloadCsv(slug, [head, ...body])
+          }}>ส่งออก Excel</Button>
+        }
       />
       <div className="grid g-3" style={{ marginBottom: 24 }}>
         <KpiCard label="ลูกค้าที่มีการซื้อ · Customers" value={all.length.toString()} note="ราย" />

@@ -2,6 +2,7 @@ import { PageHeader } from '../components/Layout'
 import { Button, Badge } from '../components/ui'
 import { KpiCard, Gauge, BarChart, PlantStatusCard, ChartCard, type Bar } from '../components/charts'
 import { monthTotals, dailyM3, LATEST_MONTH, monthLabel, qm } from '../data/selectors'
+import { downloadCsv } from '../utils/csv'
 
 interface Mixer { id: string; grade: string; status: 'running' | 'idle' | 'paused' | 'fault'; load: number }
 const MIXERS: Mixer[] = [
@@ -36,6 +37,19 @@ export function PlantMonitoring() {
         actions={
           <>
             <Badge tone="success">ออนไลน์</Badge>
+            <Button variant="secondary" onClick={() => {
+              const rows: (string | number)[][] = []
+              rows.push(['ติดตามโรงงาน', monthLabel(month)])
+              rows.push([])
+              rows.push(['สถานะโม่ผสม'])
+              rows.push(['รหัสโม่', 'เกรด', 'สถานะ', 'โหลด (%)'])
+              for (const m of MIXERS) rows.push([m.id, m.grade, MIX_STATUS[m.status].th, m.load])
+              rows.push([])
+              rows.push(['ปริมาณรายวัน (10 วันล่าสุด)'])
+              rows.push(['วันที่', 'ปริมาณ (m³)'])
+              for (const d of lastDays) rows.push([d.day, Math.round(d.m3 * 100) / 100])
+              downloadCsv(`plant-monitoring-${monthLabel(month).replace(/\s+/g, '-')}`, rows)
+            }}>ส่งออก Excel</Button>
             <Button variant="secondary">ประวัติการผลิต</Button>
           </>
         }

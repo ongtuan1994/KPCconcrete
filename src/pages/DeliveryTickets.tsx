@@ -11,6 +11,7 @@ import { NewDeliveryTicketForm } from '../components/documents/NewDeliveryTicket
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
 import { DocModal } from '../components/documents/DocModal'
 import { DeliveryTicketDoc } from '../components/documents/DeliveryTicketDoc'
+import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 'ใช้เอง'
 
@@ -31,18 +32,23 @@ export function DeliveryTickets() {
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
 
   /* Reverse lookup: dtNo / ref → IV69 invoice number, built from every invoice's
-     refs[] (matches both user-created tickets via dtNo and seed tickets via ref). */
+     refs[] (matches both user-created tickets via dtNo and seed tickets via ref).
+     Excludes invoices the user has deleted (hidden) so the link disappears after
+     the invoice is removed — and the ticket becomes re-issuable. */
+  const hiddenInvoiceSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const invoiceByTicket = useMemo(() => {
     const map = new Map<string, string>()
     for (const inv of [...created.invoices, ...INVOICES]) {
+      if (hiddenInvoiceSet.has(inv.no)) continue
       for (const r of inv.refs) {
         if (r && !map.has(r)) map.set(r, inv.no)
       }
     }
     return map
-  }, [created.invoices])
+  }, [created.invoices, hiddenInvoiceSet])
   const ticketInvoiceNo = (t: DeliveryTicket): string =>
     invoiceByTicket.get(t.dtNo) || invoiceByTicket.get(t.ref) || ''
+  const hasInvoice = (t: DeliveryTicket): boolean => ticketInvoiceNo(t) !== ''
   const allTickets = useMemo(
     () => [...created.tickets, ...DELIVERY_TICKETS].filter((t) => !hiddenSet.has(t.dtNo)),
     [created.tickets, hiddenSet],
@@ -81,12 +87,39 @@ export function DeliveryTickets() {
   }
 
   const openInvoiceForTicket = (t: DeliveryTicket) => {
+    if (hasInvoice(t)) {
+      alert(`ใบจ่าย ${t.dtNo} มีใบกำกับภาษี ${ticketInvoiceNo(t)} อยู่แล้ว — ต้องลบใบกำกับเดิมก่อนถึงจะออกใหม่ได้`)
+      return
+    }
     setActive(null)
     setInvoiceRefs(t.dtNo)
   }
   const openInvoiceForSelected = () => {
     if (selected.size === 0) return
-    setInvoiceRefs([...selected].join(','))
+    /* Filter out tickets that already have an invoice — reissuing would
+       create duplicate invoice entries against the same delivery refs. */
+    const ticketByKey = new Map(allTickets.map((t) => [t.dtNo, t]))
+    const selectedTickets = [...selected].map((k) => ticketByKey.get(k)).filter((t): t is DeliveryTicket => !!t)
+    const issuable = selectedTickets.filter((t) => !hasInvoice(t))
+    const blocked = selectedTickets.length - issuable.length
+    if (issuable.length === 0) {
+      alert(`ใบจ่ายที่เลือกทั้ง ${selectedTickets.length} ใบมีใบกำกับภาษีแล้ว — ต้องลบใบกำกับเดิมก่อนถึงจะออกใหม่ได้`)
+      return
+    }
+    if (blocked > 0) {
+      if (!confirm(`${blocked} ใบมีใบกำกับภาษีแล้ว · จะดำเนินการเฉพาะ ${issuable.length} ใบที่เหลือ?`)) return
+    }
+    setInvoiceRefs(issuable.map((t) => t.dtNo).join(','))
+  }
+
+  const exportExcel = () => {
+    const head = ['เลขที่ใบจ่าย', 'วันที่', 'ประเภท', 'ลูกค้า', 'สินค้า', 'คิว', 'ราคา/คิว', 'ยอดเงิน', 'หมายเลขรถ', 'ชำระโดย', 'เลขใบกำกับภาษี']
+    const body = rows.map((r) => [
+      r.dtNo, r.date, r.type, r.customer, prodShort(r.prod), r.m3, r.price, r.amount,
+      r.vehicle ?? '', r.pay ?? '', ticketInvoiceNo(r),
+    ])
+    const slug = `delivery-tickets-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+    downloadCsv(slug, [head, ...body])
   }
 
   const columns: Column<DeliveryTicket>[] = [
@@ -147,9 +180,12 @@ export function DeliveryTickets() {
         title="ใบจ่ายคอนกรีต"
         sub={`Delivery Tickets · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)}`}
         actions={
-          <Button variant="primary" onClick={() => setShowForm(true)}>
-            <IconPlus /> บันทึกใบจ่ายคอนกรีต
-          </Button>
+          <>
+            <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
+            <Button variant="primary" onClick={() => setShowForm(true)}>
+              <IconPlus /> บันทึกใบจ่ายคอนกรีต
+            </Button>
+          </>
         }
       />
       <div className="grid g-4" style={{ marginBottom: 24 }}>
@@ -205,9 +241,16 @@ export function DeliveryTickets() {
         onClose={() => setActive(null)}
         extraActions={
           active ? (
-            <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
-              ออกใบกำกับภาษี
-            </Button>
+            hasInvoice(active) ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)' }}>
+                ออกใบกำกับภาษี <span className="mono" style={{ color: 'var(--kpc-primary-ink, #1d4ed8)', fontWeight: 600 }}>{ticketInvoiceNo(active)}</span> แล้ว
+                <Button variant="tonal" disabled>ออกใบกำกับภาษี</Button>
+              </span>
+            ) : (
+              <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
+                ออกใบกำกับภาษี
+              </Button>
+            )
           ) : undefined
         }
       >

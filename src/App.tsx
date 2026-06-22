@@ -7,12 +7,12 @@ import { Receipts } from './pages/Receipts'
 import { CustomerMaster } from './pages/CustomerMaster'
 import { CustomerSummary } from './pages/CustomerSummary'
 import { MonthlyReport } from './pages/MonthlyReport'
-import { YearlyReport } from './pages/YearlyReport'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
 import { TransportPricing } from './pages/TransportPricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
+import { Employees } from './pages/Employees'
 
 export default function App() {
   return (
@@ -28,12 +28,14 @@ export default function App() {
         <Route path="/customer-master" element={<CustomerMaster />} />
         <Route path="/customers" element={<CustomerSummary />} />
         <Route path="/monthly-report" element={<MonthlyReport />} />
-        <Route path="/yearly-report" element={<YearlyReport />} />
+        {/* Legacy yearly-report path → unified monthly/yearly page. */}
+        <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/transport-pricing" element={<TransportPricing />} />
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
+        <Route path="/employees" element={<Employees />} />
         <Route path="*" element={<Navigate to="/monthly-report" replace />} />
       </Routes>
     </Layout>

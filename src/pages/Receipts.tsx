@@ -11,6 +11,7 @@ import { ReceiptZipDownload } from '../components/documents/ReceiptZipDownload'
 import { IconDownload } from '../components/icons'
 import { RECEIPTS, baht, LATEST_MONTH, monthLabel, type Receipt } from '../data/selectors'
 import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
+import { downloadCsv } from '../utils/csv'
 
 const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning' }
 
@@ -105,7 +106,17 @@ export function Receipts() {
       <PageHeader
         title="ใบเสร็จรับเงิน"
         sub={`Receipts · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — เงินสด/โอน`}
-        actions={<Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบเสร็จรับเงิน</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['เลขที่ใบเสร็จ', 'วันที่', 'ลูกค้า', 'อ้างอิงใบกำกับ', 'วิธีชำระ', 'ยอดเงิน']
+              const body = rows.map((r) => [r.no, r.date, r.customer, r.invoiceNos.join('; '), r.method, r.amount])
+              const slug = `receipts-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+              downloadCsv(slug, [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบเสร็จรับเงิน</Button>
+          </>
+        }
       />
       <div className="grid g-3" style={{ marginBottom: 24 }}>
         <KpiCard label="รับเงินรวม · Collected" value={baht(total)} delta={`${monthRows.length} ใบ`} note="ใบเสร็จ" />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Badge, MonthSelect } from '../components/ui'
+import { Badge, Button, MonthSelect } from '../components/ui'
+import { downloadCsv } from '../utils/csv'
 import { DELIVERY_TICKETS, VEHICLES, FUEL_KM_PER_LITER, DIESEL_PRICE_PER_LITER, type Vehicle, type DeliveryTicket } from '../data/real'
 import { useCreatedDocs } from '../data/createdDocs'
 import { baht, qm, ticketDistanceKm, vehicleForTicket, LATEST_MONTH, monthLabel } from '../data/selectors'
@@ -71,7 +72,10 @@ function TruckCard({ v, stats }: { v: Vehicle; stats: FleetStats }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>หมายเลขรถ {v.id}</div>
-            <div style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ขนได้สูงสุด {v.maxM3} คิว</div>
+            <div className="mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--kpc-primary-ink, #1d4ed8)', marginTop: 2 }}>
+              ทะเบียน {v.plate}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 2 }}>ขนได้สูงสุด {v.maxM3} คิว</div>
           </div>
           <Badge tone={v.maxM3 >= 6 ? 'info' : 'neutral'} pip={false} square>{v.maxM3} คิว</Badge>
         </div>
@@ -142,7 +146,20 @@ export function TruckFleet() {
       <PageHeader
         title="รถขนส่งปูน"
         sub={`Truck Fleet · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — สรุประยะทาง · น้ำมัน · ค่าน้ำมันรายคัน`}
-        actions={<MonthSelect value={month} onChange={setMonth} />}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['หมายเลขรถ', 'ทะเบียน', 'พนักงานจัดส่ง', 'ขนได้สูงสุด (คิว)', 'จำนวนเที่ยว', 'ปริมาณรวม (m³)', 'ระยะทาง (km)', 'น้ำมัน (ลิตร)', 'ค่าน้ำมัน (บาท)', 'โซน OS', 'โซน OV21', 'โซน OV31', 'โซน OV41']
+              const body = VEHICLES.map((v) => {
+                const s = buildStats(perVehicle[v.id] ?? [])
+                return [v.id, v.plate, v.driver, v.maxM3, s.trips, Math.round(s.m3 * 100) / 100, Math.round(s.km), s.liters, s.fuelCost, s.zones.OS, s.zones.OV21, s.zones.OV31, s.zones.OV41]
+              })
+              const slug = `truck-fleet-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+              downloadCsv(slug, [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <MonthSelect value={month} onChange={setMonth} />
+          </>
+        }
       />
 
       <div style={{

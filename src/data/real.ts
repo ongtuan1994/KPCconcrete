@@ -283,12 +283,12 @@ export const CUSTOMER_MAP: Record<string, Customer> = Object.fromEntries(CUSTOME
 
 export type PayMethod = 'เครดิต' | 'เงินสด' | 'โอน' | ''
 
-export interface Vehicle { id: string; maxM3: number; driver: string }
+export interface Vehicle { id: string; maxM3: number; driver: string; plate: string }
 export const VEHICLES: Vehicle[] = [
-  { id: '001', maxM3: 6, driver: 'มนตรี ธนบัตร' },
-  { id: '002', maxM3: 6, driver: 'เจนภพ เย็นกลาง' },
-  { id: '003', maxM3: 3, driver: '' },
-  { id: '004', maxM3: 3, driver: '' },
+  { id: '001', maxM3: 6, driver: 'มนตรี ธนบัตร', plate: '80-6158' },
+  { id: '002', maxM3: 6, driver: 'เจนภพ เย็นกลาง', plate: '80-5298' },
+  { id: '003', maxM3: 3, driver: 'ศุภชัย ซื่อเลื่อม', plate: '80-6288' },
+  { id: '004', maxM3: 3, driver: 'นายพงศกร พรหมจรรย์', plate: '80-5664' },
 ]
 export const VEHICLE_MAP: Record<string, Vehicle> = Object.fromEntries(VEHICLES.map((v) => [v.id, v]))
 
@@ -336,13 +336,14 @@ export function transportFeeForM3(m3: number): number {
 }
 
 /** Pre-VAT under-load surcharge for invoice math. Returns the shortfall (in คิว
-    rounded to 0.25) and the pre-VAT amount (=shortfall × 400). Returns null for
-    full loads or non-positive inputs. */
-export function transportSurchargeForM3(m3: number): { shortfall: number; preVat: number } | null {
+    rounded to 0.25) and the pre-VAT amount (=shortfall × ratePreVat). Pass the
+    current effective rate (from the adjustments log) — defaults to the seed
+    rate when omitted. Returns null for full loads or non-positive inputs. */
+export function transportSurchargeForM3(m3: number, ratePreVat: number = TRANSPORT_RATE_PRE_VAT): { shortfall: number; preVat: number } | null {
   if (!m3 || m3 <= 0 || m3 >= TRANSPORT_FULL_M3) return null
   const shortfall = Math.round((TRANSPORT_FULL_M3 - m3) * 4) / 4
   if (shortfall <= 0) return null
-  return { shortfall, preVat: Math.round(shortfall * TRANSPORT_RATE_PRE_VAT * 100) / 100 }
+  return { shortfall, preVat: Math.round(shortfall * ratePreVat * 100) / 100 }
 }
 
 /** Delivery-ticket issuers — staff who key in tickets at the plant. Extend

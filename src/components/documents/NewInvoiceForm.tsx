@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FULL_M3, TRANSPORT_RATE_PRE_VAT, transportSurchargeForM3, type DeliveryTicket } from '../../data/real'
+import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, type DeliveryTicket } from '../../data/real'
 import { INVOICES, baht, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
 
@@ -94,9 +94,23 @@ export function NewInvoiceForm({
     }
 
     /* Auto-add the under-load transport surcharge when total qty < 3 คิว.
-       TRANSPORT_FEES are stored as totalWithVat, so surcharge.preVat is the
-       pre-VAT amount; we add (preVat × 1.07) to the running incl-VAT total. */
-    const surcharge = transportSurchargeForM3(concreteQty)
+       Look up the row in the current (possibly adjusted) fee schedule by
+       rounding the m³ to the nearest 0.25 step. The schedule stores the
+       VAT-inclusive total per row; convert to pre-VAT for the invoice line. */
+    const liveFees = created.transportAdjustments[0]?.fees ?? TRANSPORT_FEES
+    let surcharge: { shortfall: number; preVat: number; totalWithVat: number } | null = null
+    if (concreteQty > 0 && concreteQty < TRANSPORT_FULL_M3) {
+      const steppedM3 = Math.round(concreteQty * 4) / 4
+      const row = liveFees.find((f) => Math.abs(f.m3 - steppedM3) < 0.01)
+      if (row && row.totalWithVat > 0) {
+        const preVat = Math.round((row.totalWithVat / 1.07) * 100) / 100
+        surcharge = {
+          shortfall: Math.round((TRANSPORT_FULL_M3 - steppedM3) * 100) / 100,
+          preVat,
+          totalWithVat: row.totalWithVat,
+        }
+      }
+    }
     const transportLine: InvoiceLine | null = surcharge
       ? {
           code: 'TRANSPORT',
@@ -107,9 +121,9 @@ export function NewInvoiceForm({
           amount: surcharge.preVat,
         }
       : null
-    if (transportLine) {
+    if (transportLine && surcharge) {
       ls.push(transportLine)
-      totalInclVat += Math.round(surcharge!.preVat * 1.07 * 100) / 100
+      totalInclVat += surcharge.totalWithVat
     }
 
     const total = Math.round(totalInclVat * 100) / 100
@@ -338,7 +352,7 @@ export function NewInvoiceForm({
           <div>
             <strong>+ {computed.transportLine.name}</strong>
             <div style={{ color: 'var(--kpc-text-muted)', fontSize: 12, marginTop: 2 }}>
-              เพิ่มอัตโนมัติ — รวมคอนกรีต {computed.concreteQty.toFixed(2)} คิว ไม่ถึง {TRANSPORT_FULL_M3} คิว · {(TRANSPORT_RATE_PRE_VAT * 1.07).toLocaleString()} ฿/คิว (รวม VAT)
+              เพิ่มอัตโนมัติ — รวมคอนกรีต {computed.concreteQty.toFixed(2)} คิว ไม่ถึง {TRANSPORT_FULL_M3} คิว · อ้างอิงจากตารางค่าขนส่งปัจจุบัน
             </div>
           </div>
           <strong className="mono">{baht(Math.round(computed.transportLine.amount * 1.07 * 100) / 100)}</strong>

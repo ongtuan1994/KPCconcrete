@@ -17,7 +17,7 @@ export function KpiCard({
   unit?: string
   delta?: string
   deltaDir?: 'up' | 'down'
-  note?: string
+  note?: ReactNode
   invert?: boolean
 }) {
   return (

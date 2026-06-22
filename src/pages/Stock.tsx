@@ -6,6 +6,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { STOCK_MATERIALS, type StockMaterial } from '../data/real'
 import { qm } from '../data/selectors'
+import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'low' | 'out'
 
@@ -74,9 +75,16 @@ export function Stock() {
         title="คลังวัตถุดิบ"
         sub="Raw Material Stock · คงเหลือ ณ มิถุนายน 2569"
         actions={
-          <Button variant="primary">
-            <IconPlus /> รับเข้าวัตถุดิบ
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'หน่วย', 'จุดสั่งซื้อ', 'สถานะ']
+              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.reorder, status(r).th])
+              downloadCsv('stock', [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <Button variant="primary">
+              <IconPlus /> รับเข้าวัตถุดิบ
+            </Button>
+          </>
         }
       />
       <div className="grid g-3" style={{ marginBottom: 24 }}>

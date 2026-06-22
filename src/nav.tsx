@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconPlant, IconUsers, IconTruck } from './components/icons'
+import { IconOrder, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -15,8 +15,7 @@ export interface NavGroup {
 export const NAV: NavGroup[] = [
   {
     items: [
-      { to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> },
-      { to: '/yearly-report', label: 'รายงานประจำปี', en: 'Yearly Report', icon: <IconBars /> },
+      { to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report', icon: <IconBars /> },
     ],
   },
   {
@@ -46,8 +45,13 @@ export const NAV: NavGroup[] = [
   {
     section: 'โรงงาน · Operations',
     items: [
-      { to: '/plant', label: 'ติดตามโรงงาน', en: 'Plant Monitoring', icon: <IconPlant /> },
       { to: '/fleet', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
+    ],
+  },
+  {
+    section: 'องค์กร · Organization',
+    items: [
+      { to: '/employees', label: 'รายชื่อพนักงาน', en: 'Employee List', icon: <IconUsers /> },
     ],
   },
 ]

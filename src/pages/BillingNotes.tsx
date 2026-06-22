@@ -8,6 +8,7 @@ import { BillingNoteDoc } from '../components/documents/BillingNoteDoc'
 import { NewBillingNoteForm } from '../components/documents/NewBillingNoteForm'
 import { BILLING_NOTES, baht, LATEST_MONTH, monthLabel, monthShort, type BillingNote } from '../data/selectors'
 import { useCreatedDocs, removeBillingNote, CAN_DELETE } from '../data/createdDocs'
+import { downloadCsv } from '../utils/csv'
 
 export function BillingNotes() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
@@ -52,7 +53,17 @@ export function BillingNotes() {
       <PageHeader
         title="ใบวางบิล"
         sub={`Billing Notes · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — รวมใบกำกับเครดิตตามลูกค้า`}
-        actions={<Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบวางบิล</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['เลขที่ใบวางบิล', 'เดือน', 'ลูกค้า', 'จำนวนใบกำกับ', 'ยอดรวม']
+              const body = rows.map((r) => [r.no, monthShort(r.month), r.customer, r.invoices.length, r.total])
+              const slug = `billing-notes-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+              downloadCsv(slug, [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบวางบิล</Button>
+          </>
+        }
       />
       <div className="grid g-3" style={{ marginBottom: 24 }}>
         <KpiCard label="ใบวางบิล · Notes" value={monthRows.length.toString()} note="ลูกค้าเครดิต" />

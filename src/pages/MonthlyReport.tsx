@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, MonthSelect } from '../components/ui'
 import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
-import { monthTotals, productMix, dailyM3, customerAgg, INVOICES, MONTHLY_TREND, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
+import { monthTotals, productMix, dailyM3, customerAgg, INVOICES, MONTHLY_TREND, MONTHS, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
 import { COMPANY } from '../data/real'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
@@ -15,11 +15,34 @@ const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8F
 const SUPPLIER_CREDIT_RATIO = 0.40
 
 export function MonthlyReport() {
-  const [month, setMonth] = useState<number>(LATEST_MONTH)
+  /* `month` accepts either a numeric month (1-12) or 'all' to render the
+     full-year roll-up — replaces the separate YearlyReport page. */
+  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const t = monthTotals(month)
+  const isYear = month === 'all'
+  const periodLabel = isYear ? 'ทั้งปี 2569' : monthLabel(month)
+  const reportTitle = isYear ? 'รายงานประจำปี' : 'รายงานประจำเดือน'
+
+  /* Totals — sum across every month when in "ทั้งปี" mode, else single month. */
+  const t = isYear
+    ? MONTHS.reduce(
+        (acc, m) => {
+          const mt = monthTotals(m.num)
+          acc.revenue += mt.revenue
+          acc.m3All += mt.m3All
+          acc.m3Sold += mt.m3Sold
+          acc.tickets += mt.tickets
+          acc.credit += mt.credit
+          acc.cash += mt.cash
+          acc.invoices += mt.invoices
+          acc.overdueCount += mt.overdueCount
+          return acc
+        },
+        { revenue: 0, m3All: 0, m3Sold: 0, tickets: 0, credit: 0, cash: 0, invoices: 0, overdueCount: 0 },
+      )
+    : monthTotals(month)
   const net = t.revenue
   const vat = Math.round(net * 0.07 * 100) / 100
   const estCost = Math.round(net * 0.62)
@@ -32,33 +55,52 @@ export function MonthlyReport() {
     { label: 'กำไรขั้นต้น (ประมาณ)', value: baht(grossProfit), invert: true },
   ]
 
-  const mixRaw = productMix(month)
+  /* Product mix — for "ทั้งปี" aggregate across every month's productMix. */
+  const mixRaw = isYear
+    ? (() => {
+        const map = new Map<string, { label: string; m3: number }>()
+        for (const m of MONTHS) {
+          for (const p of productMix(m.num)) {
+            const ex = map.get(p.code) ?? { label: p.label, m3: 0 }
+            ex.m3 += p.m3
+            map.set(p.code, ex)
+          }
+        }
+        const total = [...map.values()].reduce((s, p) => s + p.m3, 0) || 1
+        return [...map.entries()]
+          .map(([code, p]) => ({ code, label: p.label, m3: p.m3, pct: Math.round((p.m3 / total) * 100) }))
+          .sort((a, b) => b.m3 - a.m3)
+      })()
+    : productMix(month)
   const mix: Seg[] = mixRaw.slice(0, 5).map((p, i) => ({ label: p.label, pct: p.pct, color: MIX_COLORS[i] }))
   const restPct = mixRaw.slice(5).reduce((s, p) => s + p.pct, 0)
   if (restPct > 0) mix.push({ label: 'อื่นๆ', pct: restPct, color: MIX_COLORS[5] })
 
-  /* Daily breakdown still drives the Excel export, but no longer renders as a chart on screen. */
-  const daily = dailyM3(month)
+  /* Daily breakdown still drives the Excel export. Empty in "ทั้งปี" mode —
+     the monthly trend table replaces it. */
+  const daily = isYear ? [] : dailyM3(month)
 
-  /* ---------- AR (เงินลูกค้าค้าง) ---------- */
-  const invMonth = INVOICES.filter((i) => i.month === month)
-  const monthOutstandingAmt = invMonth.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
-  const monthOutstandingCount = invMonth.filter((i) => i.status !== 'paid').length
-  const monthOverdueAmt = invMonth.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
-  const monthOverdueCount = invMonth.filter((i) => i.status === 'overdue').length
+  /* ---------- AR (เงินลูกค้าค้าง) ----------
+     In "ทั้งปี" mode the "month" figures mirror the all-time figures, so the
+     KPI/finance cards stay meaningful without duplicating data. */
+  const invScope = isYear ? INVOICES : INVOICES.filter((i) => i.month === month)
+  const monthOutstandingAmt = invScope.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
+  const monthOutstandingCount = invScope.filter((i) => i.status !== 'paid').length
+  const monthOverdueAmt = invScope.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
+  const monthOverdueCount = invScope.filter((i) => i.status === 'overdue').length
 
-  /* All-time (cumulative across every month so far) */
+  /* All-time figures are always the cumulative year-wide totals. */
   const allOutstandingAmt = INVOICES.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
   const allOverdueAmt = INVOICES.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
   const allOverdueCount = INVOICES.filter((i) => i.status === 'overdue').length
   const overdueCustomers = new Set(INVOICES.filter((i) => i.status === 'overdue').map((i) => i.customer)).size
 
   /* ---------- Top 5 customers / debtors for horizontal bar charts ---------- */
-  const aggMonth = customerAgg(month)
-  const topCustomers = aggMonth.filter((c) => c.sales > 0).slice(0, 5)
+  const aggScope = customerAgg(month)
+  const topCustomers = aggScope.filter((c) => c.sales > 0).slice(0, 5)
     .map((c) => ({ label: c.name, value: Math.round(c.sales * 1.07 * 100) / 100 }))
   const overdueByCustomer = new Map<string, number>()
-  for (const inv of invMonth) {
+  for (const inv of invScope) {
     if (inv.status === 'overdue') {
       overdueByCustomer.set(inv.customer, (overdueByCustomer.get(inv.customer) ?? 0) + inv.total)
     }
@@ -74,9 +116,11 @@ export function MonthlyReport() {
   const estPayablesOther  = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.15) /* misc ≈ 15% of cost */
   const estPayablesTotal  = estPayablesCement + estPayablesFuel + estPayablesOther
 
-  /* File-name slug: "monthly-report-{month}-2569". Avoid spaces / dots that
-     could trip browsers' download handlers. */
-  const slug = `monthly-report-${monthLabel(month).replace(/\s+/g, '-').replace(/\./g, '')}`
+  /* File-name slug: "monthly-report-{month}-2569" or "yearly-report-2569".
+     Avoid spaces / dots that could trip browsers' download handlers. */
+  const slug = isYear
+    ? 'yearly-report-2569'
+    : `monthly-report-${monthLabel(month).replace(/\s+/g, '-').replace(/\./g, '')}`
 
   const exportPdf = async () => {
     if (!reportRef.current || exporting) return
@@ -134,7 +178,7 @@ export function MonthlyReport() {
       const rows: (string | number)[][] = []
       const stripBaht = (b: string) => b.replace(/^฿/, '').replace(/,/g, '')
 
-      rows.push(['รายงานประจำเดือน', monthLabel(month)])
+      rows.push([reportTitle, periodLabel])
       rows.push([])
 
       rows.push(['สรุปรายรับ'])
@@ -176,9 +220,17 @@ export function MonthlyReport() {
       topDebtors.forEach((c, i) => rows.push([i + 1, c.label, Math.round(c.value)]))
       rows.push([])
 
-      rows.push(['ปริมาณรายวัน'])
-      rows.push(['วันที่', 'ปริมาณ (m³)', 'ยอดขาย (บาท)'])
-      for (const d of daily) rows.push([d.day, Math.round(d.m3 * 100) / 100, Math.round(d.sales)])
+      if (isYear) {
+        rows.push(['ยอดขายรายเดือน'])
+        rows.push(['เดือน', 'ยอดขาย (บาท)', 'ปริมาณ (m³)', 'จำนวนใบจ่าย'])
+        for (const m of MONTHLY_TREND) {
+          rows.push([m.short, Math.round(m.revenue), Math.round(m.m3 * 100) / 100, m.tickets])
+        }
+      } else {
+        rows.push(['ปริมาณรายวัน'])
+        rows.push(['วันที่', 'ปริมาณ (m³)', 'ยอดขาย (บาท)'])
+        for (const d of daily) rows.push([d.day, Math.round(d.m3 * 100) / 100, Math.round(d.sales)])
+      }
       rows.push([])
 
       rows.push(['สัดส่วนสินค้า'])
@@ -212,11 +264,11 @@ export function MonthlyReport() {
   return (
     <>
       <PageHeader
-        title="รายงานประจำเดือน"
-        sub={`Monthly Report · ${monthLabel(month)}`}
+        title="รายงานประจำเดือน / ปี"
+        sub={`${isYear ? 'Yearly Report' : 'Monthly Report'} · ${periodLabel}`}
         actions={
           <>
-            <MonthSelect value={month} onChange={(v) => setMonth(v as number)} allowAll={false} />
+            <MonthSelect value={month} onChange={setMonth} allowAll />
             <Button variant="secondary" onClick={exportPdf} disabled={!!exporting}>
               {exporting === 'pdf' ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
             </Button>
@@ -236,8 +288,8 @@ export function MonthlyReport() {
             <div className="rh-co-line">เลขประจำตัวผู้เสียภาษี {COMPANY.taxId} · โทร. {COMPANY.tel}</div>
           </div>
           <div className="rh-title">
-            <div className="rh-tt">รายงานประจำเดือน</div>
-            <div className="rh-meta">{monthLabel(month)}</div>
+            <div className="rh-tt">{reportTitle}</div>
+            <div className="rh-meta">{periodLabel}</div>
             <div className="rh-date">ออก ณ {new Date().toLocaleDateString('th-TH')}</div>
           </div>
         </div>
@@ -249,9 +301,9 @@ export function MonthlyReport() {
         </div>
 
         <div className="grid g-4" style={{ marginBottom: 16 }}>
-          <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(t.m3All))} unit="m³" note="ทั้งเดือน" />
+          <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(t.m3All))} unit="m³" note={isYear ? `ทั้งปี · ${MONTHS.length} เดือน` : 'ทั้งเดือน'} />
           <KpiCard
-            label="ค้างชำระเดือนนี้ · Outstanding"
+            label={isYear ? 'ค้างชำระสะสม · Outstanding' : 'ค้างชำระเดือนนี้ · Outstanding'}
             value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(monthOutstandingAmt)}</span>}
             note={`${monthOutstandingCount} ใบ · เกินกำหนด ${monthOverdueCount}`}
           />
@@ -270,7 +322,7 @@ export function MonthlyReport() {
             <div className="stack" style={{ gap: 11, flex: 1 }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สัดส่วนสินค้า</div>
-                <div className="card-meta">{monthLabel(month)} · {daily.length} วัน · {qm(Math.round(t.m3All))} m³</div>
+                <div className="card-meta">{periodLabel} · {isYear ? `${MONTHS.length} เดือน` : `${daily.length} วัน`} · {qm(Math.round(t.m3All))} m³</div>
               </div>
               <Legend segments={mix} />
             </div>
@@ -288,7 +340,7 @@ export function MonthlyReport() {
               data={MONTHLY_TREND.map((m) => ({
                 label: m.short.toUpperCase().replace(/\./g, ''),
                 value: m.revenue,
-                highlight: m.month === month,
+                highlight: !isYear && m.month === month,
               }))}
             />
           </div>
@@ -297,7 +349,7 @@ export function MonthlyReport() {
         {/* Finance summary — three separate cards so each section has room to
             breathe (replaces the previous cramped 3-column single card). */}
         <div className="row" style={{ gap: 8, marginBottom: 10, justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สรุปการเงิน · {monthLabel(month)}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สรุปการเงิน · {periodLabel}</span>
           <div className="row" style={{ gap: 6 }}>
             <Badge tone="warning" square pip={false}>เครดิต {net ? Math.round((t.credit / net) * 100) : 0}%</Badge>
             {allOverdueCount > 0 && <Badge tone="danger" square pip={false}>เกินกำหนด {allOverdueCount} ใบ</Badge>}
@@ -317,12 +369,23 @@ export function MonthlyReport() {
 
           {/* ลูกหนี้ · เงินลูกค้าค้าง */}
           <FinanceCard title="ลูกหนี้ · เงินลูกค้าค้าง" tone="warning">
-            <Row k="ค้างชำระเดือนนี้" v={baht(monthOutstandingAmt)} hint={`${monthOutstandingCount} ใบ`} />
-            <Row k="เลยกำหนดเดือนนี้" v={baht(monthOverdueAmt)} hint={`${monthOverdueCount} ใบ`} danger />
-            <div className="divider" />
-            <Row k="ลูกหนี้สะสมทั้งปี" v={baht(allOutstandingAmt)} strong />
-            <Row k="เลยกำหนดสะสม" v={baht(allOverdueAmt)} hint={`${allOverdueCount} ใบ`} danger />
-            <Row k="ลูกค้าเลยกำหนด" v={`${overdueCustomers} ราย`} />
+            {isYear ? (
+              <>
+                <Row k="ลูกหนี้สะสมทั้งปี" v={baht(allOutstandingAmt)} hint={`${monthOutstandingCount} ใบ`} strong />
+                <Row k="เลยกำหนดสะสม" v={baht(allOverdueAmt)} hint={`${allOverdueCount} ใบ`} danger />
+                <div className="divider" />
+                <Row k="ลูกค้าเลยกำหนด" v={`${overdueCustomers} ราย`} />
+              </>
+            ) : (
+              <>
+                <Row k="ค้างชำระเดือนนี้" v={baht(monthOutstandingAmt)} hint={`${monthOutstandingCount} ใบ`} />
+                <Row k="เลยกำหนดเดือนนี้" v={baht(monthOverdueAmt)} hint={`${monthOverdueCount} ใบ`} danger />
+                <div className="divider" />
+                <Row k="ลูกหนี้สะสมทั้งปี" v={baht(allOutstandingAmt)} strong />
+                <Row k="เลยกำหนดสะสม" v={baht(allOverdueAmt)} hint={`${allOverdueCount} ใบ`} danger />
+                <Row k="ลูกค้าเลยกำหนด" v={`${overdueCustomers} ราย`} />
+              </>
+            )}
           </FinanceCard>
 
           {/* เจ้าหนี้ · บริษัทค้างจ่าย */}
@@ -343,10 +406,10 @@ export function MonthlyReport() {
                 ลูกค้ายอดสั่งสูงสุด · Top 5
               </div>
               <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)', marginTop: 3 }}>
-                {monthLabel(month)} · เรียงตามยอดขาย (รวม VAT 7%)
+                {periodLabel} · เรียงตามยอดขาย (รวม VAT 7%)
               </div>
             </div>
-            <HBarChart data={topCustomers} color="#16a34a" emptyText="ยังไม่มียอดขายในเดือนนี้" />
+            <HBarChart data={topCustomers} color="#16a34a" emptyText={isYear ? 'ยังไม่มียอดขายในปีนี้' : 'ยังไม่มียอดขายในเดือนนี้'} />
           </div>
 
           <div className="card stack" style={{ gap: 10, padding: 16, borderTop: '3px solid #dc2626' }}>
@@ -355,10 +418,10 @@ export function MonthlyReport() {
                 ลูกหนี้ยอดค้างสูงสุด · Top 5
               </div>
               <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)', marginTop: 3 }}>
-                {monthLabel(month)} · เฉพาะใบกำกับที่เลยกำหนดชำระ (รวม VAT)
+                {periodLabel} · เฉพาะใบกำกับที่เลยกำหนดชำระ (รวม VAT)
               </div>
             </div>
-            <HBarChart data={topDebtors} color="#dc2626" emptyText="ไม่มีลูกหนี้เลยกำหนดในเดือนนี้" />
+            <HBarChart data={topDebtors} color="#dc2626" emptyText={isYear ? 'ไม่มีลูกหนี้เลยกำหนดในปีนี้' : 'ไม่มีลูกหนี้เลยกำหนดในเดือนนี้'} />
           </div>
         </div>
       </div>

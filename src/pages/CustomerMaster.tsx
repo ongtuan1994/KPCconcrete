@@ -8,6 +8,7 @@ import { IconPlus } from '../components/icons'
 import { CUSTOMER_MASTER, DELIVERY_TICKETS, type Customer } from '../data/real'
 import { baht, qm, prodShort, customerAgg } from '../data/selectors'
 import { useCreatedDocs, updateCustomer, type CustomerEdit } from '../data/createdDocs'
+import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'registered' | 'ขายลูกค้า' | 'โรงหล่อ' | 'credit'
 
@@ -109,9 +110,19 @@ export function CustomerMaster() {
         title="ทะเบียนลูกค้า"
         sub="Customer Master · ข้อมูลลูกค้า / เบอร์ติดต่อ / เครดิต"
         actions={
-          <Button variant="primary">
-            <IconPlus /> เพิ่มลูกค้า
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => {
+              const head = ['รหัส', 'ชื่อลูกค้า', 'ชื่อนิติบุคคล', 'เบอร์ติดต่อ', 'ประเภท', 'เงื่อนไข', 'เครดิต (วัน)', 'วงเงินเครดิต', 'เลขผู้เสียภาษี', 'ที่อยู่']
+              const body = rows.map((c) => [
+                c.id, c.name, c.legalName ?? '', c.phone ?? '', c.type, c.terms,
+                c.creditDays ?? '', c.creditLimit ?? '', c.taxId ?? '', c.address ?? '',
+              ])
+              downloadCsv('customer-master', [head, ...body])
+            }}>ส่งออก Excel</Button>
+            <Button variant="primary">
+              <IconPlus /> เพิ่มลูกค้า
+            </Button>
+          </>
         }
       />
       <div className="grid g-4" style={{ marginBottom: 24 }}>
