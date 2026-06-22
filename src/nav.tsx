@@ -14,7 +14,10 @@ export interface NavGroup {
 
 export const NAV: NavGroup[] = [
   {
-    items: [{ to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> }],
+    items: [
+      { to: '/monthly-report', label: 'รายงานประจำเดือน', en: 'Monthly Report', icon: <IconBars /> },
+      { to: '/yearly-report', label: 'รายงานประจำปี', en: 'Yearly Report', icon: <IconBars /> },
+    ],
   },
   {
     section: 'การขาย · Sales',

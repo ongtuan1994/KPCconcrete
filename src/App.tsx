@@ -7,6 +7,7 @@ import { Receipts } from './pages/Receipts'
 import { CustomerMaster } from './pages/CustomerMaster'
 import { CustomerSummary } from './pages/CustomerSummary'
 import { MonthlyReport } from './pages/MonthlyReport'
+import { YearlyReport } from './pages/YearlyReport'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
 import { TransportPricing } from './pages/TransportPricing'
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/customer-master" element={<CustomerMaster />} />
         <Route path="/customers" element={<CustomerSummary />} />
         <Route path="/monthly-report" element={<MonthlyReport />} />
+        <Route path="/yearly-report" element={<YearlyReport />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/transport-pricing" element={<TransportPricing />} />

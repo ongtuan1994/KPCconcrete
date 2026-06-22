@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, MonthSelect } from '../components/ui'
 import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
-import { monthTotals, productMix, dailyM3, INVOICES, MONTHLY_TREND, LATEST_MONTH, monthLabel, baht, qm } from '../data/selectors'
+import { monthTotals, productMix, dailyM3, customerAgg, INVOICES, MONTHLY_TREND, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
 import { COMPANY } from '../data/real'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
@@ -52,6 +52,21 @@ export function MonthlyReport() {
   const allOverdueAmt = INVOICES.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
   const allOverdueCount = INVOICES.filter((i) => i.status === 'overdue').length
   const overdueCustomers = new Set(INVOICES.filter((i) => i.status === 'overdue').map((i) => i.customer)).size
+
+  /* ---------- Top 5 customers / debtors for horizontal bar charts ---------- */
+  const aggMonth = customerAgg(month)
+  const topCustomers = aggMonth.filter((c) => c.sales > 0).slice(0, 5)
+    .map((c) => ({ label: c.name, value: Math.round(c.sales * 1.07 * 100) / 100 }))
+  const overdueByCustomer = new Map<string, number>()
+  for (const inv of invMonth) {
+    if (inv.status === 'overdue') {
+      overdueByCustomer.set(inv.customer, (overdueByCustomer.get(inv.customer) ?? 0) + inv.total)
+    }
+  }
+  const topDebtors = [...overdueByCustomer.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, value]) => ({ label: name, value }))
 
   /* ---------- AP (เงินที่บริษัทค้างจ่ายซัพพลายเออร์) — placeholder estimate ---------- */
   const estPayablesCement = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.65) /* cement ≈ 65% of cost */
@@ -149,6 +164,16 @@ export function MonthlyReport() {
       rows.push(['ค่าน้ำมัน/บำรุงรักษา', stripBaht(baht(estPayablesFuel))])
       rows.push(['อื่นๆ', stripBaht(baht(estPayablesOther))])
       rows.push(['รวมประมาณ', stripBaht(baht(estPayablesTotal))])
+      rows.push([])
+
+      rows.push(['ลูกค้ายอดสั่งสูงสุด 5 อันดับ'])
+      rows.push(['อันดับ', 'ลูกค้า', 'ยอดขาย รวม VAT (บาท)'])
+      topCustomers.forEach((c, i) => rows.push([i + 1, c.label, Math.round(c.value)]))
+      rows.push([])
+
+      rows.push(['ลูกหนี้ยอดค้างสูงสุด 5 อันดับ (เลยกำหนดชำระ)'])
+      rows.push(['อันดับ', 'ลูกค้า', 'ยอดค้างเลยกำหนด (บาท)'])
+      topDebtors.forEach((c, i) => rows.push([i + 1, c.label, Math.round(c.value)]))
       rows.push([])
 
       rows.push(['ปริมาณรายวัน'])
@@ -309,12 +334,82 @@ export function MonthlyReport() {
             <Row k="รวมประมาณ" v={baht(estPayablesTotal)} strong />
           </FinanceCard>
         </div>
+
+        {/* Top 5 customers (sales) + top 5 debtors (outstanding) — horizontal bars. */}
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+          <div className="card stack" style={{ gap: 10, padding: 16, borderTop: '3px solid #16a34a' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', letterSpacing: 0.1 }}>
+                ลูกค้ายอดสั่งสูงสุด · Top 5
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)', marginTop: 3 }}>
+                {monthLabel(month)} · เรียงตามยอดขาย (รวม VAT 7%)
+              </div>
+            </div>
+            <HBarChart data={topCustomers} color="#16a34a" emptyText="ยังไม่มียอดขายในเดือนนี้" />
+          </div>
+
+          <div className="card stack" style={{ gap: 10, padding: 16, borderTop: '3px solid #dc2626' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', letterSpacing: 0.1 }}>
+                ลูกหนี้ยอดค้างสูงสุด · Top 5
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)', marginTop: 3 }}>
+                {monthLabel(month)} · เฉพาะใบกำกับที่เลยกำหนดชำระ (รวม VAT)
+              </div>
+            </div>
+            <HBarChart data={topDebtors} color="#dc2626" emptyText="ไม่มีลูกหนี้เลยกำหนดในเดือนนี้" />
+          </div>
+        </div>
       </div>
     </>
   )
 }
 
-function FinanceCard({
+/** Horizontal bar chart: label on the left, bar in the middle, value on the
+    right. Bar width is value / max. Works for any positive-numeric data set. */
+export function HBarChart({
+  data,
+  color,
+  emptyText,
+}: {
+  data: { label: string; value: number }[]
+  color: string
+  emptyText: string
+}) {
+  if (!data.length) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--kpc-text-faint)', padding: '24px 4px', textAlign: 'center' }}>
+        {emptyText}
+      </div>
+    )
+  }
+  const max = Math.max(...data.map((d) => d.value))
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      {data.map((d, i) => {
+        const pct = max ? Math.max(2, (d.value / max) * 100) : 0
+        return (
+          <div key={i} className="stack" style={{ gap: 4 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--kpc-text-strong)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {i + 1}. {d.label}
+              </span>
+              <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>
+                {bahtShort(d.value)}
+              </span>
+            </div>
+            <div style={{ height: 10, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 6 }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function FinanceCard({
   title,
   tone,
   hint,
@@ -346,7 +441,7 @@ function FinanceCard({
 
 /** Simple SVG line chart used for the monthly revenue trend. Uses a fixed
     viewBox so the SVG scales to whatever width the card gives it. */
-function LineChart({ data }: { data: { label: string; value: number; highlight?: boolean }[] }) {
+export function LineChart({ data }: { data: { label: string; value: number; highlight?: boolean }[] }) {
   const W = 480, H = 200
   const pad = { top: 18, right: 18, bottom: 30, left: 8 }
   const innerW = W - pad.left - pad.right
@@ -420,7 +515,7 @@ function LineChart({ data }: { data: { label: string; value: number; highlight?:
   )
 }
 
-function Row({ k, v, hint, danger, strong }: { k: string; v: string; hint?: string; danger?: boolean; strong?: boolean }) {
+export function Row({ k, v, hint, danger, strong }: { k: string; v: string; hint?: string; danger?: boolean; strong?: boolean }) {
   return (
     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
       <span style={{ fontSize: 12.5, color: 'var(--kpc-text-muted)' }}>{k}</span>
