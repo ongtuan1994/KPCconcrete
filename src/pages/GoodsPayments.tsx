@@ -75,8 +75,8 @@ export function GoodsPayments() {
   const totalPaid = all.reduce((s, g) => s + g.amount, 0)
 
   const exportExcel = () => {
-    const head = ['เลขที่ใบทำจ่าย', 'วันที่จ่าย', 'ซัพพลายเออร์', 'อ้างอิง', 'วิธีจ่าย', 'จำนวนเงิน', 'หมายเหตุ']
-    const body = rows.map((g) => [g.gpNo, fmtDate(g.payDate), g.supplier, g.ref ?? '', g.method, g.amount, g.note ?? ''])
+    const head = ['เลขที่ใบทำจ่าย', 'วันที่จ่าย', 'ซัพพลายเออร์', 'อ้างอิง', 'วิธีจ่าย', 'เลขที่เช็ค', 'จำนวนเงิน', 'หมายเหตุ']
+    const body = rows.map((g) => [g.gpNo, fmtDate(g.payDate), g.supplier, g.ref ?? '', g.method, g.chequeNo ?? '', g.amount, g.note ?? ''])
     downloadCsv('goods-payments', [head, ...body])
   }
 
@@ -85,7 +85,15 @@ export function GoodsPayments() {
     { key: 'date', header: 'วันที่จ่าย', cell: (r) => fmtDate(r.payDate), className: 'date' },
     { key: 'sup', header: 'ซัพพลายเออร์', cell: (r) => r.supplier },
     { key: 'ref', header: 'อ้างอิง', cell: (r) => (r.ref ? <span className="mono" style={{ fontSize: 13 }}>{r.ref}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
-    { key: 'method', header: 'วิธีจ่าย', align: 'center', cell: (r) => <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge> },
+    {
+      key: 'method', header: 'วิธีจ่าย', align: 'center',
+      cell: (r) => (
+        <div className="stack" style={{ gap: 2, alignItems: 'center' }}>
+          <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge>
+          {r.chequeNo && <span className="mono" style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>เช็ค {r.chequeNo}</span>}
+        </div>
+      ),
+    },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.amount)}</span> },
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     ...(CAN_DELETE ? [{
@@ -146,6 +154,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   const [supplier, setSupplier] = useState('')
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<PayMethodOut>('โอน')
+  const [chequeNo, setChequeNo] = useState('')
   const [ref, setRef] = useState('')
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
@@ -154,7 +163,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
 
   useEffect(() => {
     if (!open) return
-    setPayDate(todayIso()); setMethod('โอน'); setNote(''); setErr('')
+    setPayDate(todayIso()); setMethod('โอน'); setChequeNo(''); setNote(''); setErr('')
     setSupplier(initial?.supplier ?? '')
     setAmount(initial?.amount ?? '')
     setRef(initial?.ref ?? '')
@@ -169,9 +178,11 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
     if (!payDate) return setErr('กรุณาระบุวันที่จ่าย')
     const amt = Number(amount)
     if (!amt || amt <= 0) return setErr('กรุณาระบุจำนวนเงินที่จ่าย (มากกว่า 0)')
+    if (method === 'เช็ค' && !chequeNo.trim()) return setErr('จ่ายแบบเช็ค — กรุณาระบุเลขที่เช็ค')
 
     const gp: GoodsPayment = {
       id: gpNo, gpNo, payDate, supplier: supplier.trim(), amount: amt, method,
+      chequeNo: method === 'เช็ค' ? chequeNo.trim() : undefined,
       ref: ref.trim() || undefined, note: note.trim() || undefined, createdAt: new Date().toISOString(),
     }
     addGoodsPayment(gp)
@@ -212,6 +223,11 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
             <option value="เช็ค">เช็ค</option>
           </Select>
         </Field>
+        {method === 'เช็ค' && (
+          <Field label="เลขที่เช็ค" required hint="บันทึกเลขที่เช็คที่จ่าย">
+            <Input placeholder="เช่น 0012345" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
+          </Field>
+        )}
         <Field label="หมายเหตุ" style={{ gridColumn: '1 / -1' }}>
           <Input placeholder="รายละเอียดเพิ่มเติม" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>

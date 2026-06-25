@@ -14,6 +14,7 @@ import { Creditors } from './pages/Creditors'
 import { Ledger } from './pages/Ledger'
 import { Suppliers } from './pages/Suppliers'
 import { MonthlyReport } from './pages/MonthlyReport'
+import { TaxReports } from './pages/TaxReports'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
 import { TransportHub } from './pages/TransportHub'
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/creditors" element={<Creditors />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/monthly-report" element={<MonthlyReport />} />
+        <Route path="/tax-reports" element={<TaxReports />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
         <Route path="/stock" element={<Stock />} />

@@ -28,7 +28,18 @@ export function DataTable<T>({
   const from = total === 0 ? 0 : start + 1
   const to = Math.min(start + pageSize, total)
 
-  const pageButtons = Array.from({ length: pages }).map((_, i) => i + 1).filter((p) => p <= 4 || p === pages)
+  /* Sliding window of page numbers (4 at a time) that follows the current page,
+     so navigating forward keeps revealing new pages. First/last pages are always
+     reachable, and the "…" buttons jump the window forward/back. */
+  const WINDOW = 4
+  let winHi = Math.min(pages, Math.max(cur + 1, WINDOW))
+  let winLo = Math.max(1, winHi - WINDOW + 1)
+  winHi = Math.min(pages, winLo + WINDOW - 1)
+  winLo = Math.max(1, winHi - WINDOW + 1)
+  const pageItems: (number | 'L' | 'R')[] = []
+  if (winLo > 1) { pageItems.push(1); if (winLo > 2) pageItems.push('L') }
+  for (let p = winLo; p <= winHi; p++) pageItems.push(p)
+  if (winHi < pages) { if (winHi < pages - 1) pageItems.push('R'); pageItems.push(pages) }
 
   return (
     <div className="card flush">
@@ -75,15 +86,13 @@ export function DataTable<T>({
           <button disabled={cur === 1} onClick={() => setPage(cur - 1)}>
             ก่อนหน้า
           </button>
-          {pageButtons.map((p, idx) => {
-            const gap = idx > 0 && p - pageButtons[idx - 1] > 1
+          {pageItems.map((it, idx) => {
+            if (it === 'L') return <button key={`L${idx}`} onClick={() => setPage(Math.max(1, winLo - 1))} title="ย้อนกลับ">…</button>
+            if (it === 'R') return <button key={`R${idx}`} onClick={() => setPage(Math.min(pages, winHi + 1))} title="หน้าถัดไป">…</button>
             return (
-              <span key={p} style={{ display: 'inline-flex', gap: 6 }}>
-                {gap && <button disabled style={{ cursor: 'default' }}>…</button>}
-                <button className={p === cur ? 'active' : ''} onClick={() => setPage(p)}>
-                  {p}
-                </button>
-              </span>
+              <button key={it} className={it === cur ? 'active' : ''} onClick={() => setPage(it)}>
+                {it}
+              </button>
             )
           })}
           <button disabled={cur === pages} onClick={() => setPage(cur + 1)}>

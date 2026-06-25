@@ -111,6 +111,7 @@ export interface GoodsPayment {
   supplier: string
   amount: number     /* baht paid */
   method: PayMethodOut
+  chequeNo?: string  /* เลขที่เช็ค — required when method is 'เช็ค' */
   ref?: string       /* optional reference — PO no. / invoice no. */
   note?: string
   createdAt: string
