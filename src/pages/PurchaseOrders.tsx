@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, SearchInput, Field, Input, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -11,6 +12,7 @@ import {
   useCreatedDocs, addPurchaseOrder, removePurchaseOrder, markPurchaseOrderReceived, CAN_DELETE,
   type PurchaseOrder, type PurchaseOrderItem, type PurchaseStatus,
 } from '../data/createdDocs'
+import { type GoodsPaymentInitial } from './GoodsPayments'
 import { downloadCsv } from '../utils/csv'
 
 const STATUS_TONE: Record<PurchaseStatus, Tone> = { รอรับของ: 'warning', รับของแล้ว: 'success' }
@@ -42,6 +44,14 @@ export function PurchaseOrders() {
   const [active, setActive] = useState<PurchaseOrder | null>(null)
   const created = useCreatedDocs()
   const all = created.purchaseOrders
+  const navigate = useNavigate()
+
+  /* Record a goods/material payment from a PO: jump to the payments page with
+     the form pre-filled (supplier, total, PO ref); user reviews and confirms. */
+  const payForOrder = (po: PurchaseOrder) => {
+    const initial: GoodsPaymentInitial = { supplier: po.supplier, amount: String(poTotal(po)), ref: po.poNo }
+    navigate('/goods-payments', { state: { payFromPurchaseOrder: initial } })
+  }
 
   const rows = useMemo(
     () =>
@@ -115,7 +125,11 @@ export function PurchaseOrders() {
       )}
 
       <NewPurchaseOrderForm open={showForm} onClose={() => setShowForm(false)} existing={all} onSaved={(po) => { setShowForm(false); setQuery(po.poNo) }} />
-      <PurchaseOrderDetail order={active} onClose={() => setActive(null)} />
+      <PurchaseOrderDetail
+        order={active}
+        onClose={() => setActive(null)}
+        onPay={(po) => { setActive(null); payForOrder(po) }}
+      />
     </>
   )
 }
@@ -218,7 +232,7 @@ function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: bool
   )
 }
 
-function PurchaseOrderDetail({ order, onClose }: { order: PurchaseOrder | null; onClose: () => void }) {
+function PurchaseOrderDetail({ order, onClose, onPay }: { order: PurchaseOrder | null; onClose: () => void; onPay: (po: PurchaseOrder) => void }) {
   if (!order) return null
   return (
     <Modal open={!!order} title={`ใบสั่งซื้อ ${order.poNo}`} onClose={onClose} maxWidth={680}
@@ -226,8 +240,9 @@ function PurchaseOrderDetail({ order, onClose }: { order: PurchaseOrder | null; 
         <>
           <Button variant="secondary" onClick={onClose}>ปิด</Button>
           {order.status === 'รอรับของ' && (
-            <Button variant="primary" onClick={() => { markPurchaseOrderReceived(order.poNo); onClose() }}>ทำเครื่องหมายรับของแล้ว</Button>
+            <Button variant="tonal" onClick={() => { markPurchaseOrderReceived(order.poNo); onClose() }}>ทำเครื่องหมายรับของแล้ว</Button>
           )}
+          <Button variant="primary" onClick={() => onPay(order)}>ทำจ่ายสินค้า/วัสดุ</Button>
         </>
       }>
       <div className="row" style={{ marginBottom: 12 }}>

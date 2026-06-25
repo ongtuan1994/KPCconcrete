@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, SearchInput, Field, Input, Select, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -14,6 +15,13 @@ import {
 import { downloadCsv } from '../utils/csv'
 
 const METHOD_TONE: Record<PayMethodOut, Tone> = { เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
+
+/** Optional pre-fill values, e.g. when paying from a purchase order. */
+export interface GoodsPaymentInitial {
+  supplier?: string
+  amount?: string
+  ref?: string
+}
 
 function todayIso(): string {
   const d = new Date()
@@ -38,8 +46,22 @@ function nextGpNo(existing: GoodsPayment[]): string {
 export function GoodsPayments() {
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [prefill, setPrefill] = useState<GoodsPaymentInitial | null>(null)
   const created = useCreatedDocs()
   const all = created.goodsPayments
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  /* When navigated here from a purchase order ("ทำจ่ายสินค้า/วัสดุ"), open the
+     form pre-filled. Clear router state so a refresh doesn't re-trigger it. */
+  useEffect(() => {
+    const st = location.state as { payFromPurchaseOrder?: GoodsPaymentInitial } | null
+    if (st?.payFromPurchaseOrder) {
+      setPrefill(st.payFromPurchaseOrder)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const rows = useMemo(
     () =>
@@ -107,12 +129,19 @@ export function GoodsPayments() {
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบ`} />
       )}
 
-      <NewGoodsPaymentForm open={showForm} onClose={() => setShowForm(false)} existing={all} purchaseOrders={created.purchaseOrders} onSaved={(g) => { setShowForm(false); setQuery(g.gpNo) }} />
+      <NewGoodsPaymentForm
+        open={showForm}
+        onClose={() => { setShowForm(false); setPrefill(null) }}
+        existing={all}
+        purchaseOrders={created.purchaseOrders}
+        initial={prefill}
+        onSaved={(g) => { setShowForm(false); setPrefill(null); setQuery(g.gpNo) }}
+      />
     </>
   )
 }
 
-function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; onSaved: (g: GoodsPayment) => void }) {
+function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; initial?: GoodsPaymentInitial | null; onSaved: (g: GoodsPayment) => void }) {
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
   const [amount, setAmount] = useState('')
@@ -125,8 +154,11 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, onSaved 
 
   useEffect(() => {
     if (!open) return
-    setPayDate(todayIso()); setSupplier(''); setAmount(''); setMethod('โอน'); setRef(''); setNote(''); setErr('')
-  }, [open])
+    setPayDate(todayIso()); setMethod('โอน'); setNote(''); setErr('')
+    setSupplier(initial?.supplier ?? '')
+    setAmount(initial?.amount ?? '')
+    setRef(initial?.ref ?? '')
+  }, [open, initial])
 
   /* Purchase orders for the selected supplier — quick reference picker. */
   const supplierPOs = purchaseOrders.filter((p) => !supplier || p.supplier === supplier)

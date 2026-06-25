@@ -5,7 +5,7 @@ import { SalesOrders } from './pages/SalesOrders'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
 import { Payroll } from './pages/Payroll'
-import { Invoices } from './pages/Invoices'
+import { InvoicesHub } from './pages/InvoicesHub'
 import { BillingNotes } from './pages/BillingNotes'
 import { Receipts } from './pages/Receipts'
 import { CustomerMaster } from './pages/CustomerMaster'
@@ -16,10 +16,11 @@ import { Suppliers } from './pages/Suppliers'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
-import { TransportPricing } from './pages/TransportPricing'
+import { TransportHub } from './pages/TransportHub'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
+import { SalaryStructure } from './pages/SalaryStructure'
 
 export default function App() {
   return (
@@ -33,7 +34,7 @@ export default function App() {
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
-        <Route path="/invoices" element={<Invoices />} />
+        <Route path="/invoices" element={<InvoicesHub />} />
         <Route path="/billing" element={<BillingNotes />} />
         <Route path="/receipts" element={<Receipts />} />
         <Route path="/customer-master" element={<CustomerMaster />} />
@@ -47,10 +48,11 @@ export default function App() {
         <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/transport-pricing" element={<TransportPricing />} />
+        <Route path="/transport-pricing" element={<TransportHub />} />
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/salary-structure" element={<SalaryStructure />} />
         <Route path="*" element={<Navigate to="/monthly-report" replace />} />
       </Routes>
     </Layout>

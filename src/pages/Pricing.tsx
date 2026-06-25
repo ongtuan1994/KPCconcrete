@@ -39,9 +39,11 @@ function deliveryZone(code: string): Zone | null {
 type BrandId = 'DOKBUA' | 'SCG'
 interface Brand { id: BrandId; label: string; tone: Tone }
 const BRANDS: Brand[] = [
-  { id: 'DOKBUA', label: 'ดอกบัว',           tone: 'danger' },
-  { id: 'SCG',    label: 'ปูนปอร์ตแลนด์ SCG', tone: 'success' },
+  { id: 'DOKBUA', label: 'ดอกบัว',           tone: 'success' },
+  { id: 'SCG',    label: 'ปูนปอร์ตแลนด์ SCG', tone: 'danger' },
 ]
+/** Filled cell background per cement brand — ดอกบัว เขียว · SCG แดง. */
+const BRAND_BG: Record<BrandId, string> = { DOKBUA: '#16a34a', SCG: '#dc2626' }
 const BRAND_MAP: Record<BrandId, Brand> = Object.fromEntries(BRANDS.map((b) => [b.id, b])) as Record<BrandId, Brand>
 
 function cementBrand(code: string): Brand | null {
@@ -92,9 +94,12 @@ export function Pricing() {
       align: 'center',
       cell: (r) => {
         const b = cementBrand(r.code)
-        return b
-          ? <Badge tone={b.tone} pip={false} square>{b.label}</Badge>
-          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        if (!b) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        return (
+          <span style={{ display: 'inline-block', minWidth: 96, background: BRAND_BG[b.id], color: '#fff', padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}>
+            {b.label}
+          </span>
+        )
       },
     },
     { key: 'str', header: 'กำลังอัด', align: 'right', cell: (r) => (r.strengthKsc ? <span className="mono">{r.strengthKsc} ksc</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },

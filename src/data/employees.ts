@@ -36,10 +36,10 @@ export interface Employee {
 
 export const EMPLOYEES: Employee[] = [
   /* Management */
-  { id: 'E001', name: 'นายสหรัฐ เพ็ชรฉิม',  nickname: 'พี่เป็น', role: 'ผู้จัดการ',     department: 'manager' },
+  { id: 'E001', name: 'นายสหรัฐ เพ็ชรฉิม',  nickname: 'เบนซ์', role: 'ผู้จัดการ',     department: 'manager' },
 
   /* Accounting */
-  { id: 'E002', name: 'น.ส.เพียงแข ดันยูชน', nickname: 'ไหม',    role: 'บัญชี',         department: 'accounting' },
+  { id: 'E002', name: 'น.ส.เพียงแข ดันยูชน', nickname: 'ใหม่',    role: 'บัญชี',         department: 'accounting' },
 
   /* Production — Thai staff */
   { id: 'E003', name: 'นายชัยวัฒน์ ขุนเพ็ชร', nickname: 'บริ้ง',   role: 'พนักงานผลิต', department: 'production' },

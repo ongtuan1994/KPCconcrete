@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBill, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet } from './components/icons'
+import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -23,8 +23,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/sales-orders', label: 'ใบสั่งขาย', en: 'Sales Orders', icon: <IconCart /> },
       { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
-      { to: '/invoices', label: 'ใบกำกับภาษี', en: 'Tax Invoices', icon: <IconInvoice /> },
-      { to: '/billing', label: 'ใบวางบิล', en: 'Billing Notes', icon: <IconBill /> },
+      { to: '/invoices', label: 'ใบกำกับภาษี / วางบิล', en: 'Tax Invoices / Billing', icon: <IconInvoice /> },
       { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
     ],
   },
@@ -33,7 +32,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/purchase-orders', label: 'ใบสั่งซื้อ', en: 'Purchase Orders', icon: <IconCart /> },
       { to: '/goods-payments', label: 'ใบทำจ่ายสินค้า/วัสดุ', en: 'Goods / Material Payments', icon: <IconWallet /> },
-      { to: '/payroll', label: 'ใบทำจ่ายเงินเดือน', en: 'Payroll Payments', icon: <IconUsers /> },
+      { to: '/payroll', label: 'ใบเบิก / ทำจ่ายเงินเดือน', en: 'Advance / Payroll', icon: <IconUsers /> },
     ],
   },
   {
@@ -53,15 +52,10 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    section: 'โรงงาน · Operations',
-    items: [
-      { to: '/fleet', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
-    ],
-  },
-  {
     section: 'องค์กร · Organization',
     items: [
       { to: '/employees', label: 'รายชื่อพนักงาน', en: 'Employee List', icon: <IconUsers /> },
+      { to: '/salary-structure', label: 'ปรับโครงสร้าง', en: 'Salary Structure', icon: <IconTag /> },
     ],
   },
 ]

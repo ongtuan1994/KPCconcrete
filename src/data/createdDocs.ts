@@ -117,21 +117,73 @@ export interface GoodsPayment {
 }
 
 /** Payroll payment voucher (ใบทำจ่ายเงินเดือน) — recording a salary payment to
-    an employee. net = base + additions − deductions. */
+    an employee. Mirrors the printed pay-slip breakdown.
+    netAmount = totalIncome − totalDeduction. */
 export interface PayrollPayment {
   id: string         /* = ppNo */
   ppNo: string       /* running no., e.g. PR00001 */
   payMonth: string   /* "YYYY-MM" the salary is for */
   employeeId: string
   employeeName: string
-  baseSalary: number
-  additions: number  /* OT / bonus / allowances */
-  deductions: number /* social security / advances etc. */
-  netAmount: number
+  position?: string  /* ตำแหน่ง — snapshot of employee role */
+  department?: string /* ฝ่าย — snapshot (Thai label) */
+  bankAccount?: string /* เลขที่บัญชี */
+  /* แรงงานรายวัน: เงินเดือน = daysWorked × dailyWage (optional, day-rate only) */
+  daysWorked?: number  /* จำนวนวันทำงาน */
+  dailyWage?: number   /* อัตราเงินรายวัน */
+  /* รายได้ (income) */
+  baseSalary: number     /* เงินเดือน (รายเดือน หรือ ผลรวมรายวัน) */
+  experiencePay: number  /* ประสบการณ์ */
+  specialPay: number     /* เงินพิเศษ */
+  vehiclePay: number     /* รักษารถ */
+  otherIncome: number    /* อื่นๆ */
+  totalIncome: number    /* รวมรับ */
+  /* เงินหัก (deductions) */
+  socialSecurity: number /* ประกันสังคม */
+  advance: number        /* เบิกล่วงหน้า */
+  otherDeduction: number /* อื่นๆ */
+  totalDeduction: number /* รวมหัก */
+  netAmount: number      /* เงินได้สุทธิ */
   payDate: string    /* ISO */
   method: PayMethodOut
   note?: string
   createdAt: string
+}
+
+/** Advance withdrawal (เบิกล่วงหน้า) — money paid to an employee before payday,
+    deducted from that period's payroll. `payMonth` ties it to the งวด it offsets. */
+export interface AdvancePayment {
+  id: string         /* = advNo */
+  advNo: string      /* running no., e.g. ADV00001 */
+  date: string       /* ISO date the advance was paid */
+  payMonth: string   /* "YYYY-MM" the period it is deducted from */
+  employeeId: string
+  employeeName: string
+  amount: number
+  method: PayMethodOut
+  note?: string
+  createdAt: string
+}
+
+/** Standing salary structure per employee (ปรับโครงสร้างเงินเดือน) — the base
+    figures used to pre-fill payroll vouchers. Keyed by Employee.id. */
+export interface SalaryStructure {
+  baseSalary: number      /* ค่าเงินเดือน (พนักงานรายเดือน) */
+  dailyWage: number       /* เงินรายวัน (แรงงานรายวัน) — 0 ถ้าไม่ใช่รายวัน */
+  experiencePay: number   /* ค่าประสบการณ์ */
+  socialSecurity: number  /* ค่าประกันสังคม (ปกส.) */
+  otRatePerMinute: number /* อัตราค่าแรงโอที — บาท/นาที (เช่น 1.5) */
+  lastAdjustedAt?: string /* ISO timestamp ของการปรับเงินเดือนครั้งล่าสุด */
+}
+
+/** One changed field within a salary-structure adjustment. */
+export interface StructureChange { label: string; from: number; to: number }
+/** History entry for a salary-structure adjustment (ประวัติการปรับโครงสร้าง). */
+export interface SalaryStructureAdjustment {
+  at: string          /* ISO timestamp */
+  employeeId: string
+  employeeName: string
+  changes: StructureChange[]
 }
 
 const KEY = 'kpc.createdDocs.v1'
@@ -169,10 +221,16 @@ export interface CreatedDocs {
   goodsPayments: GoodsPayment[]
   /** Payroll payment vouchers (ใบทำจ่ายเงินเดือน) — newest first. */
   payrollPayments: PayrollPayment[]
+  /** Standing salary structure per employee (keyed by Employee.id). */
+  salaryStructures: Record<string, SalaryStructure>
+  /** Advance withdrawals (เบิกล่วงหน้า) — newest first. */
+  advances: AdvancePayment[]
+  /** History of salary-structure adjustments — newest first. */
+  salaryStructureAdjustments: SalaryStructureAdjustment[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -196,7 +254,29 @@ function read(): CreatedDocs {
       salesOrders: (v.salesOrders ?? []).map((s) => ({ ...s, status: s.status ?? 'รอผลิต' })),
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
-      payrollPayments: v.payrollPayments ?? [],
+      /* Backfill the detailed pay-slip fields for records saved before the
+         breakdown existed (older shape only had additions/deductions). */
+      payrollPayments: (v.payrollPayments ?? []).map((p) => {
+        const r = p as PayrollPayment & { additions?: number; deductions?: number }
+        const baseSalary = r.baseSalary ?? 0
+        const experiencePay = r.experiencePay ?? 0
+        const specialPay = r.specialPay ?? 0
+        const vehiclePay = r.vehiclePay ?? 0
+        const otherIncome = r.otherIncome ?? r.additions ?? 0
+        const socialSecurity = r.socialSecurity ?? 0
+        const advance = r.advance ?? 0
+        const otherDeduction = r.otherDeduction ?? r.deductions ?? 0
+        const totalIncome = r.totalIncome ?? (baseSalary + experiencePay + specialPay + vehiclePay + otherIncome)
+        const totalDeduction = r.totalDeduction ?? (socialSecurity + advance + otherDeduction)
+        return {
+          ...r, baseSalary, experiencePay, specialPay, vehiclePay, otherIncome, totalIncome,
+          socialSecurity, advance, otherDeduction, totalDeduction,
+          netAmount: r.netAmount ?? (totalIncome - totalDeduction),
+        }
+      }),
+      salaryStructures: v.salaryStructures ?? {},
+      advances: v.advances ?? [],
+      salaryStructureAdjustments: v.salaryStructureAdjustments ?? [],
     }
   } catch {
     return empty
@@ -305,6 +385,23 @@ export function addPayrollPayment(pp: PayrollPayment) {
 }
 export function removePayrollPayment(ppNo: string) {
   commit({ ...state, payrollPayments: state.payrollPayments.filter((p) => p.ppNo !== ppNo) })
+}
+
+/* Salary structure per employee (ปรับโครงสร้างเงินเดือน). */
+export function setSalaryStructure(employeeId: string, structure: SalaryStructure) {
+  commit({ ...state, salaryStructures: { ...state.salaryStructures, [employeeId]: structure } })
+}
+/** Append a salary-structure adjustment to the history log (newest first). */
+export function addSalaryStructureAdjustment(adj: SalaryStructureAdjustment) {
+  commit({ ...state, salaryStructureAdjustments: [adj, ...state.salaryStructureAdjustments] })
+}
+
+/* Advance withdrawals (เบิกล่วงหน้า). */
+export function addAdvance(a: AdvancePayment) {
+  commit({ ...state, advances: [a, ...state.advances] })
+}
+export function removeAdvance(advNo: string) {
+  commit({ ...state, advances: state.advances.filter((a) => a.advNo !== advNo) })
 }
 
 export function restoreAllHidden() {

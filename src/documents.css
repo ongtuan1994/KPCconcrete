@@ -235,4 +235,39 @@
     bottom: 18mm !important;
     margin: 0 !important;
   }
+
+  /* The pay slip flows top-down (no absolute signature). Give it its own
+     padding (not the 186mm fixed width / bottom-only reserve of the other
+     docs) so there are always visible top/right/bottom/left paper margins —
+     even when the browser print dialog is set to "Margins: None". */
+  .doc-sheet.payslip {
+    width: auto !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    padding: 6mm 12mm 14mm 12mm !important;
+    box-sizing: border-box !important;
+  }
 }
+
+/* ============================================================
+   Payroll pay slip (ใบทำจ่ายเงินเดือน)
+   ============================================================ */
+.doc-sheet.payslip .ps-title { text-align: center; margin-bottom: 18px; }
+.doc-sheet.payslip .ps-title span {
+  display: inline-block; border: 1.5px solid var(--kpc-text-strong); border-radius: 20px;
+  padding: 7px 46px; font-weight: 700; font-size: 18px;
+}
+.doc-sheet.payslip .ps-headrow { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.doc-sheet.payslip .ps-co { display: flex; gap: 12px; align-items: flex-start; }
+.doc-sheet.payslip .ps-co img { width: 62px; height: auto; object-fit: contain; flex: none; }
+.doc-sheet.payslip .ps-co-info { font-size: 13px; font-weight: 700; line-height: 1.7; }
+.doc-sheet.payslip .ps-month { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.doc-sheet.payslip table.ps-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.doc-sheet.payslip table.ps-table td { border: 1px solid #555; padding: 7px 8px; text-align: center; vertical-align: middle; }
+.doc-sheet.payslip table.ps-table td.ps-h { background: #e9eaee; font-weight: 600; }
+.doc-sheet.payslip table.ps-table td.ps-sec { background: #e9eaee; font-weight: 700; }
+.doc-sheet.payslip table.ps-table td.ps-num { text-align: right; font-family: var(--kpc-font-mono); font-variant-numeric: tabular-nums; }
+.doc-sheet.payslip table.ps-table td.ps-net { text-align: right; font-weight: 700; font-family: var(--kpc-font-mono); font-variant-numeric: tabular-nums; }
+.doc-sheet.payslip table.ps-table td.ps-words { text-align: center; font-weight: 600; }
+.doc-sheet.payslip .ps-sign { text-align: center; margin-top: 42px; font-size: 13px; line-height: 2.4; }
+.doc-sheet.payslip .ps-note { margin-top: 30px; font-size: 12px; color: #c0392b; font-weight: 600; }
