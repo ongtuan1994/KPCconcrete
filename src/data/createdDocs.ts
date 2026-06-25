@@ -46,6 +46,94 @@ export interface TransportRateAdjustment {
   fuelPriceAsOf?: string
 }
 
+/** One product line on a sales order (ใบสั่งขาย). */
+export interface SalesOrderItem {
+  code: string   /* product code from PRODUCTS */
+  name: string   /* snapshot of the product name at order time */
+  qty: number    /* ordered quantity */
+  unit: string   /* unit snapshot (e.g. คิว) */
+}
+
+/** Production status of a sales order.
+    - 'รอผลิต' (waiting): just created, no delivery ticket issued yet.
+    - 'ผลิต' (produced): a delivery ticket has been issued from this order. */
+export type SalesOrderStatus = 'รอผลิต' | 'ผลิต'
+
+/** A customer's advance order (ใบสั่งขาย). The plant records what a customer
+    has reserved ahead of delivery; tax invoices / delivery tickets are issued
+    later against it. Persisted to localStorage like other created docs. */
+export interface SalesOrder {
+  id: string         /* same as soNo — stable key */
+  soNo: string       /* running document number, e.g. SO00001 */
+  orderDate: string  /* ISO yyyy-mm-dd — defaults to today */
+  useDate: string    /* ISO yyyy-mm-dd — date the customer wants to use it */
+  customer: string
+  items: SalesOrderItem[]
+  status: SalesOrderStatus
+  note?: string
+  /** Optional uploaded customer PO as evidence (stored as a data URL). */
+  attachment?: { name: string; type: string; dataUrl: string }
+  createdAt: string  /* ISO timestamp of when the order was saved */
+}
+
+/* ───────── การซื้อ / การจ่าย (Purchasing / Payments) ───────── */
+
+/** Payment method for outgoing payments (purchases / payroll). */
+export type PayMethodOut = 'เงินสด' | 'โอน' | 'เช็ค'
+
+/** One line on a purchase order (ใบสั่งซื้อ). */
+export interface PurchaseOrderItem {
+  desc: string   /* item / material description */
+  qty: number
+  unit: string   /* e.g. ตัน, ถุง, เที่ยว, ชิ้น */
+  price: number  /* unit price (baht) */
+}
+export type PurchaseStatus = 'รอรับของ' | 'รับของแล้ว'
+/** Purchase order — buying materials/goods from a supplier (เจ้าหนี้/ซัพพลายเออร์). */
+export interface PurchaseOrder {
+  id: string         /* = poNo */
+  poNo: string       /* running no., e.g. PO00001 */
+  orderDate: string  /* ISO yyyy-mm-dd */
+  dueDate: string    /* ISO — expected delivery date (optional value) */
+  supplier: string
+  items: PurchaseOrderItem[]
+  status: PurchaseStatus
+  note?: string
+  createdAt: string
+}
+
+/** Goods / material payment voucher (ใบทำจ่ายสินค้า/วัสดุ) — recording a payment
+    made to a supplier for purchased goods. */
+export interface GoodsPayment {
+  id: string         /* = gpNo */
+  gpNo: string       /* running no., e.g. GP00001 */
+  payDate: string    /* ISO */
+  supplier: string
+  amount: number     /* baht paid */
+  method: PayMethodOut
+  ref?: string       /* optional reference — PO no. / invoice no. */
+  note?: string
+  createdAt: string
+}
+
+/** Payroll payment voucher (ใบทำจ่ายเงินเดือน) — recording a salary payment to
+    an employee. net = base + additions − deductions. */
+export interface PayrollPayment {
+  id: string         /* = ppNo */
+  ppNo: string       /* running no., e.g. PR00001 */
+  payMonth: string   /* "YYYY-MM" the salary is for */
+  employeeId: string
+  employeeName: string
+  baseSalary: number
+  additions: number  /* OT / bonus / allowances */
+  deductions: number /* social security / advances etc. */
+  netAmount: number
+  payDate: string    /* ISO */
+  method: PayMethodOut
+  note?: string
+  createdAt: string
+}
+
 const KEY = 'kpc.createdDocs.v1'
 
 interface Hidden {
@@ -73,10 +161,18 @@ export interface CreatedDocs {
   employeeEdits: Record<string, EmployeeEdit>
   /** New employees added through the quick-add form on the Employees page. */
   employeesAdded: Employee[]
+  /** Customer advance orders (ใบสั่งขาย) — newest first. */
+  salesOrders: SalesOrder[]
+  /** Purchase orders (ใบสั่งซื้อ) — newest first. */
+  purchaseOrders: PurchaseOrder[]
+  /** Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ) — newest first. */
+  goodsPayments: GoodsPayment[]
+  /** Payroll payment vouchers (ใบทำจ่ายเงินเดือน) — newest first. */
+  payrollPayments: PayrollPayment[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -96,6 +192,11 @@ function read(): CreatedDocs {
       priceAdjustments: (v.priceAdjustments ?? []).filter((a) => a && typeof (a as PriceAdjustment).prices === 'object'),
       employeeEdits: v.employeeEdits ?? {},
       employeesAdded: v.employeesAdded ?? [],
+      /* Backfill status on orders saved before the field existed. */
+      salesOrders: (v.salesOrders ?? []).map((s) => ({ ...s, status: s.status ?? 'รอผลิต' })),
+      purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
+      goodsPayments: v.goodsPayments ?? [],
+      payrollPayments: v.payrollPayments ?? [],
     }
   } catch {
     return empty
@@ -157,6 +258,53 @@ export function removeTicket(dtNo: string) {
     tickets: state.tickets.filter((t) => t.dtNo !== dtNo),
     hidden: wasCreated ? state.hidden : { ...state.hidden, tickets: [...state.hidden.tickets, dtNo] },
   })
+}
+
+/* Sales orders (ใบสั่งขาย) — created docs only, no seed data to hide. */
+export function addSalesOrder(so: SalesOrder) {
+  commit({ ...state, salesOrders: [so, ...state.salesOrders] })
+}
+export function removeSalesOrder(soNo: string) {
+  commit({ ...state, salesOrders: state.salesOrders.filter((s) => s.soNo !== soNo) })
+}
+/** Replace an existing sales order (matched by soNo) with an edited version. */
+export function updateSalesOrder(so: SalesOrder) {
+  commit({ ...state, salesOrders: state.salesOrders.map((s) => (s.soNo === so.soNo ? so : s)) })
+}
+/** Flip a sales order to 'ผลิต' once a delivery ticket is issued from it. */
+export function markSalesOrderProduced(soNo: string) {
+  commit({ ...state, salesOrders: state.salesOrders.map((s) => (s.soNo === soNo ? { ...s, status: 'ผลิต' } : s)) })
+}
+
+/* Purchase orders (ใบสั่งซื้อ). */
+export function addPurchaseOrder(po: PurchaseOrder) {
+  commit({ ...state, purchaseOrders: [po, ...state.purchaseOrders] })
+}
+export function updatePurchaseOrder(po: PurchaseOrder) {
+  commit({ ...state, purchaseOrders: state.purchaseOrders.map((p) => (p.poNo === po.poNo ? po : p)) })
+}
+export function removePurchaseOrder(poNo: string) {
+  commit({ ...state, purchaseOrders: state.purchaseOrders.filter((p) => p.poNo !== poNo) })
+}
+/** Flip a purchase order to 'รับของแล้ว' (e.g. when goods arrive / a payment is made). */
+export function markPurchaseOrderReceived(poNo: string) {
+  commit({ ...state, purchaseOrders: state.purchaseOrders.map((p) => (p.poNo === poNo ? { ...p, status: 'รับของแล้ว' } : p)) })
+}
+
+/* Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ). */
+export function addGoodsPayment(gp: GoodsPayment) {
+  commit({ ...state, goodsPayments: [gp, ...state.goodsPayments] })
+}
+export function removeGoodsPayment(gpNo: string) {
+  commit({ ...state, goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo) })
+}
+
+/* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */
+export function addPayrollPayment(pp: PayrollPayment) {
+  commit({ ...state, payrollPayments: [pp, ...state.payrollPayments] })
+}
+export function removePayrollPayment(ppNo: string) {
+  commit({ ...state, payrollPayments: state.payrollPayments.filter((p) => p.ppNo !== ppNo) })
 }
 
 export function restoreAllHidden() {

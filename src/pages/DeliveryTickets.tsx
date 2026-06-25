@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
@@ -6,8 +7,8 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { INVOICES, baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
-import { useCreatedDocs, removeTicket, CAN_DELETE } from '../data/createdDocs'
-import { NewDeliveryTicketForm } from '../components/documents/NewDeliveryTicketForm'
+import { useCreatedDocs, removeTicket, markSalesOrderProduced, CAN_DELETE } from '../data/createdDocs'
+import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
 import { DocModal } from '../components/documents/DocModal'
 import { DeliveryTicketDoc } from '../components/documents/DeliveryTicketDoc'
@@ -23,10 +24,29 @@ export function DeliveryTickets() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [prefill, setPrefill] = useState<DeliveryTicketInitial | null>(null)
+  /* soNo of the sales order this ticket is being issued from, if any — used to
+     flip that order's status to 'ผลิต' once the ticket is saved. */
+  const [prefillSalesOrderNo, setPrefillSalesOrderNo] = useState<string | null>(null)
   const [active, setActive] = useState<DeliveryTicket | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [invoiceRefs, setInvoiceRefs] = useState<string | null>(null)
   const created = useCreatedDocs()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  /* When navigated here from a sales order ("ออกใบจ่ายคอนกรีต"), open the
+     create form pre-filled with the ordered item. Clear the router state so a
+     refresh / back-nav doesn't re-trigger it. */
+  useEffect(() => {
+    const st = location.state as { issueFromSalesOrder?: DeliveryTicketInitial; salesOrderNo?: string } | null
+    if (st?.issueFromSalesOrder) {
+      setPrefill(st.issueFromSalesOrder)
+      setPrefillSalesOrderNo(st.salesOrderNo ?? null)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const newSet = useMemo(() => new Set(created.tickets.map((t) => t.dtNo)), [created.tickets])
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
@@ -225,10 +245,15 @@ export function DeliveryTickets() {
 
       <NewDeliveryTicketForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setPrefill(null); setPrefillSalesOrderNo(null) }}
         createdTickets={created.tickets}
+        initial={prefill}
         onSaved={(t) => {
+          /* Issued from a sales order → flip that order to 'ผลิต'. */
+          if (prefillSalesOrderNo) markSalesOrderProduced(prefillSalesOrderNo)
           setShowForm(false)
+          setPrefill(null)
+          setPrefillSalesOrderNo(null)
           setMonth(t.month)
           setFilter('all')
           setQuery(t.dtNo)

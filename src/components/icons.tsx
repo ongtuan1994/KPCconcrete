@@ -29,6 +29,13 @@ export const IconOrder = ({ size = 18 }: IconProps) => (
     <line x1="6" y1="9" x2="12" y2="9" stroke="#969CA6" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 )
+export const IconCart = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18">
+    <path d="M2 3h2l1.4 8.2a1 1 0 0 0 1 .8h6.2a1 1 0 0 0 1-.8L15 6H5" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="7" cy="15" r="1.1" fill="#969CA6" />
+    <circle cx="13" cy="15" r="1.1" fill="#969CA6" />
+  </svg>
+)
 export const IconInvoice = ({ size = 18 }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 18 18">
     <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="#969CA6" strokeWidth="1.5" fill="none" />
@@ -94,6 +101,13 @@ export const IconUsers = ({ size = 18 }: IconProps) => (
     <circle cx="7" cy="6" r="2.6" stroke="#969CA6" strokeWidth="1.5" fill="none" />
     <path d="M2.5 15c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinecap="round" />
     <path d="M12.5 5.2a2.4 2.4 0 0 1 0 4.6M13 15c0-2.2-1-3.4-2.2-3.9" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+  </svg>
+)
+export const IconWallet = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18">
+    <rect x="2.5" y="4" width="13" height="10" rx="1.5" stroke="#969CA6" strokeWidth="1.5" fill="none" />
+    <path d="M11 8h3v3h-3a1.5 1.5 0 0 1 0-3z" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+    <line x1="2.5" y1="6.5" x2="12" y2="6.5" stroke="#969CA6" strokeWidth="1.5" />
   </svg>
 )
 export const IconSearch = ({ size = 16, stroke = '#969CA6' }: IconProps) => (

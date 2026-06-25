@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
 import { CUSTOMER_MASTER, MONTHS, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, type DeliveryTicket, type PayMethod } from '../../data/real'
@@ -11,16 +11,27 @@ function pad2(n: number) { return String(n).padStart(2, '0') }
 /** Delivery tickets only cover concrete products — precast (เสาเข็ม / คานสำเร็จรูป) excluded. */
 const SELECTABLE_PRODUCTS = PRODUCTS.filter((p) => p.category !== 'precast')
 
+/** Optional pre-fill values, e.g. when issuing a ticket from a sales order. */
+export interface DeliveryTicketInitial {
+  customer?: string
+  prodCode?: string
+  m3?: string
+  note?: string
+  type?: string
+}
+
 export function NewDeliveryTicketForm({
   open,
   onClose,
   onSaved,
   createdTickets,
+  initial,
 }: {
   open: boolean
   onClose: () => void
   onSaved: (t: DeliveryTicket) => void
   createdTickets: DeliveryTicket[]
+  initial?: DeliveryTicketInitial | null
 }) {
   const [dtNoDigits, setDtNoDigits] = useState<string>('') /* user types 11 digits; "DT" prefix is implicit */
   const [month, setMonth] = useState<number>(LATEST_MONTH)
@@ -40,6 +51,17 @@ export function NewDeliveryTicketForm({
   const [err, setErr] = useState<string>('')
 
   const all = useMemo(() => [...createdTickets, ...DELIVERY_TICKETS], [createdTickets])
+
+  /* Apply pre-fill values (e.g. issuing from a sales order) when the form opens.
+     Only fields supplied by `initial` are overridden — the rest keep defaults. */
+  useEffect(() => {
+    if (!open || !initial) return
+    if (initial.type) setType(initial.type)
+    if (initial.customer !== undefined) setCustomer(initial.customer)
+    if (initial.prodCode && SELECTABLE_PRODUCTS.some((p) => p.code === initial.prodCode)) setProdCode(initial.prodCode)
+    if (initial.m3 !== undefined) setM3(initial.m3)
+    if (initial.note !== undefined) setNote(initial.note)
+  }, [open, initial])
 
   /* Live duplicate check: when the user has typed all 11 digits, mark
      whether that dtNo already exists so the field can flag it before
