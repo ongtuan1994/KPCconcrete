@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTE_META } from '../nav'
-import { IconLogout, IconBell } from './icons'
+import { IconLogout, IconBell, IconMenu } from './icons'
 import { ROLE_LABEL, logout, useCurrentUser, useCanAudit } from '../data/auth'
 import { useAuditItems } from '../data/audit'
 import { useNotiSeen, markNotiSeen } from '../data/notiSeen'
@@ -9,7 +9,7 @@ import { GlobalSearch } from './GlobalSearch'
 
 interface Notice { id: string; title: string; sub: string; route?: string; signature: string }
 
-export function Topbar() {
+export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const loc = useLocation()
   const navigate = useNavigate()
   const meta = ROUTE_META[loc.pathname] ?? { label: 'ภาพรวม', en: 'Overview', section: 'ภาพรวม' }
@@ -46,6 +46,10 @@ export function Topbar() {
 
   return (
     <div className="topbar">
+      <button className="menu-btn" aria-label="เมนู" onClick={onMenu}>
+        <IconMenu />
+      </button>
+
       <div className="crumbs">
         <span className="muted">{meta.section}</span>
         <span className="sep">/</span>

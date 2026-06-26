@@ -274,15 +274,35 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
 .swatch.active { box-shadow: 0 0 0 2px var(--kpc-primary); }
 
 /* ---------------- Responsive ---------------- */
+/* Hamburger + drawer backdrop are desktop-hidden by default. */
+.menu-btn { display: none; }
+.sidebar-backdrop { display: none; }
+
 @media (max-width: 1080px) {
   .g-4 { grid-template-columns: repeat(2, 1fr); }
   .g-3 { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .sidebar { display: none; }
+  /* Sidebar becomes an off-canvas slide-in drawer instead of being hidden. */
+  .sidebar {
+    position: fixed; top: 0; left: 0; z-index: 60; height: 100vh;
+    transform: translateX(-100%); transition: transform .24s ease;
+  }
+  .sidebar.open { transform: translateX(0); box-shadow: 4px 0 28px rgba(16, 24, 40, 0.4); }
+  .sidebar-backdrop.show { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(16, 24, 40, 0.45); }
+
+  /* Hamburger toggle in the topbar; hide breadcrumbs to make room. */
+  .menu-btn {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 38px; height: 38px; border: none; background: transparent; border-radius: 8px; cursor: pointer;
+  }
+  .menu-btn:hover { background: var(--kpc-neutral-100); }
+  .crumbs { display: none; }
+
   .g-4, .g-2 { grid-template-columns: 1fr; }
   .page { padding: 20px 16px 48px; }
-  .topbar-search { width: 160px; }
+  .topbar { gap: 10px; padding: 0 14px; }
+  .topbar-search { width: auto; flex: 1; min-width: 0; }
 }
 
 /* ---------------- Login screen ---------------- */

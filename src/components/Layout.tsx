@@ -1,13 +1,15 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 
 export function Layout({ children }: { children: ReactNode }) {
+  /* Mobile slide-in drawer state (ignored on desktop where the sidebar is static). */
+  const [navOpen, setNavOpen] = useState(false)
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
       <div className="main-col">
-        <Topbar />
+        <Topbar onMenu={() => setNavOpen((o) => !o)} />
         <div className="page">{children}</div>
       </div>
     </div>

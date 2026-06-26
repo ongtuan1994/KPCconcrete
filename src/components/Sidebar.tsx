@@ -3,7 +3,7 @@ import { NAV } from '../nav'
 import { Logo } from './icons'
 import { ROUTE_RESOURCE, useCurrentUser, usePerms } from '../data/auth'
 
-export function Sidebar() {
+export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const user = useCurrentUser()
   const perms = usePerms()
 
@@ -17,7 +17,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="sidebar">
+    <>
+    <div className={['sidebar-backdrop', open ? 'show' : ''].filter(Boolean).join(' ')} onClick={onClose} />
+    <aside className={['sidebar', open ? 'open' : ''].filter(Boolean).join(' ')}>
       <div className="sidebar-brand">
         <Logo size={30} mono />
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
@@ -33,7 +35,7 @@ export function Sidebar() {
           <div key={gi} style={{ display: 'contents' }}>
             {group.section && <div className="nav-section">{group.section}</div>}
             {items.map((it) => (
-              <NavLink key={it.to} to={it.to} className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}>
+              <NavLink key={it.to} to={it.to} onClick={onClose} className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}>
                 {it.icon}
                 {it.label}
               </NavLink>
@@ -42,5 +44,6 @@ export function Sidebar() {
         )
       })}
     </aside>
+    </>
   )
 }
