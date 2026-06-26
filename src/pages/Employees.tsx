@@ -8,6 +8,7 @@ import { IconPlus } from '../components/icons'
 import {
   EMPLOYEES,
   DEPARTMENT_LABEL,
+  THAI_BANKS,
   yearsOfService,
   type Employee,
   type Department,
@@ -61,7 +62,7 @@ export function Employees() {
       if (filter !== 'all' && e.department !== filter) return false
       if (query) {
         const q = query.toLowerCase()
-        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.phone ?? ''}`.toLowerCase()
+        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -79,10 +80,10 @@ export function Employees() {
   const hasPhone = list.filter((e) => !!e.phone).length
 
   const exportExcel = () => {
-    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'เบอร์ติดต่อ', 'วันเริ่มงาน', 'อายุงาน']
+    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
     const body = rows.map((e) => [
       e.id, e.name, e.nickname ?? '', e.role, DEPARTMENT_LABEL[e.department].th,
-      e.phone ?? '', e.startDate ?? '', yearsOfService(e.startDate) ?? '',
+      e.phone ?? '', e.bankName ?? '', e.bankAccount ?? '', e.startDate ?? '', yearsOfService(e.startDate) ?? '',
     ])
     downloadCsv('employees', [head, ...body])
   }
@@ -111,6 +112,18 @@ export function Employees() {
       header: 'เบอร์ติดต่อ',
       cell: (r) => r.phone
         ? <span className="mono">{r.phone}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
+    },
+    {
+      key: 'bank',
+      header: 'บัญชีธนาคาร',
+      cell: (r) => (r.bankName || r.bankAccount)
+        ? (
+          <div className="stack" style={{ gap: 2 }}>
+            {r.bankName && <span style={{ fontSize: 13 }}>{r.bankName}</span>}
+            {r.bankAccount && <span className="mono" style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{r.bankAccount}</span>}
+          </div>
+        )
         : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
     },
     {
@@ -216,13 +229,15 @@ function NewEmployeeForm({
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
   const [phone, setPhone] = useState('')
+  const [bankName, setBankName] = useState('')
+  const [bankAccount, setBankAccount] = useState('')
   const [startDate, setStartDate] = useState('')
   const [err, setErr] = useState('')
 
   useEffect(() => {
     if (!open) return
     setName(''); setNickname(''); setRole(''); setDepartment('production')
-    setPhone(''); setStartDate(''); setErr('')
+    setPhone(''); setBankName(''); setBankAccount(''); setStartDate(''); setErr('')
   }, [open])
 
   const submit = () => {
@@ -241,6 +256,8 @@ function NewEmployeeForm({
       role: trimmedRole,
       department,
       phone: phone.trim() || undefined,
+      bankName: bankName.trim() || undefined,
+      bankAccount: bankAccount.trim() || undefined,
       startDate: startDate.trim() || undefined,
     }
     addEmployee(employee)
@@ -277,6 +294,15 @@ function NewEmployeeForm({
         <Field label="เบอร์ติดต่อ" hint="เช่น 081-234-5678">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
         </Field>
+        <Field label="ธนาคาร">
+          <Select value={bankName} onChange={(e) => setBankName(e.target.value)}>
+            <option value="">— เลือกธนาคาร —</option>
+            {THAI_BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+          </Select>
+        </Field>
+        <Field label="เลขที่บัญชี" hint="เช่น 123-4-56789-0">
+          <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} placeholder="—" />
+        </Field>
         <Field label="วันเริ่มงาน" style={{ gridColumn: '1 / -1' }}>
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
@@ -290,6 +316,8 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
   const [phone, setPhone] = useState('')
+  const [bankName, setBankName] = useState('')
+  const [bankAccount, setBankAccount] = useState('')
   const [startDate, setStartDate] = useState('')
 
   useEffect(() => {
@@ -298,6 +326,8 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
     setRole(employee.role)
     setDepartment(employee.department)
     setPhone(employee.phone ?? '')
+    setBankName(employee.bankName ?? '')
+    setBankAccount(employee.bankAccount ?? '')
     setStartDate(employee.startDate ?? '')
   }, [employee])
 
@@ -309,6 +339,8 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       role: role.trim() || employee.role,
       department,
       phone: phone.trim() || undefined,
+      bankName: bankName.trim() || undefined,
+      bankAccount: bankAccount.trim() || undefined,
       startDate: startDate.trim() || undefined,
     })
     onClose()
@@ -345,6 +377,15 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
         </Field>
         <Field label="เบอร์ติดต่อ" hint="เช่น 081-234-5678">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
+        </Field>
+        <Field label="ธนาคาร">
+          <Select value={bankName} onChange={(e) => setBankName(e.target.value)}>
+            <option value="">— เลือกธนาคาร —</option>
+            {THAI_BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+          </Select>
+        </Field>
+        <Field label="เลขที่บัญชี" hint="เช่น 123-4-56789-0">
+          <Input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} placeholder="—" />
         </Field>
         <Field label="วันเริ่มงาน" hint="รูปแบบ YYYY-MM-DD" style={{ gridColumn: '1 / -1' }}>
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />

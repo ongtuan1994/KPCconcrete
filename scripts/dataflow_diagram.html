@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>KPC — แผนผังการไหลของข้อมูลแต่ละเมนู</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  @page { size: A3 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  html, body { width: 1540px; }
+  body {
+    font-family: 'Leelawadee UI', 'Tahoma', 'Sarabun', sans-serif;
+    margin: 0; padding: 14px 18px; color: #14223a; background: #fff;
+  }
+  header { border-bottom: 3px solid #1d4ed8; padding-bottom: 8px; margin-bottom: 8px; }
+  h1 { font-size: 23px; margin: 0 0 2px; color: #0f2a5e; }
+  .sub { font-size: 13px; color: #5b6b86; }
+  .legend { display: flex; gap: 22px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 12.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid; display: inline-block; }
+  #diagram-area { text-align: center; }
+  .mermaid { font-size: 15px; display: inline-block; }
+  .mermaid svg { max-width: none !important; }
+  footer { margin-top: 8px; font-size: 11.5px; color: #7a879e; border-top: 1px solid #dde3ee; padding-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KPC · กิจไพศาลคอนกรีต — แผนผังการไหลของข้อมูลแต่ละเมนู</h1>
+  <div class="sub">Data Flow Diagram — Concrete Batching Plant Management System &nbsp;·&nbsp; สร้างเมื่อ 26 มิ.ย. 2569</div>
+</header>
+
+<div class="legend">
+  <span><i class="sw" style="background:#e0ecff;border-color:#1d4ed8"></i> ข้อมูลหลัก · Master Data</span>
+  <span><i class="sw" style="background:#e7f9ee;border-color:#15803d"></i> เอกสารธุรกรรม · Transactions</span>
+  <span><i class="sw" style="background:#fff3da;border-color:#b45309"></i> รายงาน & บัญชี · Reports / Ledger</span>
+  <span>━━ การไหลหลัก (สร้างเอกสารต่อเนื่อง) &nbsp;&nbsp; ┄┄ ใช้อ้างอิง / รวมยอด</span>
+</div>
+
+<div id="diagram-area">
+<pre class="mermaid">
+%%{init: {'theme':'base','flowchart':{'useMaxWidth':false,'htmlLabels':true,'padding':10,'nodeSpacing':55,'rankSpacing':70},'themeVariables':{'fontFamily':'Leelawadee UI, Tahoma, sans-serif','fontSize':'15px','lineColor':'#5b6b86'}}}%%
+flowchart LR
+
+classDef master fill:#e0ecff,stroke:#1d4ed8,stroke-width:1.5px,color:#0f2a5e;
+classDef txn    fill:#e7f9ee,stroke:#15803d,stroke-width:1.5px,color:#0f3d22;
+classDef report fill:#fff3da,stroke:#b45309,stroke-width:1.5px,color:#5a3206;
+
+%% ---- Master data (left column, edges connect directly to each box) ----
+%% Declaration order = top→bottom: sales masters, then purchasing, then EMP last (bottom).
+CM["ทะเบียนลูกค้า<br/>Customer Master"]
+PR["ราคาสินค้า<br/>Price List"]
+TP["ราคาค่าขนส่ง<br/>Transport Surcharge"]
+SUP["ทะเบียนซัพพลายเออร์<br/>Supplier"]
+ST["คลังวัตถุดิบ<br/>Raw Material Stock"]
+EMP["รายชื่อพนักงาน<br/>Employees"]
+
+%% ---- Sales transactions (top band) ----
+SO["ใบสั่งขาย<br/>Sales Orders"]
+DT["ใบจ่ายคอนกรีต<br/>Delivery Tickets"]
+INV["ใบกำกับภาษี / วางบิล<br/>Tax Invoices"]
+RC["ใบเสร็จรับเงิน<br/>Receipts"]
+BN["ใบวางบิล<br/>Billing Notes"]
+
+%% ---- Reports & Ledger (right) ----
+MR["รายงานประจำเดือน/ปี<br/>Monthly / Yearly"]
+TX["รายงานภาษีซื้อ/ขาย<br/>Tax Reports"]
+LG["ลูกหนี้ / เจ้าหนี้<br/>Ledger (AR/AP)"]
+
+%% ---- Purchasing (middle-bottom band) ----
+PO["ใบสั่งซื้อ<br/>Purchase Orders"]
+GP["ใบทำจ่ายสินค้า/วัสดุ<br/>Goods Payments"]
+
+%% ---- Payroll (declared last → very bottom) ----
+ATT["บันทึกลงเวลางาน<br/>Time Attendance"]
+PAY["ใบเบิก / ทำจ่ายเงินเดือน<br/>Payroll"]
+
+%% ---- Sales chain (main flow, declared first → top) ----
+CM --> SO
+PR --> SO
+SO -->|"ยืนยันผลิต · produced"| DT
+PR --> DT
+TP --> DT
+DT -->|"รวมรายวัน/ลูกค้า · group by day+customer"| INV
+INV -->|"ชำระแล้ว · paid"| RC
+INV -->|"เครดิตค้างชำระ · credit unpaid"| BN
+DT -.-> MR
+INV -.-> MR
+INV -.->|"ภาษีขาย"| TX
+INV -.->|"ลูกหนี้ AR"| LG
+
+%% ---- Purchasing chain (middle-bottom, clear of sales) ----
+SUP --> PO
+PO -->|"รับของแล้ว · received"| GP
+SUP --> GP
+GP -.->|"วัตถุดิบเข้าคลัง"| ST
+DT -.->|"ใช้วัตถุดิบผลิต"| ST
+GP -.->|"ภาษีซื้อ"| TX
+GP -.->|"เจ้าหนี้ AP"| LG
+
+%% ---- Payroll chain (declared last → bottom-most, no Ledger link) ----
+EMP --> ATT
+EMP --> PAY
+ATT -->|"ชั่วโมงทำงาน / OT"| PAY
+
+class CM,SUP,PR,TP,ST,EMP master;
+class SO,DT,INV,RC,BN,PO,GP,ATT,PAY txn;
+class MR,TX,LG report;
+</pre>
+</div>
+
+<script>
+  // Available diagram area inside an A3-landscape page (96dpi, 8mm margins),
+  // minus header / legend / footer — the SVG is scaled to fit this exactly.
+  const AVAIL_W = 1500, AVAIL_H = 840;
+
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+
+  async function render() {
+    // Wait for the Thai/Latin web fonts so Mermaid measures text correctly
+    // (otherwise boxes are sized to the fallback font and labels get clipped).
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    await mermaid.run({ querySelector: '.mermaid' });
+
+    const svg = document.querySelector('.mermaid svg');
+    if (svg) {
+      // Chrome hard-clips <foreignObject> to its width attribute, so the wider
+      // (English) label line gets cut off. Widen each node box + its label
+      // region to fit the real rendered content, keeping it centred.
+      svg.querySelectorAll('g.node').forEach((node) => {
+        const fo = node.querySelector('foreignObject');
+        if (!fo) return;
+        const inner = fo.firstElementChild;
+        const contentW = inner ? inner.scrollWidth : 0;
+        const foW = fo.width.baseVal.value;
+        const extra = contentW + 14 - foW; // 7px breathing room each side
+        if (extra <= 0) return;
+        fo.setAttribute('width', foW + extra);
+        fo.setAttribute('x', fo.x.baseVal.value - extra / 2);
+        node.querySelectorAll('rect').forEach((r) => {
+          r.setAttribute('width', r.width.baseVal.value + extra);
+          r.setAttribute('x', r.x.baseVal.value - extra / 2);
+        });
+      });
+
+      // Same fix for the subgraph frame title (e.g. "ฐานข้อมูลหลัก · Master Data"):
+      // widen the cluster rect if its title is wider than the box.
+      svg.querySelectorAll('g.cluster').forEach((cl) => {
+        const fo = cl.querySelector('foreignObject');
+        const rect = cl.querySelector('rect');
+        if (!fo || !rect) return;
+        const inner = fo.firstElementChild;
+        const titleW = inner ? inner.scrollWidth : 0;
+        const need = titleW + 24 - rect.width.baseVal.value;
+        if (need > 0) {
+          rect.setAttribute('width', rect.width.baseVal.value + need);
+          rect.setAttribute('x', rect.x.baseVal.value - need / 2);
+        }
+        fo.setAttribute('width', Math.max(fo.width.baseVal.value, titleW + 8));
+        fo.setAttribute('x', rect.x.baseVal.value + (rect.width.baseVal.value - fo.width.baseVal.value) / 2);
+      });
+
+      // Re-fit the viewBox to the (now wider) content, then scale to one page.
+      const bb = svg.getBBox();
+      const m = 8;
+      const w = bb.width + m * 2, h = bb.height + m * 2;
+      svg.setAttribute('viewBox', `${bb.x - m} ${bb.y - m} ${w} ${h}`);
+      const scale = Math.min(AVAIL_W / w, AVAIL_H / h);
+      svg.setAttribute('width', Math.round(w * scale));
+      svg.setAttribute('height', Math.round(h * scale));
+      svg.style.maxWidth = 'none';
+    }
+    document.body.setAttribute('data-ready', '1');
+  }
+  render();
+</script>
+</body>
+</html>

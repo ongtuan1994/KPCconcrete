@@ -7,6 +7,7 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { PaySlipDoc } from '../components/documents/PaySlipDoc'
+import { DepositSlipDoc } from '../components/documents/DepositSlipDoc'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { EMPLOYEES, DEPARTMENT_LABEL } from '../data/employees'
@@ -80,9 +81,18 @@ export function Payroll() {
   const [showForm, setShowForm] = useState(false)
   const [showAdvance, setShowAdvance] = useState(false)
   const [slip, setSlip] = useState<PayrollPayment | null>(null)
+  const [deposit, setDeposit] = useState<PayrollPayment | null>(null)
   const created = useCreatedDocs()
   const all = created.payrollPayments
   const advAll = created.advances
+
+  /* Resolve the employee's bank account for the deposit slip — prefer the one
+     stamped on the payment, then the (possibly edited) employee master record. */
+  const resolveAccount = (pp: PayrollPayment): string => {
+    if (pp.bankAccount) return pp.bankAccount
+    const emp = [...created.employeesAdded, ...EMPLOYEES].find((e) => e.id === pp.employeeId)
+    return created.employeeEdits[pp.employeeId]?.bankAccount || emp?.bankAccount || ''
+  }
 
   const rows = useMemo(
     () =>
@@ -148,6 +158,7 @@ export function Payroll() {
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ทำจ่ายเงินเดือน', ref: r.ppNo, label: r.ppNo, sub: `${r.employeeName} · ${baht(r.netAmount)}`, route: '/payroll' }} /> },
     { key: 'slip', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setSlip(r)}>สลิป / พิมพ์</Button> },
+    { key: 'deposit', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setDeposit(r)}>Deposit Slip</Button> },
     ...(CAN_DELETE ? [{
       key: 'del', header: '', align: 'center' as const,
       cell: (r: PayrollPayment) => (
@@ -232,6 +243,10 @@ export function Payroll() {
 
       <DocModal open={!!slip} title={slip ? `สลิปเงินเดือน ${slip.ppNo} · ${slip.employeeName}` : ''} onClose={() => setSlip(null)}>
         {slip && <PaySlipDoc pp={slip} />}
+      </DocModal>
+
+      <DocModal open={!!deposit} title={deposit ? `ใบนำฝาก (ttb) · ${deposit.employeeName}` : ''} onClose={() => setDeposit(null)}>
+        {deposit && <DepositSlipDoc pp={deposit} account={resolveAccount(deposit)} />}
       </DocModal>
     </>
   )

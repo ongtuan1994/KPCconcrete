@@ -4,7 +4,8 @@ import jsPDF from 'jspdf'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, MonthSelect } from '../components/ui'
 import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
-import { monthTotals, productMix, dailyM3, customerAgg, INVOICES, MONTHLY_TREND, MONTHS, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
+import { monthTotals, productMix, dailyM3, customerAgg, MONTHLY_TREND, MONTHS, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
+import { AR_OUTSTANDING, AR_OUTSTANDING_TOTAL } from '../data/receivables'
 import { COMPANY } from '../data/real'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
@@ -80,35 +81,28 @@ export function MonthlyReport() {
      the monthly trend table replaces it. */
   const daily = isYear ? [] : dailyM3(month)
 
-  /* ---------- AR (เงินลูกค้าค้าง) ----------
-     In "ทั้งปี" mode the "month" figures mirror the all-time figures, so the
-     KPI/finance cards stay meaningful without duplicating data. */
-  const invScope = isYear ? INVOICES : INVOICES.filter((i) => i.month === month)
-  const monthOutstandingAmt = invScope.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
-  const monthOutstandingCount = invScope.filter((i) => i.status !== 'paid').length
-  const monthOverdueAmt = invScope.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
-  const monthOverdueCount = invScope.filter((i) => i.status === 'overdue').length
-
-  /* All-time figures are always the cumulative year-wide totals. */
-  const allOutstandingAmt = INVOICES.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
-  const allOverdueAmt = INVOICES.filter((i) => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
-  const allOverdueCount = INVOICES.filter((i) => i.status === 'overdue').length
-  const overdueCustomers = new Set(INVOICES.filter((i) => i.status === 'overdue').map((i) => i.customer)).size
-
-  /* ---------- Top 5 customers / debtors for horizontal bar charts ---------- */
-  const aggScope = customerAgg(month)
-  const topCustomers = aggScope.filter((c) => c.sales > 0).slice(0, 5)
-    .map((c) => ({ label: c.name, value: Math.round(c.sales * 1.07 * 100) / 100 }))
-  const overdueByCustomer = new Map<string, number>()
-  for (const inv of invScope) {
-    if (inv.status === 'overdue') {
-      overdueByCustomer.set(inv.customer, (overdueByCustomer.get(inv.customer) ?? 0) + inv.total)
-    }
+  /* ---------- ลูกหนี้ (AR) — REAL reconciled receivables snapshot ----------
+     Sourced from the ลูกหนี้ page (AR_OUTSTANDING), NOT derived from invoices.
+     It is a current snapshot, so the same figures apply to the monthly and the
+     yearly view. */
+  const arOutstandingTotal = AR_OUTSTANDING_TOTAL
+  const arList = Object.entries(AR_OUTSTANDING).map(([name, r]) => ({ name, amount: r.amount, dueDate: r.dueDate }))
+  /* A balance is overdue when its due date is strictly before today. */
+  const isArOverdue = (dueDate: string) => {
+    const [y, m, d] = dueDate.split('-').map(Number)
+    const now = new Date()
+    return new Date(y, m - 1, d).getTime() < new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   }
-  const topDebtors = [...overdueByCustomer.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, value]) => ({ label: name, value }))
+  const arDebtorCount = arList.filter((d) => d.amount > 0).length
+  const arOverdueList = arList.filter((d) => d.amount > 0 && isArOverdue(d.dueDate))
+  const arOverdueAmt = arOverdueList.reduce((s, d) => s + d.amount, 0)
+  const arOverdueCount = arOverdueList.length
+
+  /* ---------- Top 5 customers (sales) / debtors (real outstanding) ---------- */
+  const topCustomers = customerAgg(month).filter((c) => c.sales > 0).slice(0, 5)
+    .map((c) => ({ label: c.name, value: Math.round(c.sales * 1.07 * 100) / 100 }))
+  const topDebtors = [...arList].filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5)
+    .map((d) => ({ label: d.name, value: d.amount }))
 
   /* ---------- AP (เงินที่บริษัทค้างจ่ายซัพพลายเออร์) — placeholder estimate ---------- */
   const estPayablesCement = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.65) /* cement ≈ 65% of cost */
@@ -195,12 +189,9 @@ export function MonthlyReport() {
       rows.push(['ราคาขายเฉลี่ย / m³', t.m3Sold ? Math.round(net / t.m3Sold) : 0])
       rows.push([])
 
-      rows.push(['ลูกหนี้ — เงินลูกค้าค้างชำระ'])
-      rows.push(['ใบกำกับค้างชำระ (เดือนนี้)', monthOutstandingCount, stripBaht(baht(monthOutstandingAmt))])
-      rows.push(['ใบกำกับเลยกำหนด (เดือนนี้)', monthOverdueCount, stripBaht(baht(monthOverdueAmt))])
-      rows.push(['ลูกหนี้รวมทั้งปี (สะสม)', '', stripBaht(baht(allOutstandingAmt))])
-      rows.push(['เลยกำหนดสะสมทั้งปี', allOverdueCount, stripBaht(baht(allOverdueAmt))])
-      rows.push(['จำนวนลูกค้าที่เลยกำหนด', overdueCustomers])
+      rows.push(['ลูกหนี้ — เงินลูกค้าค้างชำระ (ยอดจริงจากหน้าลูกหนี้)'])
+      rows.push(['ลูกหนี้คงค้างปัจจุบัน', arDebtorCount, stripBaht(baht(arOutstandingTotal))])
+      rows.push(['เลยกำหนดชำระ', arOverdueCount, stripBaht(baht(arOverdueAmt))])
       rows.push([])
 
       rows.push(['เจ้าหนี้ — บริษัทค้างจ่าย (ประมาณการ)'])
@@ -215,8 +206,8 @@ export function MonthlyReport() {
       topCustomers.forEach((c, i) => rows.push([i + 1, c.label, Math.round(c.value)]))
       rows.push([])
 
-      rows.push(['ลูกหนี้ยอดค้างสูงสุด 5 อันดับ (เลยกำหนดชำระ)'])
-      rows.push(['อันดับ', 'ลูกค้า', 'ยอดค้างเลยกำหนด (บาท)'])
+      rows.push(['ลูกหนี้ยอดค้างสูงสุด 5 อันดับ (ยอดคงค้างจริง)'])
+      rows.push(['อันดับ', 'ลูกค้า', 'ยอดคงค้าง (บาท)'])
       topDebtors.forEach((c, i) => rows.push([i + 1, c.label, Math.round(c.value)]))
       rows.push([])
 
@@ -303,14 +294,14 @@ export function MonthlyReport() {
         <div className="grid g-4" style={{ marginBottom: 16 }}>
           <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(t.m3All))} unit="m³" note={isYear ? `ทั้งปี · ${MONTHS.length} เดือน` : 'ทั้งเดือน'} />
           <KpiCard
-            label={isYear ? 'ค้างชำระสะสม · Outstanding' : 'ค้างชำระเดือนนี้ · Outstanding'}
-            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(monthOutstandingAmt)}</span>}
-            note={`${monthOutstandingCount} ใบ · เกินกำหนด ${monthOverdueCount}`}
+            label="ลูกหนี้คงค้าง · Outstanding"
+            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(arOutstandingTotal)}</span>}
+            note={`${arDebtorCount} ราย · เลยกำหนด ${arOverdueCount}`}
           />
           <KpiCard
-            label="ค้างชำระสะสมทั้งปี · Outstanding YTD"
-            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(allOutstandingAmt)}</span>}
-            note={`เลยกำหนดสะสม ${allOverdueCount} ใบ · ${overdueCustomers} ลูกค้า`}
+            label="เลยกำหนดชำระ · Overdue"
+            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(arOverdueAmt)}</span>}
+            note={`${arOverdueCount} ราย ต้องติดตามด่วน`}
           />
           <KpiCard label="เฉลี่ยต่อคิว · Avg / m³" value={baht(t.m3Sold ? Math.round(net / t.m3Sold) : 0)} note="ราคาขายเฉลี่ย" />
         </div>
@@ -352,7 +343,7 @@ export function MonthlyReport() {
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สรุปการเงิน · {periodLabel}</span>
           <div className="row" style={{ gap: 6 }}>
             <Badge tone="warning" square pip={false}>เครดิต {net ? Math.round((t.credit / net) * 100) : 0}%</Badge>
-            {allOverdueCount > 0 && <Badge tone="danger" square pip={false}>เกินกำหนด {allOverdueCount} ใบ</Badge>}
+            {arOverdueCount > 0 && <Badge tone="danger" square pip={false}>เลยกำหนด {arOverdueCount} ราย</Badge>}
           </div>
         </div>
 
@@ -367,25 +358,13 @@ export function MonthlyReport() {
             <Row k="กำไรขั้นต้น" v={baht(grossProfit)} strong />
           </FinanceCard>
 
-          {/* ลูกหนี้ · เงินลูกค้าค้าง */}
-          <FinanceCard title="ลูกหนี้ · เงินลูกค้าค้าง" tone="warning">
-            {isYear ? (
-              <>
-                <Row k="ลูกหนี้สะสมทั้งปี" v={baht(allOutstandingAmt)} hint={`${monthOutstandingCount} ใบ`} strong />
-                <Row k="เลยกำหนดสะสม" v={baht(allOverdueAmt)} hint={`${allOverdueCount} ใบ`} danger />
-                <div className="divider" />
-                <Row k="ลูกค้าเลยกำหนด" v={`${overdueCustomers} ราย`} />
-              </>
-            ) : (
-              <>
-                <Row k="ค้างชำระเดือนนี้" v={baht(monthOutstandingAmt)} hint={`${monthOutstandingCount} ใบ`} />
-                <Row k="เลยกำหนดเดือนนี้" v={baht(monthOverdueAmt)} hint={`${monthOverdueCount} ใบ`} danger />
-                <div className="divider" />
-                <Row k="ลูกหนี้สะสมทั้งปี" v={baht(allOutstandingAmt)} strong />
-                <Row k="เลยกำหนดสะสม" v={baht(allOverdueAmt)} hint={`${allOverdueCount} ใบ`} danger />
-                <Row k="ลูกค้าเลยกำหนด" v={`${overdueCustomers} ราย`} />
-              </>
-            )}
+          {/* ลูกหนี้ · เงินลูกค้าค้าง — ยอดจริงจากหน้าลูกหนี้ (กระทบยอดล่าสุด) */}
+          <FinanceCard title="ลูกหนี้ · เงินลูกค้าค้าง" tone="warning" hint="ยอดคงค้างจริงจากหน้าลูกหนี้ · ยอด ณ ปัจจุบัน">
+            <Row k="ลูกหนี้คงค้าง (ปัจจุบัน)" v={baht(arOutstandingTotal)} hint={`${arDebtorCount} ราย`} strong />
+            <Row k="เลยกำหนดชำระ" v={baht(arOverdueAmt)} hint={`${arOverdueCount} ราย`} danger />
+            <div className="divider" />
+            <Row k="ลูกค้าที่ยังค้าง" v={`${arDebtorCount} ราย`} />
+            <Row k="ลูกค้าเลยกำหนด" v={`${arOverdueCount} ราย`} />
           </FinanceCard>
 
           {/* เจ้าหนี้ · บริษัทค้างจ่าย */}
@@ -418,10 +397,10 @@ export function MonthlyReport() {
                 ลูกหนี้ยอดค้างสูงสุด · Top 5
               </div>
               <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)', marginTop: 3 }}>
-                {periodLabel} · เฉพาะใบกำกับที่เลยกำหนดชำระ (รวม VAT)
+                ยอดคงค้างจริงจากหน้าลูกหนี้ · ยอด ณ ปัจจุบัน
               </div>
             </div>
-            <HBarChart data={topDebtors} color="#dc2626" emptyText={isYear ? 'ไม่มีลูกหนี้เลยกำหนดในปีนี้' : 'ไม่มีลูกหนี้เลยกำหนดในเดือนนี้'} />
+            <HBarChart data={topDebtors} color="#dc2626" emptyText="ไม่มีลูกหนี้คงค้าง" />
           </div>
         </div>
       </div>

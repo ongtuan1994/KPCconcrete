@@ -28,7 +28,7 @@ function stamp<T extends AuditStamp>(rec: T): T {
 export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName'>>
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
-export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'startDate' | 'phone'>>
+export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */

@@ -257,7 +257,10 @@ function resolveEmployee(userId: string, name: string, employees: Employee[]): E
 const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
 /** Import one or more scanner CSV files: parse punches, group by employee+day
-    (earliest = in, latest = out), and merge into the store. */
+    (earliest = in, latest = out), and save straight into the store. Existing
+    days are NEVER cleared; a day that re-appears in a new scan OVERWRITES the
+    stored record (duplicate → replace), and days absent from the import are
+    left untouched. */
 export function importScanFiles(files: { name: string; text: string }[]): ImportSummary {
   const employees = EMPLOYEES
   const errors: string[] = []
@@ -287,7 +290,10 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
     else { if (p.at < g.min) g.min = p.at; if (p.at > g.max) g.max = p.at }
   }
 
-  /* Merge into existing records — extend in/out (min/max) so split files combine. */
+  /* Save into the store without clearing. A day already present is OVERWRITTEN
+     by the freshly-imported scan (duplicate → replace); days not in this import
+     are left as-is. Within this import, split files for the same day were already
+     combined above via min/max, so `g` holds that day's earliest-in/latest-out. */
   const next = [...state]
   let recordCount = 0
   for (const g of byKey.values()) {
@@ -296,10 +302,9 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
     const outHHMM = g.max > g.min ? minToHHMM(g.max.getHours() * 60 + g.max.getMinutes()) : undefined
     const existing = next.find((r) => r.id === id)
     if (existing) {
-      const ins = [existing.clockIn, inHHMM].filter(Boolean) as string[]
-      const outs = [existing.clockOut, outHHMM].filter(Boolean) as string[]
-      existing.clockIn = ins.sort()[0]
-      existing.clockOut = outs.length ? outs.sort().slice(-1)[0] : existing.clockOut
+      existing.clockIn = inHHMM
+      existing.clockOut = outHHMM
+      existing.empName = g.empName
       existing.source = 'scan'
     } else {
       next.unshift({ id, date: g.date, empId: g.empId, empName: g.empName, clockIn: inHHMM, clockOut: outHHMM, source: 'scan' })

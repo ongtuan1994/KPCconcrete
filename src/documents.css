@@ -344,3 +344,51 @@
   .billing-summary-sheet .bs-words { font-size: 11px; margin-top: 8px; }
   .billing-summary-sheet table.bs-grid tr { break-inside: avoid; }
 }
+
+/* ============================================================
+   Bank deposit / pay-in slip (ใบนำฝาก · ttb)
+   Prints onto the pre-printed bank form on a #10 envelope, landscape
+   (241 × 105 mm). Each field is absolutely positioned in mm so it lines
+   up with the boxes on the form (offsets live in DepositSlipDoc.tsx).
+   ============================================================ */
+.deposit-wrap { overflow: auto; }
+.deposit-sheet {
+  position: relative;
+  width: 241mm;
+  height: 105mm;
+  background: #fff;
+  box-sizing: border-box;
+  color: #111;
+}
+.deposit-sheet .dep-field { position: absolute; white-space: nowrap; line-height: 1; }
+.deposit-sheet .dep-acct {
+  font-family: var(--kpc-font-mono), 'Courier New', monospace;
+  font-weight: 700;
+  color: #13287a;
+}
+.deposit-sheet .dep-amount { font-weight: 700; color: #13287a; }
+
+/* On screen, scale the mm-sized sheet down so the whole envelope fits the modal. */
+@media screen {
+  .deposit-wrap { height: calc(105mm * 0.78); }
+  .deposit-wrap .deposit-sheet {
+    transform: scale(0.78);
+    transform-origin: top left;
+    border: 1px dashed var(--kpc-border);
+  }
+}
+
+@media print {
+  /* Dedicated page box for the envelope; the default @page stays A4 for every
+     other document. The deposit sheet opts in via `page: envelope10`. */
+  @page envelope10 { size: 241mm 105mm; margin: 0; }
+  .deposit-wrap { height: auto !important; overflow: visible !important; }
+  .deposit-wrap .deposit-sheet { transform: none !important; }
+  .deposit-sheet {
+    page: envelope10;
+    width: 241mm !important;
+    height: 105mm !important;
+    overflow: hidden !important;
+    border: none !important;
+  }
+}
