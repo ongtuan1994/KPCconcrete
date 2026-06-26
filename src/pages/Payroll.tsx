@@ -10,7 +10,8 @@ import { PaySlipDoc } from '../components/documents/PaySlipDoc'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { EMPLOYEES, DEPARTMENT_LABEL } from '../data/employees'
-import { salaryStructureFor } from '../data/salaryStructure'
+import { salaryStructureFor, computeOtRate } from '../data/salaryStructure'
+import { useAttendance, computeAttendance } from '../data/attendance'
 import {
   useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, CAN_DELETE,
   type PayrollPayment, type PayMethodOut, type AdvancePayment,
@@ -34,6 +35,14 @@ function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return iso
   return `${d}/${m}/${Number(y) + 543}`
+}
+/** First and last day (ISO) of a "YYYY-MM" period. */
+function monthRange(ym: string): [string, string] {
+  const [y, m] = ym.split('-').map(Number)
+  if (!y || !m) return ['', '']
+  const p = (n: number) => String(n).padStart(2, '0')
+  const last = new Date(y, m, 0).getDate()
+  return [`${y}-${p(m)}-01`, `${y}-${p(m)}-${p(last)}`]
 }
 /** "YYYY-MM" → "มิ.ย. 2569". */
 function fmtMonth(ym: string): string {
@@ -230,9 +239,13 @@ export function Payroll() {
 
 function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: PayrollPayment[]; onSaved: (p: PayrollPayment) => void }) {
   const created = useCreatedDocs()
+  const attendance = useAttendance()
   const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
 
   const [payMonth, setPayMonth] = useState(thisMonth())
+  /* OT date range (วันที่ ตั้งแต่ / ถึง) — pulls OT minutes from the attendance log. */
+  const [otFrom, setOtFrom] = useState('')
+  const [otTo, setOtTo] = useState('')
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
   const [bankAccount, setBankAccount] = useState('')
   /* income */
@@ -272,7 +285,9 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     if (!open) return
     const firstId = employees[0]?.id ?? ''
     const tm = thisMonth()
+    const [rf, rt] = monthRange(tm)
     setPayMonth(tm); setEmployeeId(firstId); setBankAccount('')
+    setOtFrom(rf); setOtTo(rt)
     setSpecialPay(''); setVehiclePay(''); setOtherIncome(''); setOtherDeduction('')
     setPayDate(todayIso()); setMethod('โอน'); setNote(''); setErr('')
     applyStructure(firstId)
@@ -288,8 +303,22 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   const isTransport = selEmp?.department === 'transport'
   const advanceTaken = sumAdvances(created.advances, employeeId, payMonth)
   const dailyWage = struct.dailyWage
+
+  /* OT (non-transport): sum net OT minutes from the attendance log within the
+     chosen date range × the employee's OT rate (บาท/นาที). */
+  const otRate = computeOtRate(struct)
+  const otRecords = useMemo(
+    () => attendance.filter((r) => r.empId === employeeId && (!otFrom || r.date >= otFrom) && (!otTo || r.date <= otTo)),
+    [attendance, employeeId, otFrom, otTo],
+  )
+  const otMinutes = otRecords.reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
+  const otAmount = Math.round(otMinutes * otRate * 100) / 100
+
+  /* For non-transport the "รักษารถ" income slot becomes the computed OT amount. */
+  const vehicleOrOt = isTransport ? num(vehiclePay) : otAmount
+
   const effectiveBase = isLabor ? num(daysWorked) * dailyWage : num(baseSalary)
-  const totalIncome = effectiveBase + num(experiencePay) + num(specialPay) + num(vehiclePay) + num(otherIncome)
+  const totalIncome = effectiveBase + num(experiencePay) + num(specialPay) + vehicleOrOt + num(otherIncome)
   const totalDeduction = num(socialSecurity) + num(advance) + num(otherDeduction)
   const net = totalIncome - totalDeduction
 
@@ -311,7 +340,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
       position: emp.role, department: DEPARTMENT_LABEL[emp.department].th, bankAccount: bankAccount.trim() || undefined,
       daysWorked: isLabor ? num(daysWorked) : undefined, dailyWage: isLabor ? dailyWage : undefined,
       baseSalary: effectiveBase, experiencePay: num(experiencePay), specialPay: num(specialPay),
-      vehiclePay: num(vehiclePay), otherIncome: num(otherIncome), totalIncome,
+      vehiclePay: vehicleOrOt, otherIncome: num(otherIncome), totalIncome,
       socialSecurity: num(socialSecurity), advance: num(advance), otherDeduction: num(otherDeduction), totalDeduction,
       netAmount: net, payDate, method, note: note.trim() || undefined, createdAt: new Date().toISOString(),
     }
@@ -329,7 +358,17 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontFamily: 'var(--kpc-font-mono)', fontWeight: 600 }}>{ppNo}</div>
         </Field>
         <Field label="งวดเดือน" required>
-          <Input type="month" value={payMonth} onChange={(e) => { setPayMonth(e.target.value); advancePrefill(employeeId, e.target.value) }} />
+          <Input type="month" value={payMonth} onChange={(e) => {
+            const ym = e.target.value
+            setPayMonth(ym); advancePrefill(employeeId, ym)
+            const [rf, rt] = monthRange(ym); setOtFrom(rf); setOtTo(rt)
+          }} />
+        </Field>
+        <Field label="คำนวณ OT ตั้งแต่วันที่" hint="ดึงจากบันทึกลงเวลางาน">
+          <Input type="date" value={otFrom} onChange={(e) => setOtFrom(e.target.value)} />
+        </Field>
+        <Field label="จนถึงวันที่">
+          <Input type="date" value={otTo} onChange={(e) => setOtTo(e.target.value)} />
         </Field>
         <Field label="พนักงาน" required style={{ gridColumn: '1 / -1' }} hint={selEmp ? `${selEmp.role} · ${DEPARTMENT_LABEL[selEmp.department].th}` : undefined}>
           <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth) }}>
@@ -361,7 +400,13 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           )}
           <Field label="ประสบการณ์"><Input type="number" step="0.01" min={0} placeholder="0" value={experiencePay} onChange={(e) => setExperiencePay(e.target.value)} /></Field>
           <Field label={isTransport ? 'ค่าเที่ยววิ่ง' : 'เงินพิเศษ'}><Input type="number" step="0.01" min={0} placeholder="0" value={specialPay} onChange={(e) => setSpecialPay(e.target.value)} /></Field>
-          <Field label="รักษารถ"><Input type="number" step="0.01" min={0} placeholder="0" value={vehiclePay} onChange={(e) => setVehiclePay(e.target.value)} /></Field>
+          {isTransport ? (
+            <Field label="รักษารถ"><Input type="number" step="0.01" min={0} placeholder="0" value={vehiclePay} onChange={(e) => setVehiclePay(e.target.value)} /></Field>
+          ) : (
+            <Field label="OT" hint={`พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที`}>
+              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600 }}>{baht(otAmount)}</div>
+            </Field>
+          )}
           <Field label={isTransport ? 'ค่ารักษารถ' : 'อื่นๆ'}><Input type="number" step="0.01" min={0} placeholder="0" value={otherIncome} onChange={(e) => setOtherIncome(e.target.value)} /></Field>
           <Field label="รวมรับ"><div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 700 }}>{baht(totalIncome)}</div></Field>
         </div>

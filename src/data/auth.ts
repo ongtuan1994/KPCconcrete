@@ -78,6 +78,7 @@ export const RESOURCES: Resource[] = [
   { key: 'transport-pricing', route: '/transport-pricing', label: 'ราคาค่าขนส่ง', section: 'คลัง & ราคา · Inventory' },
 
   { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'องค์กร · Organization' },
+  { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'องค์กร · Organization' },
   { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'องค์กร · Organization' },
 
   { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'องค์กร · Organization' },
@@ -103,7 +104,8 @@ function row(levels: Level[]): Record<string, Level> {
 
 /* Column order for the arrays below — keep in sync with RESOURCES:
    monthly, tax, audit, SO, delivery, invoice, receipt, PO, goods, payroll,
-   custMaster, suppliers, ledger, stock, pricing, transport, employees, salaryStruct, settings */
+   custMaster, suppliers, ledger, stock, pricing, transport, employees,
+   attendance, salaryStruct, settings */
 
 /** Default permission matrix — a sensible reading of the supplied chart.
     Fully editable + persisted from the Settings page, so any cell can be
@@ -111,17 +113,17 @@ function row(levels: Level[]): Record<string, Level> {
     which only Admin and Auditor may access. */
 export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
-  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
+  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
   /* Board — full access (owner), except audit + system settings. */
-  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
+  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
-  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
-  /* Manager — operational: edits sales + customers, views the rest,
-     no audit, no purchasing/payments, no settings. */
-  Manager: row([V, V, N, E, E, V, V, N, N, N, E, V, V, V, V, V, V, V, N]),
+  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
+  /* Manager — operational: edits sales + customers + time attendance, views
+     the rest, no audit, no purchasing/payments, no settings. */
+  Manager: row([V, V, N, E, E, V, V, N, N, N, E, V, V, V, V, V, V, E, V, N]),
   /* Accountant — finance: edits all sales/purchasing/customers/reports,
-     views inventory & HR + the Audit report (read-only), no settings. */
-  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, N]),
+     views inventory & HR + attendance + the Audit report (read-only), no settings. */
+  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, V, N]),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */

@@ -26,6 +26,7 @@ import { TransportHub } from './pages/TransportHub'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
+import { Attendance } from './pages/Attendance'
 import { SalaryStructure } from './pages/SalaryStructure'
 
 /** Gate a route element on the current role's View permission. Falls back to the
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/attendance" element={<Attendance />} />
         <Route path="/salary-structure" element={<SalaryStructure />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/monthly-report" replace />} />

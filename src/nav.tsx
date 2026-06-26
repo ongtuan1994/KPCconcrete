@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch } from './components/icons'
+import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -57,6 +57,7 @@ export const NAV: NavGroup[] = [
     section: 'องค์กร · Organization',
     items: [
       { to: '/employees', label: 'รายชื่อพนักงาน', en: 'Employee List', icon: <IconUsers /> },
+      { to: '/attendance', label: 'บันทึกลงเวลางาน', en: 'Time Attendance', icon: <IconClock /> },
       { to: '/salary-structure', label: 'ปรับโครงสร้าง', en: 'Salary Structure', icon: <IconTag /> },
     ],
   },

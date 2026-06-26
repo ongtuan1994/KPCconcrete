@@ -138,6 +138,12 @@ export const IconCheck = ({ size = 12, stroke = '#fff' }: IconProps) => (
     <path d="M2.5 6.2l2.2 2.3 4.8-5" stroke={stroke} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
+export const IconClock = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18">
+    <circle cx="9" cy="9" r="6.5" stroke="#969CA6" strokeWidth="1.5" fill="none" />
+    <path d="M9 5.2V9l2.6 1.6" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
 export const IconMenu = ({ size = 20, stroke = '#3A3F47' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
     <line x1="3" y1="6" x2="17" y2="6" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />

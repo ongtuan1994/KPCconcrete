@@ -9,6 +9,21 @@ import type { SalaryStructure } from './createdDocs'
 
 export const DEFAULT_OT_RATE = 1.5
 
+/** Daily wage used for the OT calculation: the explicit เงินรายวัน when set,
+    otherwise derived from the monthly เงินเดือน ÷ 30. */
+export function dailyWageFor(s: { dailyWage: number; baseSalary: number }): number {
+  if (s.dailyWage > 0) return s.dailyWage
+  if (s.baseSalary > 0) return s.baseSalary / 30
+  return 0
+}
+
+/** OT rate (บาท/นาที) = เงินรายวัน ÷ 480 (8 ชม. × 60 นาที) × 1.5, truncated to
+    2 decimals WITHOUT rounding up. Returns 0 when no wage is set. */
+export function computeOtRate(s: { dailyWage: number; baseSalary: number }): number {
+  const rate = (dailyWageFor(s) / 480) * 1.5
+  return Math.floor(rate * 100) / 100
+}
+
 export const SALARY_STRUCTURE_SEED: Record<string, SalaryStructure> = {
   /* Thai staff — แพล้นปูน / สำนักงาน (รายเดือน) */
   E001: { baseSalary: 13000, dailyWage: 0, experiencePay: 4500, socialSecurity: 650, otRatePerMinute: DEFAULT_OT_RATE },

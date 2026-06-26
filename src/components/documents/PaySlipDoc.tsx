@@ -21,6 +21,8 @@ export function PaySlipDoc({ pp }: { pp: PayrollPayment }) {
   const isTransport = pp.department === 'ฝ่ายขนส่งรถโม่'
   const specialLabel = isTransport ? 'ค่าเที่ยววิ่ง' : 'เงินพิเศษ'
   const otherLabel = isTransport ? 'ค่ารักษารถ' : 'อื่นๆ'
+  /* Non-transport staff use the รักษารถ slot for OT pay. */
+  const vehicleLabel = isTransport ? 'รักษารถ' : 'OT'
   return (
     <div className="doc-sheet payslip">
       <div className="ps-title"><span>Payment Slip</span></div>
@@ -59,7 +61,7 @@ export function PaySlipDoc({ pp }: { pp: PayrollPayment }) {
             <td className="ps-h">เงินเดือน</td>
             <td className="ps-h">ประสบการณ์</td>
             <td className="ps-h">{specialLabel}</td>
-            <td className="ps-h">รักษารถ</td>
+            <td className="ps-h">{vehicleLabel}</td>
             <td className="ps-h">{otherLabel}</td>
             <td className="ps-h">รวมรับ</td>
           </tr>

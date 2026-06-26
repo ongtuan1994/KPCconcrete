@@ -8,7 +8,7 @@ import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { EMPLOYEES, DEPARTMENT_LABEL, yearsOfService, type Employee } from '../data/employees'
 import { useCreatedDocs, setSalaryStructure, addSalaryStructureAdjustment, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
-import { DEFAULT_OT_RATE, salaryStructureFor, hasSalaryStructure } from '../data/salaryStructure'
+import { salaryStructureFor, hasSalaryStructure, computeOtRate } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
 
 /** Standard working days per month used to annualize day-rate labour into a
@@ -47,7 +47,7 @@ export function SalaryStructure() {
   const exportExcel = () => {
     const head = ['รหัส', 'ชื่อ-สกุล', 'ฝ่าย', 'เงินรายวัน', 'เงินเดือน', 'ประสบการณ์', 'ปกส.', 'อัตรา OT (บาท/นาที)']
     const body = rows.map(({ emp, s }) => [
-      emp.id, emp.name, DEPARTMENT_LABEL[emp.department].th, s.dailyWage, s.baseSalary, s.experiencePay, s.socialSecurity, s.otRatePerMinute,
+      emp.id, emp.name, DEPARTMENT_LABEL[emp.department].th, s.dailyWage, s.baseSalary, s.experiencePay, s.socialSecurity, computeOtRate(s),
     ])
     downloadCsv('salary-structure', [head, ...body])
   }
@@ -70,7 +70,7 @@ export function SalaryStructure() {
     { key: 'base', header: 'เงินเดือน', align: 'right', cell: (r) => money(r.s.baseSalary) },
     { key: 'exp', header: 'ประสบการณ์', align: 'right', cell: (r) => money(r.s.experiencePay) },
     { key: 'sso', header: 'ปกส.', align: 'right', cell: (r) => money(r.s.socialSecurity) },
-    { key: 'ot', header: 'อัตรา OT', align: 'right', cell: (r) => <span className="mono">{r.s.otRatePerMinute} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>บาท/นาที</span></span> },
+    { key: 'ot', header: 'อัตรา OT', align: 'right', cell: (r) => <span className="mono">{computeOtRate(r.s)} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>บาท/นาที</span></span> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setEditing(r.emp)}>แก้ไข</Button> },
   ]
 
@@ -133,7 +133,6 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
   const [baseSalary, setBaseSalary] = useState('')
   const [experiencePay, setExperiencePay] = useState('')
   const [socialSecurity, setSocialSecurity] = useState('')
-  const [otRate, setOtRate] = useState('')
 
   useEffect(() => {
     if (!employee || !current) return
@@ -141,11 +140,14 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
     setBaseSalary(current.baseSalary ? String(current.baseSalary) : '')
     setExperiencePay(current.experiencePay ? String(current.experiencePay) : '')
     setSocialSecurity(current.socialSecurity ? String(current.socialSecurity) : '')
-    setOtRate(String(current.otRatePerMinute ?? DEFAULT_OT_RATE))
   }, [employee, current])
 
   if (!employee) return null
   const isLabor = employee.department === 'labor'
+
+  /* OT rate is derived live from the wage inputs (เงินรายวัน → ÷480×1.5,
+     or เงินเดือน÷30 when no daily wage). */
+  const derivedOt = computeOtRate({ dailyWage: Number(dailyWage) || 0, baseSalary: Number(baseSalary) || 0 })
 
   const save = () => {
     const next: SalaryStructure = {
@@ -153,7 +155,7 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
       baseSalary: Number(baseSalary) || 0,
       experiencePay: Number(experiencePay) || 0,
       socialSecurity: Number(socialSecurity) || 0,
-      otRatePerMinute: Number(otRate) || DEFAULT_OT_RATE,
+      otRatePerMinute: derivedOt,
       lastAdjustedAt: new Date().toISOString(),
     }
     const isLabor = employee.department === 'labor' || next.dailyWage > 0 || (current?.dailyWage ?? 0) > 0
@@ -194,8 +196,10 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
         <Field label="ค่าประกันสังคม ปกส. (บาท)">
           <Input type="number" step="0.01" min={0} placeholder="เช่น 750" value={socialSecurity} onChange={(e) => setSocialSecurity(e.target.value)} />
         </Field>
-        <Field label="อัตราค่าแรงโอที (บาท/นาที)" hint="เช่น 1.5 บาท ต่อ 1 นาที">
-          <Input type="number" step="0.01" min={0} placeholder={String(DEFAULT_OT_RATE)} value={otRate} onChange={(e) => setOtRate(e.target.value)} />
+        <Field label="อัตราค่าแรงโอที (บาท/นาที)" hint="คำนวณอัตโนมัติ: เงินรายวัน ÷ 480 × 1.5 (เงินรายวันใช้ค่าที่กรอก หรือ เงินเดือน ÷ 30) · ทศนิยม 2 ตำแหน่งแบบไม่ปัดขึ้น">
+          <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontFamily: 'var(--kpc-font-mono)', fontWeight: 600 }}>
+            {derivedOt.toFixed(2)} <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--kpc-text-muted)', marginLeft: 6 }}>บาท/นาที</span>
+          </div>
         </Field>
       </div>
     </Modal>
@@ -304,6 +308,8 @@ function AdjustForm({ open, employees, onClose }: { open: boolean; employees: Em
       socialSecurity: newSso,
       lastAdjustedAt: new Date().toISOString(),
     }
+    /* Recompute OT from the (possibly changed) wage. */
+    next.otRatePerMinute = computeOtRate(next)
     const changes = diffStructure(cur, next, isLabor)
     if (changes.length === 0) return setErr('ยังไม่มีรายการที่เปลี่ยนแปลง')
     setSalaryStructure(emp.id, next)
@@ -336,7 +342,7 @@ function AdjustForm({ open, employees, onClose }: { open: boolean; employees: Em
             <Stat k={baseLabel} v={curBase ? baht(curBase) : '—'} />
             <Stat k="ค่าประสบการณ์" v={cur.experiencePay ? baht(cur.experiencePay) : '—'} />
             <Stat k="ปกส." v={cur.socialSecurity ? baht(cur.socialSecurity) : '—'} />
-            <Stat k="อัตรา OT" v={`${cur.otRatePerMinute} บาท/นาที`} />
+            <Stat k="อัตรา OT" v={`${computeOtRate(cur).toFixed(2)} บาท/นาที`} />
           </div>
         </div>
       )}
