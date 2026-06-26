@@ -362,3 +362,15 @@ table.perm-matrix tbody tr:not(.sec-row):hover { background: var(--kpc-primary-5
   border-radius: 7px; cursor: pointer; transition: background .12s, border-color .12s;
 }
 .notice-item:hover { background: var(--kpc-primary-50); border-color: var(--kpc-primary-100); }
+
+/* ---------------- Notification count badge + pulse ---------------- */
+.bell .bell-count {
+  position: absolute; top: -3px; right: -3px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--kpc-danger); color: #fff; border: 1.5px solid #fff;
+  font-size: 10px; font-weight: 700; line-height: 13px; text-align: center; font-family: var(--kpc-font-mono);
+}
+.bell.has-noti { animation: bell-pulse 1.6s ease-in-out 3; }
+@keyframes bell-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kpc-danger) 55%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--kpc-danger) 0%, transparent); }
+}

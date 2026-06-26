@@ -9,6 +9,7 @@ import {
   useAuditItems, setAuditVerified, removeAuditItem, clearVerifiedAuditItems, sendAuditRequest, addAuditNote,
   AUDIT_CATEGORY_LABEL, type AuditItem, type AuditCategory,
 } from '../data/audit'
+import { useCanAudit } from '../data/auth'
 import { fmtThaiDateTime } from '../utils/datetime'
 import { downloadCsv } from '../utils/csv'
 
@@ -17,6 +18,7 @@ const CAT_TONE: Record<AuditCategory, Tone> = { sales: 'info', purchasing: 'warn
 export function AuditReport() {
   const items = useAuditItems()
   const navigate = useNavigate()
+  const canAudit = useCanAudit() /* Admin / Auditor may act; Accountant is read-only */
   const [query, setQuery] = useState('')
   const [showNote, setShowNote] = useState(false)
 
@@ -64,23 +66,25 @@ export function AuditReport() {
     cell: (r) => <Button variant="ghost" size="sm" onClick={() => { if (confirm(`นำ ${r.ref} ออกจากรายการตรวจสอบ?`)) removeAuditItem(r.key) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>,
   }
 
-  /* Pending table — has the Verified action that moves the row to history. */
+  const reqStatusCol: Column<AuditItem> = {
+    key: 'reqstatus',
+    header: 'คำขอ',
+    align: 'center',
+    cell: (r) => (r.requested
+      ? <Badge tone="info" pip={false} square>ส่งคำขอแล้ว</Badge>
+      : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
+  }
+
+  /* Pending table — Verified / delete actions are auditor-only. */
   const pendingColumns: Column<AuditItem>[] = [
     ...baseColumns,
-    {
-      key: 'reqstatus',
-      header: 'คำขอ',
-      align: 'center',
-      cell: (r) => (r.requested
-        ? <Badge tone="info" pip={false} square>ส่งคำขอแล้ว</Badge>
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
-    },
-    { key: 'verify', header: '', align: 'center', cell: (r) => <Button variant="primary" size="sm" onClick={() => setAuditVerified(r.key, true)}>Verified</Button> },
+    reqStatusCol,
+    ...(canAudit ? [{ key: 'verify', header: '', align: 'center' as const, cell: (r: AuditItem) => <Button variant="primary" size="sm" onClick={() => setAuditVerified(r.key, true)}>Verified</Button> }] : []),
     openCol,
-    delCol,
+    ...(canAudit ? [delCol] : []),
   ]
 
-  /* Verified history table — shows who verified + when, with a revert action. */
+  /* Verified history table — shows who verified + when; revert/delete auditor-only. */
   const verifiedColumns: Column<AuditItem>[] = [
     ...baseColumns,
     {
@@ -93,9 +97,9 @@ export function AuditReport() {
         </div>
       ),
     },
-    { key: 'revert', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setAuditVerified(r.key, false)} title="นำกลับไปรอตรวจสอบ">ยกเลิก</Button> },
+    ...(canAudit ? [{ key: 'revert', header: '', align: 'center' as const, cell: (r: AuditItem) => <Button variant="ghost" size="sm" onClick={() => setAuditVerified(r.key, false)} title="นำกลับไปรอตรวจสอบ">ยกเลิก</Button> }] : []),
     openCol,
-    delCol,
+    ...(canAudit ? [delCol] : []),
   ]
 
   return (
@@ -106,17 +110,19 @@ export function AuditReport() {
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={items.length === 0}>ส่งออก Excel</Button>
-            <Button variant="tonal" onClick={() => setShowNote(true)}>+ บันทึก Free text</Button>
-            <Button
-              variant="primary"
-              disabled={pendingCount === 0}
-              onClick={() => {
-                const n = sendAuditRequest()
-                alert(n > 0 ? `ส่งคำขอตรวจสอบ ${n} รายการ ไปยังฝ่ายบัญชี (Accountant) แล้ว` : 'ไม่มีรายการรอตรวจสอบให้ส่งคำขอ')
-              }}
-            >
-              ส่งคำขอไปฝ่ายบัญชี
-            </Button>
+            {canAudit && <Button variant="tonal" onClick={() => setShowNote(true)}>+ บันทึก Free text</Button>}
+            {canAudit && (
+              <Button
+                variant="primary"
+                disabled={pendingCount === 0}
+                onClick={() => {
+                  const n = sendAuditRequest()
+                  alert(n > 0 ? `ส่งคำขอตรวจสอบ ${n} รายการ ไปยังฝ่ายบัญชี (Accountant) แล้ว` : 'ไม่มีรายการรอตรวจสอบให้ส่งคำขอ')
+                }}
+              >
+                ส่งคำขอไปฝ่ายบัญชี
+              </Button>
+            )}
           </>
         }
       />
@@ -154,7 +160,7 @@ export function AuditReport() {
         <CardHead
           title="ตรวจสอบแล้ว · Verified (History)"
           meta={`${verifiedCount} รายการ`}
-          right={verifiedCount > 0 && (
+          right={canAudit && verifiedCount > 0 && (
             <Button variant="ghost" size="sm" onClick={() => { if (confirm('ล้างประวัติรายการที่ตรวจสอบแล้วทั้งหมด?')) clearVerifiedAuditItems() }} style={{ color: 'var(--kpc-danger)' }}>
               ล้างประวัติ
             </Button>

@@ -4,9 +4,10 @@ import { ROUTE_META } from '../nav'
 import { IconLogout, IconBell } from './icons'
 import { ROLE_LABEL, logout, useCurrentUser, useCanAudit } from '../data/auth'
 import { useAuditItems } from '../data/audit'
+import { useNotiSeen, markNotiSeen } from '../data/notiSeen'
 import { GlobalSearch } from './GlobalSearch'
 
-interface Notice { id: string; title: string; sub: string; route?: string }
+interface Notice { id: string; title: string; sub: string; route?: string; signature: string }
 
 export function Topbar() {
   const loc = useLocation()
@@ -20,20 +21,28 @@ export function Topbar() {
   /* Build the notification feed from live app state. */
   const auditItems = useAuditItems()
   const canAudit = useCanAudit()
-  const notices: Notice[] = []
+  const seen = useNotiSeen()
+  const allNotices: Notice[] = []
   const pendingAudit = auditItems.filter((i) => !i.verified).length
   if (canAudit && pendingAudit > 0) {
-    notices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report' })
+    allNotices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report', signature: `p:${pendingAudit}` })
   }
   /* Accountant receives the audit requests forwarded by the auditor. */
   if (user?.role === 'Accountant') {
     const requested = auditItems.filter((i) => i.requested && !i.verified).length
     if (requested > 0) {
-      notices.push({ id: 'audit-request', title: `มีคำขอตรวจสอบจากผู้ตรวจสอบ ${requested} รายการ`, sub: 'โปรดจัดเตรียม/ตรวจสอบเอกสาร' })
+      allNotices.push({ id: 'audit-request', title: `มีคำขอตรวจสอบจากผู้ตรวจสอบ ${requested} รายการ`, sub: 'โปรดจัดเตรียม/ตรวจสอบเอกสาร', route: '/audit-report', signature: `r:${requested}` })
     }
   }
+  /* Hide notices the user already dismissed at this same signature. */
+  const notices = allNotices.filter((n) => seen[n.id] !== n.signature)
 
-  const openNotice = (n: Notice) => { if (n.route) navigate(n.route); setBellOpen(false) }
+  /* Click → go to the related page (if any) and clear that notification. */
+  const openNotice = (n: Notice) => {
+    markNotiSeen(n.id, n.signature)
+    setBellOpen(false)
+    if (n.route) navigate(n.route)
+  }
 
   return (
     <div className="topbar">
@@ -46,9 +55,9 @@ export function Topbar() {
       <GlobalSearch />
 
       <div style={{ position: 'relative' }}>
-        <button className="bell" aria-label="การแจ้งเตือน" onClick={() => setBellOpen((o) => !o)}>
+        <button className={['bell', notices.length > 0 ? 'has-noti' : ''].filter(Boolean).join(' ')} aria-label="การแจ้งเตือน" onClick={() => setBellOpen((o) => !o)}>
           <IconBell />
-          {notices.length > 0 && <span className="dot" />}
+          {notices.length > 0 && <span className="bell-count">{notices.length}</span>}
         </button>
         {bellOpen && (
           <div className="theme-pop" onMouseLeave={() => setBellOpen(false)} style={{ minWidth: 260 }}>

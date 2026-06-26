@@ -120,8 +120,8 @@ export const DEFAULT_PERMS: PermMatrix = {
      no audit, no purchasing/payments, no settings. */
   Manager: row([V, V, N, E, E, V, V, N, N, N, E, V, V, V, V, V, V, V, N]),
   /* Accountant — finance: edits all sales/purchasing/customers/reports,
-     views inventory & HR, no audit, no settings. */
-  Accountant: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, N]),
+     views inventory & HR + the Audit report (read-only), no settings. */
+  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, N]),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */
