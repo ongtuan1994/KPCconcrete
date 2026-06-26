@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Field, Input, Select } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -132,6 +132,7 @@ export function Employees() {
           : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
       },
     },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     {
       key: 'act',
       header: '',

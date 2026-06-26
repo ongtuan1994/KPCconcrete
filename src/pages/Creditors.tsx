@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
 import { baht } from '../data/selectors'
+import { useCan } from '../data/auth'
+import { AuditButton } from '../components/AuditButton'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'credit' | 'cash' | 'overdue'
@@ -47,6 +50,8 @@ function payStatus(c: Creditor): PayStatus {
 export function Creditors() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const navigate = useNavigate()
+  const canPay = useCan('goods-payments').edit
 
   const list = CREDITOR_MASTER
 
@@ -132,6 +137,25 @@ export function Creditors() {
         )
       },
     },
+    {
+      key: 'pay',
+      header: '',
+      align: 'center',
+      cell: (r) =>
+        r.outstanding && r.outstanding > 0 && canPay ? (
+          <Button
+            variant="tonal"
+            size="sm"
+            onClick={() => navigate('/goods-payments', {
+              state: { payFromPurchaseOrder: { supplier: r.name, amount: String(r.outstanding ?? '') } },
+            })}
+            title="บันทึกใบทำจ่ายให้ซัพพลายเออร์รายนี้"
+          >
+            ชำระหนี้
+          </Button>
+        ) : null,
+    },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'เจ้าหนี้', ref: r.id, label: r.name, sub: `${r.id}${r.outstanding ? ' · ค้าง ' + baht(r.outstanding) : ''}`, route: '/ledger' }} /> },
   ]
 
   return (

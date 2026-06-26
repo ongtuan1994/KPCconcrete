@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, SearchInput, MonthSelect, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { customerAgg, baht, bahtShort, qm, monthLabel, type CustomerAgg } from '../data/selectors'
 import { AR_OUTSTANDING } from '../data/receivables'
+import { useCan } from '../data/auth'
+import { AuditButton } from '../components/AuditButton'
 import { downloadCsv } from '../utils/csv'
 
 /** Render an ISO yyyy-mm-dd as Thai-style dd/mm/yyyy (Buddhist year). */
@@ -40,6 +43,8 @@ function arStatus(outstanding: number, dueDate?: string): PayStatus {
 export function CustomerSummary() {
   const [month, setMonth] = useState<number | 'all'>('all')
   const [query, setQuery] = useState('')
+  const navigate = useNavigate()
+  const canCollect = useCan('receipts').edit
 
   /* Outstanding is the real current AR snapshot (everyone not listed = cleared),
      overlaid on the month-aware sales aggregation. Debtors with a balance but no
@@ -103,6 +108,23 @@ export function CustomerSummary() {
         )
       },
     },
+    {
+      key: 'pay',
+      header: '',
+      align: 'center',
+      cell: (r) =>
+        r.outstanding > 0 && canCollect ? (
+          <Button
+            variant="tonal"
+            size="sm"
+            onClick={() => navigate('/receipts', { state: { collectFromCustomer: r.name } })}
+            title="ออกใบเสร็จรับเงินจากลูกค้ารายนี้"
+          >
+            ชำระหนี้
+          </Button>
+        ) : null,
+    },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'ลูกหนี้', ref: r.name, label: r.name, sub: r.outstanding > 0 ? `ค้างชำระ ${baht(r.outstanding)}` : `ยอดซื้อ ${baht(r.sales)}`, route: '/ledger' }} /> },
   ]
 
   return (

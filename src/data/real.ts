@@ -113,6 +113,9 @@ export interface Customer {
   phone?: string
   creditLimit?: number /* บาท */
   creditDays?: number /* วัน */
+  /* Audit stamp on user-added customers (seed records leave these undefined). */
+  createdBy?: string
+  createdAt?: string
 }
 export const CUSTOMER_MASTER: Customer[] = [
   { id: "C0001", name: "กรีนรีไซเคิล/พี่หนึ่ง", type: "ขายลูกค้า", terms: "เครดิต", legalName: "บจก.กรีนรีไซเคิลระนอง", address: "—", taxId: "—" },
@@ -458,6 +461,9 @@ export interface DeliveryTicket {
   issuer?: string
   /** Name of the person on the customer side who received the delivery. Optional. */
   receiver?: string
+  /* Audit stamp on user-created tickets (seed tickets leave these undefined). */
+  createdBy?: string
+  createdAt?: string
 }
 export const DELIVERY_TICKETS: DeliveryTicket[] = [
   { month: 1, date: "03/01/69", dtNo: "DT26010311739", ref: "11739", type: "ขายลูกค้า", customer: "พี่แหม่ม ระวิ", prod: "KPCR2OS00240", m3: 3.0, price: 2200.0, amount: 6600.0, invoice: "690103-0001", billing: "", pay: "เงินสด" as PayMethod, note: "" },

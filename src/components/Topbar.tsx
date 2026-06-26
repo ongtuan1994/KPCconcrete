@@ -1,16 +1,39 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ROUTE_META } from '../nav'
-import { useTheme, type CornerStyle, type Density } from '../theme/ThemeContext'
-import { IconSearch, IconChevron, IconBell, IconSliders } from './icons'
+import { IconLogout, IconBell } from './icons'
+import { ROLE_LABEL, logout, useCurrentUser, useCanAudit } from '../data/auth'
+import { useAuditItems } from '../data/audit'
+import { GlobalSearch } from './GlobalSearch'
 
-const SWATCHES = ['#0E0EE6', '#1E9E5A', '#C77700', '#D23B3B', '#4B515B']
+interface Notice { id: string; title: string; sub: string; route?: string }
 
 export function Topbar() {
   const loc = useLocation()
+  const navigate = useNavigate()
   const meta = ROUTE_META[loc.pathname] ?? { label: 'ภาพรวม', en: 'Overview', section: 'ภาพรวม' }
-  const [themeOpen, setThemeOpen] = useState(false)
-  const { primary, corner, density, setPrimary, setCorner, setDensity } = useTheme()
+  const [userOpen, setUserOpen] = useState(false)
+  const [bellOpen, setBellOpen] = useState(false)
+  const user = useCurrentUser()
+  const initials = (user?.username ?? '?').slice(0, 2).toUpperCase()
+
+  /* Build the notification feed from live app state. */
+  const auditItems = useAuditItems()
+  const canAudit = useCanAudit()
+  const notices: Notice[] = []
+  const pendingAudit = auditItems.filter((i) => !i.verified).length
+  if (canAudit && pendingAudit > 0) {
+    notices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report' })
+  }
+  /* Accountant receives the audit requests forwarded by the auditor. */
+  if (user?.role === 'Accountant') {
+    const requested = auditItems.filter((i) => i.requested && !i.verified).length
+    if (requested > 0) {
+      notices.push({ id: 'audit-request', title: `มีคำขอตรวจสอบจากผู้ตรวจสอบ ${requested} รายการ`, sub: 'โปรดจัดเตรียม/ตรวจสอบเอกสาร' })
+    }
+  }
+
+  const openNotice = (n: Notice) => { if (n.route) navigate(n.route); setBellOpen(false) }
 
   return (
     <div className="topbar">
@@ -20,67 +43,56 @@ export function Topbar() {
         <span className="current">{meta.label}</span>
       </div>
 
-      <div className="topbar-search">
-        <IconSearch size={15} />
-        <input placeholder="ค้นหา…" aria-label="ค้นหา" />
-      </div>
-
-      <button className="plant-switch">
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1E9E5A' }} />
-        โรงงานคอนกรีต
-        <IconChevron size={13} />
-      </button>
-
-      <button className="bell" aria-label="การแจ้งเตือน">
-        <IconBell />
-        <span className="dot" />
-      </button>
+      <GlobalSearch />
 
       <div style={{ position: 'relative' }}>
-        <button className="bell" aria-label="ตั้งค่าธีม" onClick={() => setThemeOpen((o) => !o)}>
-          <IconSliders />
+        <button className="bell" aria-label="การแจ้งเตือน" onClick={() => setBellOpen((o) => !o)}>
+          <IconBell />
+          {notices.length > 0 && <span className="dot" />}
         </button>
-        {themeOpen && (
-          <div className="theme-pop" onMouseLeave={() => setThemeOpen(false)}>
-            <div className="grp">
-              <span className="t">สีหลัก · Primary</span>
-              <div className="swatches">
-                {SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    className={['swatch', primary === c ? 'active' : ''].filter(Boolean).join(' ')}
-                    style={{ background: c }}
-                    onClick={() => setPrimary(c)}
-                    aria-label={c}
-                  />
-                ))}
-              </div>
+        {bellOpen && (
+          <div className="theme-pop" onMouseLeave={() => setBellOpen(false)} style={{ minWidth: 260 }}>
+            <div className="grp" style={{ gap: 2 }}>
+              <span className="t">การแจ้งเตือน · Notifications</span>
             </div>
-            <div className="grp">
-              <span className="t">มุม · Corner</span>
-              <div className="seg">
-                {(['Soft', 'Sharp'] as CornerStyle[]).map((c) => (
-                  <button key={c} className={corner === c ? 'active' : ''} onClick={() => setCorner(c)}>
-                    {c}
+            {notices.length === 0 ? (
+              <div style={{ padding: '10px 4px', fontSize: 13, color: 'var(--kpc-text-muted)', textAlign: 'center' }}>
+                ไม่มีการแจ้งเตือน
+              </div>
+            ) : (
+              <div className="grp" style={{ gap: 6 }}>
+                {notices.map((n) => (
+                  <button key={n.id} className="notice-item" onClick={() => openNotice(n)}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>{n.title}</span>
+                    <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{n.sub}</span>
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="grp">
-              <span className="t">ความหนาแน่น · Density</span>
-              <div className="seg">
-                {(['Comfortable', 'Compact'] as Density[]).map((d) => (
-                  <button key={d} className={density === d ? 'active' : ''} onClick={() => setDensity(d)}>
-                    {d}
-                  </button>
-                ))}
-              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ position: 'relative' }}>
+        <button className="avatar" onClick={() => setUserOpen((o) => !o)} aria-label="บัญชีผู้ใช้" style={{ border: 'none', cursor: 'pointer' }}>
+          {initials}
+        </button>
+        {userOpen && (
+          <div className="theme-pop" onMouseLeave={() => setUserOpen(false)} style={{ minWidth: 200 }}>
+            <div className="grp" style={{ gap: 2 }}>
+              <span style={{ fontWeight: 600, color: 'var(--kpc-text-strong)' }}>{user?.username}</span>
+              <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
+                {user ? `${user.role} · ${ROLE_LABEL[user.role].th}` : ''}
+              </span>
             </div>
           </div>
         )}
       </div>
 
-      <div className="avatar">นภ</div>
+      <button className="btn btn-secondary btn-sm" onClick={logout}>
+        <IconLogout size={15} />
+        Logout
+      </button>
     </div>
   )
 }

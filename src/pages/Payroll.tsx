@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Field, Input, Select, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -117,6 +118,7 @@ export function Payroll() {
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.amount)}</span> },
     { key: 'method', header: 'วิธีจ่าย', align: 'center', cell: (r) => <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge> },
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     ...(CAN_DELETE ? [{
       key: 'del', header: '', align: 'center' as const,
       cell: (r: AdvancePayment) => (
@@ -134,6 +136,8 @@ export function Payroll() {
     { key: 'net', header: 'จ่ายสุทธิ', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.netAmount)}</span> },
     { key: 'date', header: 'วันที่จ่าย', cell: (r) => fmtDate(r.payDate), className: 'date' },
     { key: 'method', header: 'วิธีจ่าย', align: 'center', cell: (r) => <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge> },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ทำจ่ายเงินเดือน', ref: r.ppNo, label: r.ppNo, sub: `${r.employeeName} · ${baht(r.netAmount)}`, route: '/payroll' }} /> },
     { key: 'slip', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setSlip(r)}>สลิป / พิมพ์</Button> },
     ...(CAN_DELETE ? [{
       key: 'del', header: '', align: 'center' as const,

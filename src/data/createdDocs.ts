@@ -9,6 +9,20 @@ import { useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
 import type { DeliveryTicket, Customer } from './real'
 import type { Employee } from './employees'
+import { currentUserName } from './auth'
+
+/** Audit stamp applied to every newly saved record: who saved it and when.
+    `createdBy` is the logged-in username; `createdAt` is an ISO timestamp. */
+export interface AuditStamp {
+  createdBy?: string
+  createdAt?: string
+}
+
+/** Apply the saver + timestamp to a record. Keeps any createdAt the caller
+    already set (e.g. backdated docs) but always records the current user. */
+function stamp<T extends AuditStamp>(rec: T): T {
+  return { ...rec, createdBy: currentUserName(), createdAt: rec.createdAt ?? new Date().toISOString() }
+}
 
 /** Editable subset of Customer fields — phone/credit kept on top of the master. */
 export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName'>>
@@ -73,6 +87,7 @@ export interface SalesOrder {
   note?: string
   /** Optional uploaded customer PO as evidence (stored as a data URL). */
   attachment?: { name: string; type: string; dataUrl: string }
+  createdBy?: string  /* username of the saver (audit) */
   createdAt: string  /* ISO timestamp of when the order was saved */
 }
 
@@ -99,6 +114,7 @@ export interface PurchaseOrder {
   items: PurchaseOrderItem[]
   status: PurchaseStatus
   note?: string
+  createdBy?: string  /* username of the saver (audit) */
   createdAt: string
 }
 
@@ -114,6 +130,7 @@ export interface GoodsPayment {
   chequeNo?: string  /* เลขที่เช็ค — required when method is 'เช็ค' */
   ref?: string       /* optional reference — PO no. / invoice no. */
   note?: string
+  createdBy?: string  /* username of the saver (audit) */
   createdAt: string
 }
 
@@ -148,6 +165,7 @@ export interface PayrollPayment {
   payDate: string    /* ISO */
   method: PayMethodOut
   note?: string
+  createdBy?: string  /* username of the saver (audit) */
   createdAt: string
 }
 
@@ -163,6 +181,7 @@ export interface AdvancePayment {
   amount: number
   method: PayMethodOut
   note?: string
+  createdBy?: string  /* username of the saver (audit) */
   createdAt: string
 }
 
@@ -182,6 +201,7 @@ export interface StructureChange { label: string; from: number; to: number }
 /** History entry for a salary-structure adjustment (ประวัติการปรับโครงสร้าง). */
 export interface SalaryStructureAdjustment {
   at: string          /* ISO timestamp */
+  by?: string         /* username of the saver (audit) */
   employeeId: string
   employeeName: string
   changes: StructureChange[]
@@ -295,16 +315,16 @@ function commit(next: CreatedDocs) {
 }
 
 export function addInvoice(inv: Invoice) {
-  commit({ ...state, invoices: [inv, ...state.invoices] })
+  commit({ ...state, invoices: [stamp(inv), ...state.invoices] })
 }
 export function addBillingNote(bn: BillingNote) {
-  commit({ ...state, billingNotes: [bn, ...state.billingNotes] })
+  commit({ ...state, billingNotes: [stamp(bn), ...state.billingNotes] })
 }
 export function addReceipt(rc: Receipt) {
-  commit({ ...state, receipts: [rc, ...state.receipts] })
+  commit({ ...state, receipts: [stamp(rc), ...state.receipts] })
 }
 export function addTicket(t: DeliveryTicket) {
-  commit({ ...state, tickets: [t, ...state.tickets] })
+  commit({ ...state, tickets: [stamp(t), ...state.tickets] })
 }
 
 /* Removal — works on both user-created docs (removed from list) and seed docs (hidden). */
@@ -343,7 +363,7 @@ export function removeTicket(dtNo: string) {
 
 /* Sales orders (ใบสั่งขาย) — created docs only, no seed data to hide. */
 export function addSalesOrder(so: SalesOrder) {
-  commit({ ...state, salesOrders: [so, ...state.salesOrders] })
+  commit({ ...state, salesOrders: [stamp(so), ...state.salesOrders] })
 }
 export function removeSalesOrder(soNo: string) {
   commit({ ...state, salesOrders: state.salesOrders.filter((s) => s.soNo !== soNo) })
@@ -359,7 +379,7 @@ export function markSalesOrderProduced(soNo: string) {
 
 /* Purchase orders (ใบสั่งซื้อ). */
 export function addPurchaseOrder(po: PurchaseOrder) {
-  commit({ ...state, purchaseOrders: [po, ...state.purchaseOrders] })
+  commit({ ...state, purchaseOrders: [stamp(po), ...state.purchaseOrders] })
 }
 export function updatePurchaseOrder(po: PurchaseOrder) {
   commit({ ...state, purchaseOrders: state.purchaseOrders.map((p) => (p.poNo === po.poNo ? po : p)) })
@@ -374,7 +394,7 @@ export function markPurchaseOrderReceived(poNo: string) {
 
 /* Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ). */
 export function addGoodsPayment(gp: GoodsPayment) {
-  commit({ ...state, goodsPayments: [gp, ...state.goodsPayments] })
+  commit({ ...state, goodsPayments: [stamp(gp), ...state.goodsPayments] })
 }
 export function removeGoodsPayment(gpNo: string) {
   commit({ ...state, goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo) })
@@ -382,7 +402,7 @@ export function removeGoodsPayment(gpNo: string) {
 
 /* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */
 export function addPayrollPayment(pp: PayrollPayment) {
-  commit({ ...state, payrollPayments: [pp, ...state.payrollPayments] })
+  commit({ ...state, payrollPayments: [stamp(pp), ...state.payrollPayments] })
 }
 export function removePayrollPayment(ppNo: string) {
   commit({ ...state, payrollPayments: state.payrollPayments.filter((p) => p.ppNo !== ppNo) })
@@ -394,12 +414,12 @@ export function setSalaryStructure(employeeId: string, structure: SalaryStructur
 }
 /** Append a salary-structure adjustment to the history log (newest first). */
 export function addSalaryStructureAdjustment(adj: SalaryStructureAdjustment) {
-  commit({ ...state, salaryStructureAdjustments: [adj, ...state.salaryStructureAdjustments] })
+  commit({ ...state, salaryStructureAdjustments: [{ ...adj, by: adj.by || currentUserName() }, ...state.salaryStructureAdjustments] })
 }
 
 /* Advance withdrawals (เบิกล่วงหน้า). */
 export function addAdvance(a: AdvancePayment) {
-  commit({ ...state, advances: [a, ...state.advances] })
+  commit({ ...state, advances: [stamp(a), ...state.advances] })
 }
 export function removeAdvance(advNo: string) {
   commit({ ...state, advances: state.advances.filter((a) => a.advNo !== advNo) })
@@ -410,7 +430,7 @@ export function restoreAllHidden() {
 }
 
 export function addCustomer(c: Customer) {
-  commit({ ...state, customersAdded: [c, ...state.customersAdded] })
+  commit({ ...state, customersAdded: [stamp(c), ...state.customersAdded] })
 }
 
 /** Merge an edit onto a customer (by id). Undefined values clear prior edits. */
@@ -430,17 +450,17 @@ export function updateCustomer(id: string, edit: CustomerEdit) {
 
 /** Append a transport-rate adjustment to the head of the log. */
 export function addTransportRateAdjustment(adj: TransportRateAdjustment) {
-  commit({ ...state, transportAdjustments: [adj, ...state.transportAdjustments] })
+  commit({ ...state, transportAdjustments: [{ ...adj, by: adj.by || currentUserName() }, ...state.transportAdjustments] })
 }
 
 /** Append a product-price adjustment to the head of the log. */
 export function addPriceAdjustment(adj: PriceAdjustment) {
-  commit({ ...state, priceAdjustments: [adj, ...state.priceAdjustments] })
+  commit({ ...state, priceAdjustments: [{ ...adj, by: adj.by || currentUserName() }, ...state.priceAdjustments] })
 }
 
 /** Push a brand-new employee to the head of the user-added list. */
 export function addEmployee(e: Employee) {
-  commit({ ...state, employeesAdded: [e, ...state.employeesAdded] })
+  commit({ ...state, employeesAdded: [stamp(e), ...state.employeesAdded] })
 }
 
 /** Merge an edit onto an employee (by id). Empty-string / undefined values

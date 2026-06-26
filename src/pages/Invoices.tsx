@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
@@ -89,6 +90,8 @@ export function Invoices() {
     { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
     { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].th}</Badge> },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบกำกับภาษี / วางบิล', ref: r.no, label: r.no, sub: `${r.customer} · ${baht(r.total)}`, route: '/invoices' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     {
       key: 'dl',

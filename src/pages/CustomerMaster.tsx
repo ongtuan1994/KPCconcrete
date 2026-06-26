@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Field, Input, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Field, Input, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { Modal } from '../components/Modal'
@@ -101,6 +102,8 @@ export function CustomerMaster() {
     },
     { key: 'tax', header: 'เลขภาษี', cell: (r) => (r.taxId && r.taxId !== '—' ? <span className="mono" style={{ fontSize: 13 }}>{r.taxId}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>ยังไม่ระบุ</span>) },
     { key: 'sales', header: 'ยอดซื้อสะสม', align: 'right', cell: (r) => <span className="amt mono">{baht(aggOf(r.name)?.sales ?? 0)}</span> },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'ทะเบียนลูกค้า', ref: r.id, label: r.name, sub: `${r.id} · ${r.legalName !== r.name ? r.legalName : r.type}`, route: '/customer-master' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>รายละเอียด</Button> },
   ]
 

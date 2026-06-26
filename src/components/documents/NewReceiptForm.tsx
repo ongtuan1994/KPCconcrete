@@ -27,6 +27,7 @@ export function NewReceiptForm({
   createdReceipts,
   extraInvoices,
   initialInvoiceNo,
+  initialCustomer,
 }: {
   open: boolean
   onClose: () => void
@@ -35,6 +36,8 @@ export function NewReceiptForm({
   extraInvoices: Invoice[]
   /** When set, prefill customer / date / pay and tick this invoice on open. */
   initialInvoiceNo?: string
+  /** When set (e.g. from the debtors ledger), prefill just the customer name. */
+  initialCustomer?: string
 }) {
   const [customer, setCustomer] = useState('')
   const [month, setMonth] = useState<number>(LATEST_MONTH)
@@ -88,6 +91,18 @@ export function NewReceiptForm({
       setPicked(new Set([inv.no]))
     }
   }, [open, initialInvoiceNo, extraInvoices])
+
+  /* Prefill just the customer name when opened from the debtors ledger
+     ("ชำระหนี้"). Runs only when no specific invoice was supplied. */
+  const lastCustomerRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!open) { lastCustomerRef.current = undefined; return }
+    if (!initialInvoiceNo && initialCustomer && initialCustomer !== lastCustomerRef.current) {
+      lastCustomerRef.current = initialCustomer
+      setCustomer(initialCustomer)
+      setPicked(new Set())
+    }
+  }, [open, initialCustomer, initialInvoiceNo])
 
   const submit = () => {
     setErr('')

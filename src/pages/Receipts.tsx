@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, MonthSelect, Checkbox, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
@@ -20,11 +22,25 @@ export function Receipts() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Receipt | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [prefillCustomer, setPrefillCustomer] = useState<string | undefined>(undefined)
   const [downloading, setDownloading] = useState<Receipt | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [zipQueue, setZipQueue] = useState<Receipt[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  /* When navigated here from the debtors ledger ("ชำระหนี้"), open the new-receipt
+     form pre-filled with that customer. Clear router state so a refresh won't re-trigger. */
+  useEffect(() => {
+    const st = location.state as { collectFromCustomer?: string } | null
+    if (st?.collectFromCustomer) {
+      setPrefillCustomer(st.collectFromCustomer)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const hiddenSet = useMemo(() => new Set(created.hidden.receipts), [created.hidden.receipts])
   const allReceipts = useMemo(
@@ -71,6 +87,8 @@ export function Receipts() {
     { key: 'inv', header: 'อ้างอิงใบกำกับ', cell: (r) => <span className="mono" style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.invoiceNos.join(', ')}</span> },
     { key: 'method', header: 'วิธีชำระ', align: 'center', cell: (r) => <Badge tone={PAY_TONE[r.method] ?? 'neutral'} pip={false} square>{r.method || '—'}</Badge> },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => baht(r.amount), className: 'amt' },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบเสร็จรับเงิน', ref: r.no, label: r.no, sub: `${r.customer} · ${baht(r.amount)}`, route: '/receipts' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     {
       key: 'dl',
@@ -114,7 +132,7 @@ export function Receipts() {
               const slug = `receipts-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
               downloadCsv(slug, [head, ...body])
             }}>ส่งออก Excel</Button>
-            <Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบเสร็จรับเงิน</Button>
+            <Button variant="primary" onClick={() => { setPrefillCustomer(undefined); setShowForm(true) }}>+ เพิ่มใบเสร็จรับเงิน</Button>
           </>
         }
       />
@@ -155,10 +173,11 @@ export function Receipts() {
 
       <NewReceiptForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setPrefillCustomer(undefined) }}
         createdReceipts={created.receipts}
         extraInvoices={created.invoices}
-        onIssued={(rc) => { setShowForm(false); setActive(rc) }}
+        initialCustomer={prefillCustomer}
+        onIssued={(rc) => { setShowForm(false); setPrefillCustomer(undefined); setActive(rc) }}
       />
 
       {downloading && <ReceiptPdfDownload rc={downloading} onDone={() => setDownloading(null)} />}

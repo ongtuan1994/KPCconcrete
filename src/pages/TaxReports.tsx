@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { Button, Pill } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
@@ -53,6 +54,23 @@ export function TaxReports() {
     { key: 'branch', header: 'สถานประกอบการ', align: 'center', cell: (r) => (r.branch || <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'value', header: 'มูลค่าสินค้า', align: 'right', cell: (r) => <span className="amt mono">{money2(r.value)}</span> },
     { key: 'vat', header: 'ภาษีมูลค่าเพิ่ม', align: 'right', cell: (r) => <span className="mono">{r.vat ? money2(r.vat) : '—'}</span> },
+    {
+      key: 'audit',
+      header: '',
+      align: 'center',
+      cell: (r) => (
+        <AuditButton
+          item={{
+            category: kind === 'sale' ? 'sales' : 'purchasing',
+            group: kind === 'sale' ? 'รายงานภาษีขาย' : 'รายงานภาษีซื้อ',
+            ref: r.docNo,
+            label: r.docNo,
+            sub: `${r.name} · ${money2(r.value)}`,
+            route: '/tax-reports',
+          }}
+        />
+      ),
+    },
   ]
 
   return (

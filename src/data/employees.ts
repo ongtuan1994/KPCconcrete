@@ -32,6 +32,9 @@ export interface Employee {
   /** Path to a portrait photo (e.g. "/staff/E001.jpg"). Falls back to an
       initials avatar when omitted or the file is missing. */
   photoUrl?: string
+  /* Audit stamp on user-added employees (seed roster leaves these undefined). */
+  createdBy?: string
+  createdAt?: string
 }
 
 export const EMPLOYEES: Employee[] = [

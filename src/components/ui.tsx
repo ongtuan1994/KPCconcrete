@@ -1,5 +1,19 @@
 import type { ButtonHTMLAttributes, ReactNode, SelectHTMLAttributes, InputHTMLAttributes } from 'react'
 import { IconChevron, IconCheck, IconSearch } from './icons'
+import { fmtThaiDateTime } from '../utils/datetime'
+
+/* ---------------- Audit stamp (ผู้บันทึก / เวลาบันทึก) ---------------- */
+/** Compact "saved by + timestamp" cell shown on user-created records.
+    Renders an em-dash for seed/derived rows that carry no audit stamp. */
+export function SavedBy({ by, at, align = 'left' }: { by?: string; at?: string; align?: 'left' | 'right' | 'center' }) {
+  if (!by && !at) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+  return (
+    <div className="stack" style={{ gap: 1, textAlign: align, alignItems: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start' }}>
+      <span style={{ fontSize: 13, color: 'var(--kpc-text-strong)' }}>{by || '—'}</span>
+      {at && <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)', fontFamily: 'var(--kpc-font-mono)' }}>{fmtThaiDateTime(at)}</span>}
+    </div>
+  )
+}
 
 /* ---------------- Button ---------------- */
 type Variant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger'

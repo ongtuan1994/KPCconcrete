@@ -96,6 +96,9 @@ export interface Invoice {
   vat: number
   total: number
   status: InvStatus
+  /* Audit stamp on user-created docs (seed docs leave these undefined). */
+  createdBy?: string
+  createdAt?: string
 }
 
 function plus30(date: string) {
@@ -152,7 +155,7 @@ function buildInvoices(): Invoice[] {
 export const INVOICES: Invoice[] = buildInvoices()
 
 /* ---------- receipts (from paid invoices) ---------- */
-export interface Receipt { no: string; month: number; date: string; customer: string; invoiceNos: string[]; amount: number; method: string }
+export interface Receipt { no: string; month: number; date: string; customer: string; invoiceNos: string[]; amount: number; method: string; createdBy?: string; createdAt?: string }
 export const RECEIPTS: Receipt[] = (() => {
   const paid = INVOICES.filter((i) => i.status === 'paid')
   const byKey = new Map<string, Invoice[]>()
@@ -182,7 +185,7 @@ export const RECEIPTS: Receipt[] = (() => {
 })()
 
 /* ---------- billing notes (group unpaid invoices per customer per month) ---------- */
-export interface BillingNote { no: string; month: number; date: string; customer: string; invoices: Invoice[]; total: number }
+export interface BillingNote { no: string; month: number; date: string; customer: string; invoices: Invoice[]; total: number; createdBy?: string; createdAt?: string }
 export const BILLING_NOTES: BillingNote[] = (() => {
   const credit = INVOICES.filter((i) => i.status !== 'paid')
   const byKey = new Map<string, Invoice[]>()

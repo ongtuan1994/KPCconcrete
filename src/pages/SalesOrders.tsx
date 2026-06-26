@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, Select, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, Select, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { Modal } from '../components/Modal'
 import { KpiCard, ChartCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -107,6 +108,8 @@ export function SalesOrders() {
       align: 'center',
       cell: (r) => (r.attachment ? <Badge tone="success" pip={false} square>มี</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
     },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบสั่งขาย', ref: r.soNo, label: r.soNo, sub: `${r.customer} · ${qm(orderVolume(r))} คิว`, route: '/sales-orders' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     { key: 'edit', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setEditing(r)}>แก้ไข</Button> },
     ...(CAN_DELETE ? [{

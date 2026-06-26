@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, Field, Input, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, Field, Input, SavedBy, type Tone } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -82,6 +83,8 @@ export function PurchaseOrders() {
     { key: 'total', header: 'มูลค่ารวม', align: 'right', cell: (r) => <span className="amt mono">{baht(poTotal(r))}</span> },
     { key: 'due', header: 'กำหนดรับของ', cell: (r) => (r.dueDate ? fmtDate(r.dueDate) : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>), className: 'date' },
     { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => <Badge tone={STATUS_TONE[r.status]} pip={false} square>{r.status}</Badge> },
+    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ใบสั่งซื้อ', ref: r.poNo, label: r.poNo, sub: `${r.supplier} · ${baht(poTotal(r))}`, route: '/purchase-orders' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     ...(CAN_DELETE ? [{
       key: 'del', header: '', align: 'center' as const,

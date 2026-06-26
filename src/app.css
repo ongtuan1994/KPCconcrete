@@ -284,3 +284,81 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
   .page { padding: 20px 16px 48px; }
   .topbar-search { width: 160px; }
 }
+
+/* ---------------- Login screen ---------------- */
+.login-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: linear-gradient(rgba(16, 24, 40, 0.45), rgba(16, 24, 40, 0.55)), url('/login/loginbackgroud.jpeg') center / cover no-repeat fixed;
+  background-color: var(--kpc-app-bg);
+}
+.login-card {
+  width: 100%; max-width: 380px; background: var(--kpc-surface); border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--kpc-radius); padding: 32px 28px; box-shadow: 0 16px 48px rgba(16, 24, 40, 0.35);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+
+/* ---------------- Permission matrix ---------------- */
+table.perm-matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.perm-matrix th, table.perm-matrix td { border-bottom: 1px solid var(--kpc-divider); }
+table.perm-matrix thead th { background: var(--kpc-neutral-50); color: var(--kpc-text-muted); font-weight: 600; padding: 8px 6px; text-align: center; white-space: nowrap; }
+table.perm-matrix th.role-head { border-left: 1px solid var(--kpc-border); }
+table.perm-matrix th.sub { padding: 0; }
+table.perm-matrix th.sub .vw, table.perm-matrix th.sub .ed { display: inline-block; width: 40px; padding: 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+table.perm-matrix th.sub .ed { color: var(--kpc-warning-ink); }
+table.perm-matrix th.fn, table.perm-matrix td.fn { text-align: left; padding: 9px 14px; color: var(--kpc-text-strong); white-space: nowrap; }
+table.perm-matrix td.cell { text-align: center; padding: 6px 0; width: 40px; }
+table.perm-matrix tr.sec-row td { background: var(--kpc-surface-alt); font-weight: 600; color: var(--kpc-text-muted); font-size: 12px; padding: 7px 14px; text-transform: uppercase; letter-spacing: 0.4px; }
+table.perm-matrix tbody tr:not(.sec-row):hover { background: var(--kpc-primary-50); }
+
+.perm-box {
+  width: 22px; height: 22px; border-radius: 5px; border: 1.5px solid var(--kpc-neutral-300);
+  background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+  transition: background .12s, border-color .12s;
+}
+.perm-box:hover:not(.ro) { border-color: var(--kpc-primary); }
+.perm-box.on.view { background: var(--kpc-success); border-color: var(--kpc-success); }
+.perm-box.on.edit { background: var(--kpc-warning); border-color: var(--kpc-warning); }
+.perm-box.ro { cursor: default; opacity: 0.9; }
+.perm-box:disabled { cursor: default; }
+
+/* ---------------- Global search dropdown ---------------- */
+.search-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; min-width: 340px;
+  background: var(--kpc-surface); border: 1px solid var(--kpc-border); border-radius: var(--kpc-radius);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.14); z-index: 60; overflow: hidden;
+  max-height: 60vh; overflow-y: auto; padding: 6px;
+}
+.search-empty { padding: 16px; font-size: 13px; color: var(--kpc-text-muted); text-align: center; }
+.search-group + .search-group { border-top: 1px solid var(--kpc-divider); margin-top: 4px; padding-top: 4px; }
+.search-group-head {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--kpc-text-faint); padding: 7px 10px 4px;
+}
+.search-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 7px 10px; border: none; background: transparent; border-radius: 7px; cursor: pointer;
+}
+.search-item.active, .search-item:hover { background: var(--kpc-primary-50); }
+.search-item-main { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.search-item-label { font-size: 13px; font-weight: 600; color: var(--kpc-text-strong); font-family: var(--kpc-font-mono); }
+.search-item-group { font-size: 11px; color: var(--kpc-text-faint); white-space: nowrap; }
+.search-item-sub { font-size: 12px; color: var(--kpc-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------- Settings page — breathing room for flush cards ---------------- */
+.settings-card .card-head { padding: 18px 20px 0; margin-bottom: 14px; }
+/* Inset the outer columns of the users table from the card edges. */
+.settings-card table.data tr > :first-child { padding-left: 20px; }
+.settings-card table.data tr > :last-child { padding-right: 20px; }
+/* Inset the permission matrix from the card edges. */
+.settings-card .matrix-scroll { padding: 0 12px 4px; }
+.settings-card table.perm-matrix th.fn,
+.settings-card table.perm-matrix td.fn { padding-left: 8px; }
+
+/* ---------------- Notification dropdown items ---------------- */
+.notice-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--kpc-border); background: var(--kpc-surface-alt);
+  border-radius: 7px; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.notice-item:hover { background: var(--kpc-primary-50); border-color: var(--kpc-primary-100); }

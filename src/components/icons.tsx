@@ -138,6 +138,13 @@ export const IconCheck = ({ size = 12, stroke = '#fff' }: IconProps) => (
     <path d="M2.5 6.2l2.2 2.3 4.8-5" stroke={stroke} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
+export const IconLogout = ({ size = 16, stroke = '#6B7280' }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18" fill="none">
+    <path d="M7 2.5H4.5A1.5 1.5 0 0 0 3 4v10a1.5 1.5 0 0 0 1.5 1.5H7" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M11 12.5l3.5-3.5L11 5.5" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="14.5" y1="9" x2="6.5" y2="9" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
 export const IconBell = ({ size = 17 }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 18 18">
     <path d="M5 7a4 4 0 0 1 8 0c0 3 1.2 4 1.2 4H3.8S5 10 5 7z" stroke="#6B7280" strokeWidth="1.4" fill="none" strokeLinejoin="round" />

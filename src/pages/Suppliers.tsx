@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput } from '../components/ui'
+import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
@@ -87,6 +88,7 @@ export function Suppliers() {
           : <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>ไม่จำกัด</span>
       },
     },
+    { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'ทะเบียนซัพพลายเออร์', ref: r.id, label: r.name, sub: `${r.id}${r.note ? ' · ' + r.note : ''}`, route: '/suppliers' }} /> },
   ]
 
   return (
