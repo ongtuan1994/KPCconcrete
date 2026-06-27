@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Input } from '../components/ui'
@@ -6,6 +6,8 @@ import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS } from '../data/real'
 import { qm, prodShort } from '../data/selectors'
 import { useCreatedDocs, addGeneralReport, type CommissionReport } from '../data/createdDocs'
+import { EMPLOYEES } from '../data/employees'
+import { salaryStructureFor } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
 
 /* Commission qualifies at ≥ 500 คิว; 490–500 is allowed (อนุโลม); below 490 pays nothing. */
@@ -20,6 +22,15 @@ function ticketISO(date: string): string {
   if (!dd || !mm || !yy) return ''
   return `${1957 + Number(yy)}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
 }
+/** วันนี้ + วันที่ 1 ของเดือนนี้ (ISO) — ใช้ตั้งค่าช่วงเวลาเริ่มต้น. */
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function monthStartIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
 /** ISO → Thai "DD/MM/พ.ศ." for report labels. */
 function isoToThai(iso: string): string {
   if (!iso) return '-'
@@ -30,7 +41,20 @@ function isoToThai(iso: string): string {
 export function Commission() {
   const created = useCreatedDocs()
   const navigate = useNavigate()
-  const rates = created.commissionRates
+  /* Hide employees whose salary structure (ปรับโครงสร้าง) sets
+     commissionEligible = false. Commission rates key on full name, so we match
+     by employee name. */
+  const ineligibleNames = useMemo(() => {
+    const set = new Set<string>()
+    for (const e of [...created.employeesAdded, ...EMPLOYEES]) {
+      if (salaryStructureFor(e.id, created.salaryStructures).commissionEligible === false) set.add(e.name)
+    }
+    return set
+  }, [created.employeesAdded, created.salaryStructures])
+  const rates = useMemo(
+    () => created.commissionRates.filter((r) => !ineligibleNames.has(r.name)),
+    [created.commissionRates, ineligibleNames],
+  )
 
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
   const allTickets = useMemo(
@@ -38,23 +62,10 @@ export function Commission() {
     [created.tickets, hiddenSet],
   )
 
-  const span = useMemo(() => {
-    let min = '', max = ''
-    for (const t of allTickets) {
-      const iso = ticketISO(t.date)
-      if (!iso) continue
-      if (!min || iso < min) min = iso
-      if (!max || iso > max) max = iso
-    }
-    return { min, max }
-  }, [allTickets])
-
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  useEffect(() => {
-    setFrom((f) => f || span.min)
-    setTo((t) => t || span.max)
-  }, [span.min, span.max])
+  /* Default range: ตั้งแต่ = วันที่ 1 ของเดือนนี้, จนถึง = วันนี้. */
+  const [from, setFrom] = useState(monthStartIso)
+  const [to, setTo] = useState(todayIso)
+  const today = todayIso()
 
   /* ยอดขายปูนให้ลูกค้า (เฉพาะ type ขายลูกค้า) ในช่วงวันที่เลือก. The ticket list is
      shown for verification only — it is NOT stored in the saved report. */
@@ -126,11 +137,11 @@ export function Commission() {
         <div className="row wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
-            <Input type="date" value={from} min={span.min} max={span.max} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />
+            <Input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />
           </label>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>จนถึง</span>
-            <Input type="date" value={to} min={span.min} max={span.max} onChange={(e) => setTo(e.target.value)} style={{ width: 170 }} />
+            <Input type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} style={{ width: 170 }} />
           </label>
           <span style={{ fontSize: 12, color: 'var(--kpc-text-faint)' }}>
             คิดเฉพาะปูนที่ขายให้ลูกค้า · ต้องได้ยอดรวม ≥ {ALLOW_M3} คิว ถึงจะได้ค่าคอม

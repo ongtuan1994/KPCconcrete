@@ -193,6 +193,15 @@ export interface SalaryStructure {
   experiencePay: number   /* ค่าประสบการณ์ */
   socialSecurity: number  /* ค่าประกันสังคม (ปกส.) */
   otRatePerMinute: number /* อัตราค่าแรงโอที — บาท/นาที (เช่น 1.5) */
+  /* รับเงิน OT จากบันทึกลงเวลางานไหม — undefined/true = รับ, false = ไม่รับ
+     (ตอนทำใบจ่ายเงินเดือนช่อง OT จะถูกปิด). */
+  otEligible?: boolean
+  /* รับค่าคอมมิชชั่นไหม — undefined/true = รับ, false = ไม่รับ
+     (หน้าบันทึกค่าคอมมิชชั่นจะไม่แสดงพนักงานคนนี้). */
+  commissionEligible?: boolean
+  /* ร่วมค่าเที่ยวรถโม่ไหม — default = false (ไม่ร่วม). ฝ่ายจัดส่งทุกคน +
+     ผู้จัดการที่ร่วม = true, คนอื่น = false. */
+  truckTripEligible?: boolean
   lastAdjustedAt?: string /* ISO timestamp ของการปรับเงินเดือนครั้งล่าสุด */
 }
 
@@ -282,7 +291,22 @@ export interface CommissionReport extends GeneralReportBase {
   lines: CommissionLine[]
   total: number
 }
-export type GeneralReport = TruckTripReport | CommissionReport
+/** One employee's row in a saved time-attendance report. */
+export interface AttendanceReportEmployee {
+  empId: string
+  empName: string
+  days: number       /* จำนวนวันที่มา (records in range) */
+  lateMin: number    /* สายรวม (นาที) */
+  otMin: number      /* OT รวม (นาที) — 0 when not OT-eligible (shown as "-") */
+  otEligible: boolean /* false → OT column shows "-" */
+}
+/** Time-attendance report snapshot (บันทึกลงเวลางาน) — per-employee วัน/สาย/OT. */
+export interface AttendanceReport extends GeneralReportBase {
+  kind: 'attendance'
+  employees: AttendanceReportEmployee[]
+  totals: { employees: number; days: number; lateMin: number; otMin: number }
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport
 
 const KEY = 'kpc.createdDocs.v1'
 

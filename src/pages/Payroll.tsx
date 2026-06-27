@@ -322,12 +322,15 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   /* OT (non-transport): sum net OT minutes from the attendance log within the
      chosen date range × the employee's OT rate (บาท/นาที). */
   const otRate = computeOtRate(struct)
+  /* Per-employee OT eligibility from the salary structure (ปรับโครงสร้าง).
+     When off, the OT field is disabled and contributes 0 to income. */
+  const otEligible = struct.otEligible !== false
   const otRecords = useMemo(
     () => attendance.filter((r) => r.empId === employeeId && (!otFrom || r.date >= otFrom) && (!otTo || r.date <= otTo)),
     [attendance, employeeId, otFrom, otTo],
   )
   const otMinutes = otRecords.reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
-  const otAmount = Math.round(otMinutes * otRate * 100) / 100
+  const otAmount = otEligible ? Math.round(otMinutes * otRate * 100) / 100 : 0
 
   /* For non-transport the "รักษารถ" income slot becomes the computed OT amount. */
   const vehicleOrOt = isTransport ? num(vehiclePay) : otAmount
@@ -418,8 +421,10 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           {isTransport ? (
             <Field label="รักษารถ"><Input type="number" step="0.01" min={0} placeholder="0" value={vehiclePay} onChange={(e) => setVehiclePay(e.target.value)} /></Field>
           ) : (
-            <Field label="OT" hint={`พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที`}>
-              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600 }}>{baht(otAmount)}</div>
+            <Field label="OT" hint={otEligible ? `พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที` : 'พนักงานนี้ตั้งค่าไม่รับ OT (ปรับโครงสร้าง)'}>
+              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: otEligible ? 1 : 0.55, color: otEligible ? undefined : 'var(--kpc-text-faint)' }}>
+                {otEligible ? baht(otAmount) : 'ไม่รับ OT'}
+              </div>
             </Field>
           )}
           <Field label={isTransport ? 'ค่ารักษารถ' : 'อื่นๆ'}><Input type="number" step="0.01" min={0} placeholder="0" value={otherIncome} onChange={(e) => setOtherIncome(e.target.value)} /></Field>

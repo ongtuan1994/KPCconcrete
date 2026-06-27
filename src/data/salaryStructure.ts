@@ -26,36 +26,38 @@ export function computeOtRate(s: { dailyWage: number; baseSalary: number }): num
 
 export const SALARY_STRUCTURE_SEED: Record<string, SalaryStructure> = {
   /* Thai staff — แพล้นปูน / สำนักงาน (รายเดือน) */
-  E001: { baseSalary: 13000, dailyWage: 0, experiencePay: 4500, socialSecurity: 650, otRatePerMinute: DEFAULT_OT_RATE },
-  E002: { baseSalary: 12000, dailyWage: 0, experiencePay: 5500, socialSecurity: 600, otRatePerMinute: DEFAULT_OT_RATE },
+  E001: { baseSalary: 13000, dailyWage: 0, experiencePay: 4500, socialSecurity: 650, otRatePerMinute: DEFAULT_OT_RATE, truckTripEligible: true },
+  E002: { baseSalary: 12000, dailyWage: 0, experiencePay: 5500, socialSecurity: 600, otRatePerMinute: DEFAULT_OT_RATE, otEligible: false },
   E003: { baseSalary: 11000, dailyWage: 0, experiencePay: 3500, socialSecurity: 550, otRatePerMinute: DEFAULT_OT_RATE },
   E004: { baseSalary: 10500, dailyWage: 0, experiencePay: 3000, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE },
   E005: { baseSalary: 9600,  dailyWage: 0, experiencePay: 0,    socialSecurity: 0,   otRatePerMinute: DEFAULT_OT_RATE },
 
   /* Labour — Burmese day-rate workers (เงินรายวัน; ไม่มีเงินเดือนรายเดือน) */
-  E006: { baseSalary: 0, dailyWage: 550, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.71 },
-  E007: { baseSalary: 0, dailyWage: 400, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.25 },
-  E008: { baseSalary: 0, dailyWage: 400, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.25 },
-  E009: { baseSalary: 0, dailyWage: 380, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.18 },
-  E010: { baseSalary: 0, dailyWage: 380, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.18 },
-  E011: { baseSalary: 0, dailyWage: 450, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.40 },
+  E006: { baseSalary: 0, dailyWage: 550, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.71, commissionEligible: false },
+  E007: { baseSalary: 0, dailyWage: 400, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.25, commissionEligible: false },
+  E008: { baseSalary: 0, dailyWage: 400, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.25, commissionEligible: false },
+  E009: { baseSalary: 0, dailyWage: 380, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.18, commissionEligible: false },
+  E010: { baseSalary: 0, dailyWage: 380, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.18, commissionEligible: false },
+  E011: { baseSalary: 0, dailyWage: 450, experiencePay: 0, socialSecurity: 360, otRatePerMinute: 1.40, commissionEligible: false },
 
   /* Transport — mixer-truck drivers (ฝ่ายขนส่งรถโม่ · รายเดือน) */
-  E012: { baseSalary: 12000, dailyWage: 0, experiencePay: 3000, socialSecurity: 600, otRatePerMinute: DEFAULT_OT_RATE },
-  E013: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE },
-  E014: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE },
-  E015: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 0,   otRatePerMinute: DEFAULT_OT_RATE },
+  E012: { baseSalary: 12000, dailyWage: 0, experiencePay: 3000, socialSecurity: 600, otRatePerMinute: DEFAULT_OT_RATE, otEligible: false, commissionEligible: false, truckTripEligible: true },
+  E013: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE, otEligible: false, commissionEligible: false, truckTripEligible: true },
+  E014: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE, otEligible: false, commissionEligible: false, truckTripEligible: true },
+  E015: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 0,   otRatePerMinute: DEFAULT_OT_RATE, otEligible: false, commissionEligible: false, truckTripEligible: true },
 
   /* Interns — day-rate trainees (เด็กฝึกงาน · รายวัน 100 บาท/วัน) */
-  E016: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31 },
-  E017: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31 },
+  E016: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31, otEligible: false, commissionEligible: false },
+  E017: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31, otEligible: false, commissionEligible: false },
 }
 
 /** Effective structure for an employee: per-employee override → seed → defaults.
     Spread over defaults so older overrides missing newer fields stay valid. */
 export function salaryStructureFor(id: string, overrides: Record<string, SalaryStructure>): SalaryStructure {
   const base = overrides[id] ?? SALARY_STRUCTURE_SEED[id]
-  const defaults = { baseSalary: 0, dailyWage: 0, experiencePay: 0, socialSecurity: 0, otRatePerMinute: DEFAULT_OT_RATE }
+  // otEligible / commissionEligible default to true (รับ) — older records and
+  // seed entries without the flags keep getting OT + commission.
+  const defaults = { baseSalary: 0, dailyWage: 0, experiencePay: 0, socialSecurity: 0, otRatePerMinute: DEFAULT_OT_RATE, otEligible: true, commissionEligible: true, truckTripEligible: false }
   return base ? { ...defaults, ...base } : defaults
 }
 

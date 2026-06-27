@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, SearchInput, Field, Input, Select } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -6,7 +7,8 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { EMPLOYEES, type Employee } from '../data/employees'
-import { useCreatedDocs } from '../data/createdDocs'
+import { useCreatedDocs, addGeneralReport, type AttendanceReport } from '../data/createdDocs'
+import { salaryStructureFor } from '../data/salaryStructure'
 import { useCan } from '../data/auth'
 import {
   useAttendance, importScanFiles, upsertManual, removeAttendance, clearAttendance,
@@ -22,6 +24,11 @@ function todayIso(): string {
   const d = new Date()
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+/** First day of the current month (the month "today" falls in). */
+function monthStartIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`
+}
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return iso
@@ -32,23 +39,17 @@ export function Attendance() {
   const records = useAttendance()
   const created = useCreatedDocs()
   const canEdit = useCan('attendance').edit
+  const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  /* Default range: ตั้งแต่ = วันที่ 1 ของเดือนนี้, จนถึง = วันนี้. */
+  const [from, setFrom] = useState(monthStartIso)
+  const [to, setTo] = useState(todayIso)
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<AttendanceRecord | null>(null)
   const [adding, setAdding] = useState(false)
 
   const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
-
-  /* Default the date range to the span of imported data (once it exists). */
-  useEffect(() => {
-    if (records.length === 0 || (from && to)) return
-    const dates = records.map((r) => r.date).sort()
-    setFrom((f) => f || dates[0])
-    setTo((t) => t || dates[dates.length - 1])
-  }, [records, from, to])
 
   const rows = useMemo(() => {
     return records
@@ -73,6 +74,54 @@ export function Attendance() {
     }
     return { ot, late, emps: emps.size, days: rows.length }
   }, [rows])
+
+  /* Per-employee rollup for the summary table + report: มา (วัน) / สายรวม /
+     OT (นาที). OT shows "-" / 0 for employees ไม่ร่วม OT (ปรับโครงสร้าง). */
+  const perEmployee = useMemo(() => {
+    const map = new Map<string, { empId: string; empName: string; days: number; lateMin: number; otMin: number; otEligible: boolean }>()
+    for (const r of rows) {
+      const c = computeAttendance(r)
+      let s = map.get(r.empId)
+      if (!s) {
+        const otEligible = salaryStructureFor(r.empId, created.salaryStructures).otEligible !== false
+        s = { empId: r.empId, empName: r.empName, days: 0, lateMin: 0, otMin: 0, otEligible }
+        map.set(r.empId, s)
+      }
+      s.days += 1
+      s.lateMin += c.lateMin
+      if (s.otEligible) s.otMin += c.otNetMin
+    }
+    return Array.from(map.values()).sort((a, b) => a.empId.localeCompare(b.empId))
+  }, [rows, created.salaryStructures])
+
+  const createReport = () => {
+    if (perEmployee.length === 0) { alert('ไม่มีข้อมูลลงเวลาในช่วงที่เลือก — กรุณาเลือกช่วงวันอื่น'); return }
+    const fromLabel = fmtDate(from)
+    const toLabel = fmtDate(to)
+    const employees = perEmployee.map((e) => ({
+      empId: e.empId, empName: e.empName, days: e.days, lateMin: e.lateMin,
+      otMin: e.otEligible ? e.otMin : 0, otEligible: e.otEligible,
+    }))
+    const report: AttendanceReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'attendance',
+      title: `บันทึกลงเวลางาน ${fromLabel} ถึง ${toLabel}`,
+      fromLabel,
+      toLabel,
+      employees,
+      totals: {
+        employees: employees.length,
+        days: employees.reduce((s, e) => s + e.days, 0),
+        lateMin: employees.reduce((s, e) => s + e.lateMin, 0),
+        otMin: employees.reduce((s, e) => s + e.otMin, 0),
+      },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   const onFiles = async (list: FileList | null) => {
     if (!list || list.length === 0) return
@@ -142,6 +191,7 @@ export function Attendance() {
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             {canEdit && <Button variant="secondary" onClick={() => setAdding(true)}><IconPlus /> บันทึกเข้า/ออก</Button>}
             {canEdit && <Button variant="primary" onClick={() => fileRef.current?.click()}>นำเข้าไฟล์สแกนนิ้ว (.csv)</Button>}
           </>
@@ -182,6 +232,49 @@ export function Attendance() {
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} pageSize={25} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
+      )}
+
+      {/* Per-employee summary — มา (วัน) / สายรวม / OT (นาที). OT = "-" สำหรับ
+          พนักงานที่ไม่ร่วม OT (ตั้งค่าในปรับโครงสร้าง). */}
+      {perEmployee.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สรุปต่อพนักงาน (ในช่วงที่เลือก)</span>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{perEmployee.length} คน · OT แสดง “-” เมื่อไม่ร่วม OT</span>
+          </div>
+          <div className="card flush" style={{ overflowX: 'auto' }}>
+            <table className="data" style={{ minWidth: 620 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>รหัส</th>
+                  <th>ชื่อ-สกุล</th>
+                  <th className="num" style={{ width: 110 }}>มา (วัน)</th>
+                  <th className="num" style={{ width: 130 }}>สายรวม (นาที)</th>
+                  <th className="num" style={{ width: 120 }}>OT (นาที)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perEmployee.map((e) => (
+                  <tr key={e.empId}>
+                    <td className="mono">{e.empId}</td>
+                    <td className="th">{e.empName}</td>
+                    <td className="num mono" style={{ fontWeight: 600 }}>{e.days}</td>
+                    <td className="num mono" style={{ color: e.lateMin > 0 ? 'var(--kpc-danger-ink)' : 'var(--kpc-text-faint)' }}>{e.lateMin || '—'}</td>
+                    <td className="num mono" style={{ color: !e.otEligible ? 'var(--kpc-text-faint)' : e.otMin > 0 ? 'var(--kpc-success-ink)' : 'var(--kpc-text-faint)', fontWeight: e.otEligible && e.otMin > 0 ? 600 : 400 }}>
+                      {e.otEligible ? (e.otMin || '—') : '-'}
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '2px solid var(--kpc-neutral-300)', fontWeight: 700 }}>
+                  <td colSpan={2}>รวมทั้งหมด</td>
+                  <td className="num mono">{perEmployee.reduce((s, e) => s + e.days, 0)}</td>
+                  <td className="num mono">{perEmployee.reduce((s, e) => s + e.lateMin, 0)}</td>
+                  <td className="num mono">{perEmployee.reduce((s, e) => s + (e.otEligible ? e.otMin : 0), 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       <ManualForm
