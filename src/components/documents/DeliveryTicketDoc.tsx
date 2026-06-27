@@ -1,5 +1,5 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
-import { customerLegal, qm, monthLabel } from '../../data/selectors'
+import { customerLegal, qm, monthLabel, cleanProductName } from '../../data/selectors'
 import { COMPANY, PRODUCT_MAP, VEHICLE_MAP, type DeliveryTicket } from '../../data/real'
 
 /** Printable A4 layout for a delivery ticket — mirrors the tax-invoice
@@ -21,7 +21,7 @@ export function DeliveryTicketDoc({ ticket }: { ticket: DeliveryTicket }) {
         <MetaRow k="วันที่ :" v={ticket.date} mono />
         <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
         <MetaRow k="งวด :" v={monthLabel(ticket.month)} />
-        <MetaRow k="หน่วยงาน :" v={ticket.customer} />
+        <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="ประเภท :" v={ticket.type} />
         <MetaRow k="หมายเลขรถ :" v={vehicle ? <span className="mono">รถ {vehicle.id} (สูงสุด {vehicle.maxM3} คิว)</span> : '—'} />
         <MetaRow k="พนักงานจัดส่ง :" v={driver || '—'} />
@@ -43,7 +43,7 @@ export function DeliveryTicketDoc({ ticket }: { ticket: DeliveryTicket }) {
           <tr>
             <td className="ctr">1</td>
             <td className="mono">{ticket.prod}</td>
-            <td className="th">{prod?.name ?? ticket.prod}</td>
+            <td className="th">{cleanProductName(prod?.name ?? ticket.prod)}</td>
             <td className="num mono">{qm(ticket.m3)}</td>
             <td className="ctr">{prod?.unit ?? 'คิว'}</td>
             <td className="num mono">{ticket.price ? ticket.price.toLocaleString() : '—'}</td>

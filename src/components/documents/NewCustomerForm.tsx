@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
 import { CUSTOMER_MASTER, type Customer } from '../../data/real'
+import { customerPerson } from '../../data/selectors'
 import { addCustomer, useCreatedDocs } from '../../data/createdDocs'
 
 const DEFAULT_CREDIT_DAYS = 30
@@ -30,7 +31,8 @@ export function NewCustomerForm({
   initialName?: string
 }) {
   const created = useCreatedDocs()
-  const [name, setName] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [unit, setUnit] = useState('')
   const [legalName, setLegalName] = useState('')
   const [type, setType] = useState('ขายลูกค้า')
   const [terms, setTerms] = useState('เครดิต')
@@ -42,24 +44,36 @@ export function NewCustomerForm({
 
   useEffect(() => {
     if (!open) return
-    setName(initialName ?? '')
+    setCustomerName(initialName ?? ''); setUnit('')
     setLegalName(''); setType('ขายลูกค้า'); setTerms('เครดิต')
     setPhone(''); setTaxId('')
     setCreditDays(''); setCreditLimit(''); setErr('')
   }, [open, initialName])
 
+  /* Distinct existing customer names for the autocomplete — lets staff pick a
+     customer they already have and just add a new หน่วยงาน under it. */
+  const knownNames = Array.from(
+    new Set([...created.customersAdded, ...CUSTOMER_MASTER].map(customerPerson)),
+  ).sort((a, b) => a.localeCompare(b, 'th'))
+
   const submit = () => {
     setErr('')
-    const trimmed = name.trim()
-    if (!trimmed) return setErr('กรุณาระบุชื่อลูกค้า / หน่วยงาน')
+    const cn = customerName.trim()
+    const u = unit.trim()
+    if (!cn) return setErr('กรุณาระบุชื่อลูกค้า')
+    /* The join key stays the composite "ชื่อลูกค้า หน่วยงาน" so tickets/invoices
+       can reference a specific site; the parts are stored separately for grouping. */
+    const fullName = [cn, u].filter(Boolean).join(' ')
     /* Reject duplicates against the master + previously-added customers. */
     const allByName = [...created.customersAdded, ...CUSTOMER_MASTER]
-    if (allByName.some((c) => c.name === trimmed)) {
-      return setErr(`มีลูกค้าชื่อ "${trimmed}" อยู่แล้ว`)
+    if (allByName.some((c) => c.name === fullName)) {
+      return setErr(`มีลูกค้า/หน่วยงาน "${fullName}" อยู่แล้ว`)
     }
     const c: Customer = {
       id: nextCustomerId([...created.customersAdded, ...CUSTOMER_MASTER]),
-      name: trimmed,
+      name: fullName,
+      customerName: cn,
+      unit: u || undefined,
       type,
       terms,
       legalName: legalName.trim(),
@@ -89,8 +103,14 @@ export function NewCustomerForm({
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="grid g-2" style={{ gap: 12, marginBottom: 12 }}>
-        <Field label="ชื่อลูกค้า / หน่วยงาน" required style={{ gridColumn: '1 / -1' }}>
-          <Input placeholder="เช่น คุณสมชาย ซอย 5" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="ชื่อลูกค้า" required hint="ลูกค้าคนเดียวกันใช้ชื่อเดิม แล้วเพิ่มหน่วยงานใหม่ได้">
+          <Input placeholder="เช่น คุณสมชาย" value={customerName} onChange={(e) => setCustomerName(e.target.value)} list="kpc-known-customers" />
+          <datalist id="kpc-known-customers">
+            {knownNames.map((n) => <option key={n} value={n} />)}
+          </datalist>
+        </Field>
+        <Field label="หน่วยงาน" hint="เช่น ไซต์งาน / สาขา (ปล่อยว่างได้)">
+          <Input placeholder="เช่น ซอย 5" value={unit} onChange={(e) => setUnit(e.target.value)} />
         </Field>
         <Field label="ประเภท" required>
           <Select value={type} onChange={(e) => setType(e.target.value)}>

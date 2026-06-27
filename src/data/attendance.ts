@@ -231,7 +231,41 @@ function normName(s: string): string {
     .replace(/\s+/g, '')
 }
 
+/* Explicit fingerprint-scanner → employee map (the device's enrolled names don't
+   all match the roster / nicknames). Keyed by the raw scanner name on the left of
+   the company's reference sheet; normalised at load so spacing/case/titles don't
+   matter. This is authoritative — it wins over the name heuristic below. */
+const SCAN_ALIAS_RAW: Record<string, string> = {
+  'TA TA': 'E006',      // YE HTAY AUNG YE HTAY
+  'มินซอ1': 'E007',     // MIN ZAW
+  'SAY AYE': 'E008',    // SAN AYE
+  'MOE THU': 'E009',    // NWAY MOE THU TU
+  'TAMAO': 'E010',      // SAY MAR OO
+  'ชาย': 'E011',        // THET TUN OO
+  'เพียงแข': 'E002',    // น.ส.เพียงแข ดันยูชน
+  'สหรัฐ': 'E001',      // นายสหรัฐ เพ็ชรฉิม
+  'พีท': 'E004',        // นายกฤษฎา ปื่นเกตุ
+  'บริ้ง': 'E003',      // นายชัยวัฒน์ ขุนเพ็ชร
+  'กร': 'E005',         // นายธนกร โลวีรกุล
+  'พี่เบื้ม': 'E012',   // นายมนตรี ธนบัตร (สะกดตามเครื่องแสกน)
+  'พี่เบิ้ม': 'E012',   // เผื่ออีกสะกดหนึ่ง
+  'โอ๊ต': 'E013',       // นายศุภชัย ซื่อเลื่อม
+  'วาย': 'E014',        // นายเจนภพ เย็นกลาง
+  'บอย': 'E015',        // นายพงศกร พรหมจรรย์
+  'กฤต': 'E016',        // เด็กฝึกงาน กฤต
+  'ปาล์ม': 'E017',      // เด็กฝึกงาน ปาล์ม
+}
+const SCAN_ALIAS: Record<string, string> = Object.fromEntries(
+  Object.entries(SCAN_ALIAS_RAW).map(([k, v]) => [normName(k), v]),
+)
+
 function resolveEmployee(userId: string, name: string, employees: Employee[]): Employee | undefined {
+  /* 1. Explicit scanner-name alias (from the reference sheet) — authoritative. */
+  const aliasId = SCAN_ALIAS[normName(name)]
+  if (aliasId) {
+    const e = employees.find((x) => x.id === aliasId)
+    if (e) return e
+  }
   const uid = userId.trim().toLowerCase()
   if (uid) {
     /* Exact employee id, then numeric enroll id (E001 ↔ 1). */

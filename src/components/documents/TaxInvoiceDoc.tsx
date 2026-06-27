@@ -14,7 +14,7 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
         <MetaRow k="วันที่ :" v={inv.date} mono />
         <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
         <MetaRow k="กำหนดชำระ :" v={inv.dueDate} mono />
-        <MetaRow k="หน่วยงาน :" v={inv.customer} />
+        <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="อ้างถึงใบส่งสินค้า :" v={<span className="mono">{inv.refs.join(', ')}</span>} />
       </div>
 

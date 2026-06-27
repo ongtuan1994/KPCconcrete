@@ -4,7 +4,7 @@ import { Button, Badge, Pill, Field, Input, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, type Product } from '../data/real'
-import { baht } from '../data/selectors'
+import { baht, cleanProductName as cleanName } from '../data/selectors'
 import { addPriceAdjustment, useCreatedDocs, type PriceAdjustment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
@@ -87,7 +87,7 @@ export function Pricing() {
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
-    { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{r.name}</span> },
+    { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{cleanName(r.name)}</span> },
     {
       key: 'brand',
       header: 'ปูนซีเมนต์',
@@ -134,7 +134,7 @@ export function Pricing() {
             <Button variant="secondary" onClick={() => {
               const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'ราคา/หน่วย (รวม VAT)']
               const body = rows.map((p) => [
-                p.code, p.name,
+                p.code, cleanName(p.name),
                 cementBrand(p.code)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
@@ -241,7 +241,7 @@ function PriceHistoryCard({ adj }: { adj: PriceAdjustment }) {
           </thead>
           <tbody>
             {adj.changes.map((c) => {
-              const name = PRODUCTS.find((p) => p.code === c.code)?.name ?? c.code
+              const name = cleanName(PRODUCTS.find((p) => p.code === c.code)?.name ?? c.code)
               const d = c.to - c.from
               const tone = d > 0 ? 'var(--kpc-danger-ink, #b91c1c)' : d < 0 ? '#15803d' : 'var(--kpc-text-muted)'
               return (
@@ -424,7 +424,7 @@ function PriceAdjustModal({
                 <tr key={key}>
                   <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--kpc-border-soft, #f1f5f9)' }}>
                     <div className="mono" style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>{p.code}</div>
-                    <div style={{ fontSize: 13 }}>{p.name}</div>
+                    <div style={{ fontSize: 13 }}>{cleanName(p.name)}</div>
                   </td>
                   <td className="mono" style={{ textAlign: 'right', padding: '6px 10px', borderBottom: '1px solid var(--kpc-border-soft, #f1f5f9)', color: 'var(--kpc-text-muted)' }}>{baht(p.price)}</td>
                   <td style={{ textAlign: 'right', padding: '4px 10px', borderBottom: '1px solid var(--kpc-border-soft, #f1f5f9)' }}>

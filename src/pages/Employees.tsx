@@ -22,11 +22,12 @@ const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neut
   production: 'warning',
   labor: 'danger',
   transport: 'neutral',
+  intern: 'info',
 }
 
 /* Order departments deterministically for both the filter pills and the table
    sort (managers first, then back-office, then ops/labor). */
-const DEPARTMENT_ORDER: Department[] = ['manager', 'accounting', 'production', 'labor', 'transport']
+const DEPARTMENT_ORDER: Department[] = ['manager', 'accounting', 'production', 'labor', 'transport', 'intern']
 
 function mergeEmployee(e: Employee, edits: Record<string, EmployeeEdit>): Employee {
   const edit = edits[e.id]

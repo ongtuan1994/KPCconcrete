@@ -8,6 +8,7 @@ export type Department =
   | 'production'
   | 'labor'
   | 'transport'
+  | 'intern'
 
 export const DEPARTMENT_LABEL: Record<Department, { th: string; en: string }> = {
   manager:    { th: 'ผู้จัดการ',          en: 'Manager' },
@@ -15,6 +16,7 @@ export const DEPARTMENT_LABEL: Record<Department, { th: string; en: string }> = 
   production: { th: 'ฝ่ายผลิต',          en: 'Production' },
   labor:      { th: 'แรงงาน',            en: 'Labor' },
   transport:  { th: 'ฝ่ายขนส่งรถโม่',   en: 'Transport — Mixer Truck' },
+  intern:     { th: 'เด็กฝึกงาน',         en: 'Intern' },
 }
 
 export interface Employee {
@@ -78,6 +80,10 @@ export const EMPLOYEES: Employee[] = [
   { id: 'E013', name: 'นายศุภชัย ซื่อเลื่อม', nickname: 'โอ๊ต',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '921-9-94486-6' },
   { id: 'E014', name: 'นายเจนภพ เย็นกลาง',   nickname: 'วาน',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-924303-0' },
   { id: 'E015', name: 'นายพงศกร พรหมจรรย์',  nickname: 'บอย',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-9-03038-7' },
+
+  /* Interns — day-rate trainees (เด็กฝึกงาน · รายวัน) */
+  { id: 'E016', name: 'กฤต',   nickname: 'กฤต',   role: 'เด็กฝึกงาน', department: 'intern' },
+  { id: 'E017', name: 'ปาล์ม', nickname: 'ปาล์ม', role: 'เด็กฝึกงาน', department: 'intern' },
 ]
 
 /** Calculate years-of-service from startDate to `asOf` (default today). Returns

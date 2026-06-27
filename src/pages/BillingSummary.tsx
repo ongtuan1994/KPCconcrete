@@ -128,7 +128,7 @@ function BillingSummaryDoc({ bn, summary }: { bn: BillingNote; summary: BnSummar
           <img src="/logo.jpg" alt="KPC" />
           <div className="bs-cust">
             <div>ชื่อลูกค้า : {cust.display}</div>
-            <div>หน่วยงาน : {bn.customer}</div>
+            <div>หน่วยงาน : {cust.unit || '—'}</div>
           </div>
         </div>
       </div>

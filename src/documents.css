@@ -34,11 +34,11 @@
 .doc-sheet .mrow .v { font-weight: 500; }
 .doc-sheet .mrow .v.mono { font-family: var(--kpc-font-mono); }
 
-.doc-sheet table.doc-lines { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12.5px; }
+.doc-sheet table.doc-lines { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14.5px; }
 .doc-sheet table.doc-lines th {
   background: var(--kpc-neutral-50); border-top: 1px solid var(--kpc-neutral-300);
   border-bottom: 1px solid var(--kpc-neutral-300);
-  padding: 8px 8px; font-size: 11px; font-weight: 600; color: var(--kpc-text-muted); text-align: left;
+  padding: 8px 8px; font-size: 12.5px; font-weight: 600; color: var(--kpc-text-muted); text-align: left;
 }
 .doc-sheet table.doc-lines th.num, .doc-sheet table.doc-lines td.num { text-align: right; }
 .doc-sheet table.doc-lines th.ctr, .doc-sheet table.doc-lines td.ctr { text-align: center; }
@@ -126,8 +126,8 @@
 }
 .doc-sheet-pdf .doc-sheet .doc-top { gap: 12px; }
 .doc-sheet-pdf .doc-sheet .doc-meta-grid { margin-top: 12px; padding: 10px 0; }
-.doc-sheet-pdf .doc-sheet table.doc-lines { margin-top: 10px; font-size: 11.5px; }
-.doc-sheet-pdf .doc-sheet table.doc-lines th { padding: 6px; font-size: 10.5px; }
+.doc-sheet-pdf .doc-sheet table.doc-lines { margin-top: 10px; font-size: 13.5px; }
+.doc-sheet-pdf .doc-sheet table.doc-lines th { padding: 6px; font-size: 12px; }
 .doc-sheet-pdf .doc-sheet table.doc-lines td { padding: 6px; }
 .doc-sheet-pdf .doc-sheet .doc-foot { margin-top: 8px; }
 .doc-sheet-pdf .doc-sheet .doc-sign {
@@ -216,11 +216,17 @@
     display: block !important;
   }
 
+  /* Dot-matrix / mono printers render the light-gray text (company address,
+     customer name, amount-in-words, signature captions, totals labels …)
+     almost invisibly. Force every bit of document text to solid black on
+     paper; the on-screen preview keeps its softer grays. */
+  .doc-sheet, .doc-sheet * { color: #000 !important; }
+
   /* Compact vertical rhythm. */
   .doc-sheet .doc-top { gap: 12px; }
   .doc-sheet .doc-meta-grid { margin-top: 12px; padding: 10px 0; }
-  .doc-sheet table.doc-lines { margin-top: 10px; font-size: 11.5px; }
-  .doc-sheet table.doc-lines th { padding: 6px; font-size: 10.5px; }
+  .doc-sheet table.doc-lines { margin-top: 10px; font-size: 13.5px; }
+  .doc-sheet table.doc-lines th { padding: 6px; font-size: 12px; }
   .doc-sheet table.doc-lines td { padding: 6px; }
   .doc-sheet .doc-foot { margin-top: 8px; }
 
@@ -347,15 +353,15 @@
 
 /* ============================================================
    Bank deposit / pay-in slip (ใบนำฝาก · ttb)
-   Prints onto the pre-printed bank form on a #10 envelope, landscape
-   (241 × 105 mm). Each field is absolutely positioned in mm so it lines
+   Prints onto the pre-printed bank form, landscape, on a fixed
+   9 × 4 inch page. Each field is absolutely positioned in mm so it lines
    up with the boxes on the form (offsets live in DepositSlipDoc.tsx).
    ============================================================ */
 .deposit-wrap { overflow: auto; }
 .deposit-sheet {
   position: relative;
-  width: 241mm;
-  height: 105mm;
+  width: 9in;
+  height: 4in;
   background: #fff;
   box-sizing: border-box;
   color: #111;
@@ -368,9 +374,9 @@
 }
 .deposit-sheet .dep-amount { font-weight: 700; color: #13287a; }
 
-/* On screen, scale the mm-sized sheet down so the whole envelope fits the modal. */
+/* On screen, scale the sheet down so the whole slip fits the modal. */
 @media screen {
-  .deposit-wrap { height: calc(105mm * 0.78); }
+  .deposit-wrap { height: calc(4in * 0.78); }
   .deposit-wrap .deposit-sheet {
     transform: scale(0.78);
     transform-origin: top left;
@@ -379,16 +385,47 @@
 }
 
 @media print {
-  /* Dedicated page box for the envelope; the default @page stays A4 for every
-     other document. The deposit sheet opts in via `page: envelope10`. */
-  @page envelope10 { size: 241mm 105mm; margin: 0; }
+  /* Dedicated 9 × 4 inch page box for the deposit slip; the default @page stays
+     A4 for every other document. The deposit sheet opts in via `page: envelope10`. */
+  @page envelope10 { size: 9in 4in; margin: 0; }
   .deposit-wrap { height: auto !important; overflow: visible !important; }
   .deposit-wrap .deposit-sheet { transform: none !important; }
   .deposit-sheet {
     page: envelope10;
-    width: 241mm !important;
-    height: 105mm !important;
+    width: 9in !important;
+    height: 4in !important;
     overflow: hidden !important;
     border: none !important;
   }
+}
+
+/* ============================================================
+   General report — mixer-truck-trip summary (รายงานบันทึกเที่ยวรถโม่)
+   Wide multi-page table; previewed in a modal and printed to PDF.
+   ============================================================ */
+.trip-report-sheet { background: #fff; color: #14171b; font-size: 12px; line-height: 1.4; }
+.trip-report-sheet .trr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid #14171b; padding-bottom: 8px; margin-bottom: 10px; }
+.trip-report-sheet .trr-co { font-size: 15px; font-weight: 700; }
+.trip-report-sheet .trr-sub { font-size: 11px; color: #6b7280; }
+.trip-report-sheet .trr-title { font-size: 15px; font-weight: 700; }
+.trip-report-sheet .trr-range { font-size: 12px; }
+.trip-report-sheet .trr-meta { font-size: 10px; color: #6b7280; }
+.trip-report-sheet .trr-section { font-weight: 700; font-size: 12.5px; margin: 14px 0 5px; }
+.trip-report-sheet table.trr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.trip-report-sheet table.trr-table th, .trip-report-sheet table.trr-table td { border: 1px solid #c4c4c4; padding: 3px 6px; text-align: left; vertical-align: top; }
+.trip-report-sheet table.trr-table th { background: #ececec; font-weight: 600; font-size: 10.5px; }
+.trip-report-sheet table.trr-table td.n, .trip-report-sheet table.trr-table th.n { text-align: right; white-space: nowrap; }
+.trip-report-sheet table.trr-table td.c, .trip-report-sheet table.trr-table th.c { text-align: center; }
+.trip-report-sheet table.trr-table td.mono { font-family: var(--kpc-font-mono); }
+.trip-report-sheet table.trr-table tr.dim td { background: #fdf2f8; }
+.trip-report-sheet table.trr-table tr.trr-total td { font-weight: 700; background: #f4f4f4; }
+.trip-report-sheet table.trr-detail { font-size: 10px; }
+.trip-report-sheet table.trr-detail th, .trip-report-sheet table.trr-detail td { padding: 2px 5px; }
+
+@media print {
+  .trip-report-sheet { font-size: 10px; padding: 10mm; }
+  .trip-report-sheet table.trr-table { font-size: 9px; }
+  .trip-report-sheet table.trr-detail { font-size: 8.5px; }
+  .trip-report-sheet table.trr-table thead { display: table-header-group; }
+  .trip-report-sheet table.trr-table tr { break-inside: avoid; }
 }
