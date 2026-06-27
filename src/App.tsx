@@ -7,6 +7,7 @@ import { AuditReport } from './pages/AuditReport'
 import { ROUTE_RESOURCE, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
+import { Commission } from './pages/Commission'
 import { SalesOrders } from './pages/SalesOrders'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
         <Route path="/truck-trips" element={<TruckTrips />} />
+        <Route path="/commission" element={<Commission />} />
         <Route path="/invoices" element={<InvoicesHub />} />
         <Route path="/billing" element={<BillingNotes />} />
         <Route path="/receipts" element={<Receipts />} />

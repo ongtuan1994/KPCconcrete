@@ -242,21 +242,47 @@ export interface TruckTripReportTruck {
   vehicle: string; plate: string; wheel: string; driver: string
   trips: number; normal: number; over: number; ot18: number; ot22: number; m3: number; fee: number
 }
-/** A saved report shown under the รายงานทั่วไป menu. Currently only the
-    mixer-truck-trip kind; the snapshot is enough to re-render & print to PDF. */
-export interface GeneralReport {
+/** One employee's commission line in a saved commission report. */
+export interface CommissionLine { name: string; rate: number; amount: number }
+
+/** Standing commission rate per employee (บาท/คิว) — editable, persisted, and
+    snapshotted into each report. Defaults mirror the company's paper form. */
+export interface CommissionRate { name: string; rate: number }
+export const DEFAULT_COMMISSION_RATES: CommissionRate[] = [
+  { name: 'นายสหรัฐ เพ็ชรฉิม', rate: 3.0 },
+  { name: 'นายชัยวัฒน์ ขุนเพ็ชร', rate: 2.0 },
+  { name: 'นายกฤษฎา ปิ่นเกตุ', rate: 1.5 },
+  { name: 'นางสาวเพียงแข ตันยุชน', rate: 1.5 },
+]
+
+/* Fields common to every saved report shown under the รายงานทั่วไป menu. */
+interface GeneralReportBase {
   id: string
-  kind: 'truck-trips'
   title: string      /* e.g. "บันทึกเที่ยวรถโม่ 03/01/2569 ถึง 28/04/2569" */
   fromLabel: string  /* DD/MM/พ.ศ. */
   toLabel: string
+  createdBy?: string
+  createdAt: string
+}
+/** Mixer-truck-trip report snapshot. */
+export interface TruckTripReport extends GeneralReportBase {
+  kind: 'truck-trips'
   rows: TruckTripReportRow[]
   trucks: TruckTripReportTruck[]
   drivers: { driver: string; trips: number; fee: number }[]
   totals: { totalM3: number; tripTotal: number; feeTotal: number }
-  createdBy?: string
-  createdAt: string
 }
+/** Sales-commission report snapshot — commission = rate (บาท/คิว) × ยอดขายให้
+    ลูกค้า (คิว), paid only when the volume qualifies (≥ 490 คิว). */
+export interface CommissionReport extends GeneralReportBase {
+  kind: 'commission'
+  volumeM3: number   /* concrete sold to customers in the range (คิว) */
+  qualifies: boolean /* volume ≥ 490 — pays only when true */
+  status: string     /* human-readable threshold status */
+  lines: CommissionLine[]
+  total: number
+}
+export type GeneralReport = TruckTripReport | CommissionReport
 
 const KEY = 'kpc.createdDocs.v1'
 
@@ -303,10 +329,12 @@ export interface CreatedDocs {
   truckTrips: Record<string, TruckTripEntry>
   /** Saved general reports (รายงานทั่วไป) — newest first. */
   generalReports: GeneralReport[]
+  /** Standing commission rates per employee (บาท/คิว) for the commission page. */
+  commissionRates: CommissionRate[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES }
 
 function read(): CreatedDocs {
   try {
@@ -355,6 +383,7 @@ function read(): CreatedDocs {
       salaryStructureAdjustments: v.salaryStructureAdjustments ?? [],
       truckTrips: v.truckTrips ?? {},
       generalReports: v.generalReports ?? [],
+      commissionRates: v.commissionRates ?? DEFAULT_COMMISSION_RATES,
     }
   } catch {
     return empty
@@ -551,6 +580,10 @@ export function addGeneralReport(r: GeneralReport) {
 }
 export function removeGeneralReport(id: string) {
   commit({ ...state, generalReports: state.generalReports.filter((g) => g.id !== id) })
+}
+/** Persist the commission rate table (used by the บันทึกค่าคอมมิชชั่น page). */
+export function setCommissionRates(rates: CommissionRate[]) {
+  commit({ ...state, commissionRates: rates })
 }
 
 /** Current effective transport fee schedule (VAT-inclusive). Returns the latest

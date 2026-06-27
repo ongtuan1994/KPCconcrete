@@ -1,6 +1,6 @@
 import { COMPANY } from '../../data/real'
 import { qm } from '../../data/selectors'
-import type { GeneralReport } from '../../data/createdDocs'
+import type { TruckTripReport } from '../../data/createdDocs'
 
 const money = (n: number) => '฿' + n.toLocaleString('en-US')
 
@@ -13,7 +13,7 @@ function fmtCreated(iso: string): string {
 /** Printable mixer-truck-trip report. Rendered both in the on-screen preview
     modal and (via window.print) as the saved PDF. Compact so the wide table
     fits an A4 page; long ranges flow across pages with a repeating header. */
-export function TruckTripReportDoc({ report }: { report: GeneralReport }) {
+export function TruckTripReportDoc({ report }: { report: TruckTripReport }) {
   const t = report.totals
   return (
     <div className="trip-report-sheet">

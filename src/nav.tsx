@@ -27,6 +27,7 @@ export const NAV: NavGroup[] = [
       { to: '/sales-orders', label: 'ใบสั่งขาย', en: 'Sales Orders', icon: <IconCart /> },
       { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
       { to: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', en: 'Mixer Truck Trips', icon: <IconTruck /> },
+      { to: '/commission', label: 'บันทึกค่าคอมมิชชั่น', en: 'Sales Commission', icon: <IconWallet /> },
       { to: '/invoices', label: 'ใบกำกับภาษี / วางบิล', en: 'Tax Invoices / Billing', icon: <IconInvoice /> },
       { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
     ],

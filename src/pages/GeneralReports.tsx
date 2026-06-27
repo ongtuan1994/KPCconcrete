@@ -4,13 +4,23 @@ import { Button, Badge, SavedBy } from '../components/ui'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { TruckTripReportDoc } from '../components/documents/TruckTripReportDoc'
+import { CommissionReportDoc } from '../components/documents/CommissionReportDoc'
+import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
-const money = (n: number) => '฿' + n.toLocaleString('en-US')
+const money = (n: number) => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'truck-trips': 'บันทึกเที่ยวรถโม่',
+  'commission': 'ค่าคอมมิชชั่น',
 }
+
+/* Union-safe accessors — each report kind carries a different payload. */
+const reportAmount = (r: GeneralReport) => (r.kind === 'commission' ? r.total : r.totals.feeTotal)
+const reportSummary = (r: GeneralReport) =>
+  r.kind === 'commission'
+    ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
+    : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -34,13 +44,13 @@ export function GeneralReports() {
       cell: (r) => (
         <div className="stack" style={{ gap: 2 }}>
           <span style={{ color: 'var(--kpc-text-strong)', fontWeight: 500 }}>{r.title}</span>
-          <span style={{ fontSize: 12, color: 'var(--kpc-text-faint)' }}>{r.rows.length} รายการ · {r.totals.tripTotal} เที่ยว</span>
+          <span style={{ fontSize: 12, color: 'var(--kpc-text-faint)' }}>{reportSummary(r)}</span>
         </div>
       ),
     },
     { key: 'kind', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone="info" pip={false} square>{KIND_LABEL[r.kind]}</Badge> },
     { key: 'range', header: 'ช่วงวันที่', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{r.fromLabel} – {r.toLabel}</span> },
-    { key: 'fee', header: 'ค่าเที่ยวรวม', align: 'right', cell: (r) => <span className="amt mono">{money(r.totals.feeTotal)}</span> },
+    { key: 'fee', header: 'ยอดรวม (บาท)', align: 'right', cell: (r) => <span className="amt mono">{money(reportAmount(r))}</span> },
     { key: 'savedby', header: 'ผู้สร้าง', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     {
       key: 'act',
@@ -76,7 +86,9 @@ export function GeneralReports() {
       )}
 
       <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)}>
-        {active && <TruckTripReportDoc report={active} />}
+        {active && (active.kind === 'commission'
+          ? <CommissionReportDoc report={active} />
+          : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )
