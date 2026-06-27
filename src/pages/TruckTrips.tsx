@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Input, Select } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP } from '../data/real'
+import { EMPLOYEES } from '../data/employees'
 import { qm, monthShort } from '../data/selectors'
 import { useCreatedDocs, setTruckTrip, addGeneralReport, type TruckTripEntry, type GeneralReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -13,20 +14,37 @@ const TRUCKS = ['001', '002', '003', '004'] as const
 const TEN_WHEEL = new Set(['001', '002'])
 const wheelLabel = (v: string) => (TEN_WHEEL.has(v) ? '10 ล้อ' : '6 ล้อ')
 
-/* Distinct driver names across the fleet — options for the per-row driver picker. */
-const DRIVERS = Array.from(new Set(VEHICLES.map((v) => v.driver)))
+/* "คนขับรถนอก" + ผู้จัดการ ได้ค่าเที่ยวแบบเหมา (ไม่สนใจ เกิน20/หลัง18/หลัง22):
+   10 ล้อ (001/002) เหมา 100 บาท · 6 ล้อ (003/004) เหมา 80 บาท. */
+const OUTSIDE_DRIVER = 'คนขับรถนอก'
+const MANAGER_DRIVERS = EMPLOYEES.filter((e) => e.department === 'manager').map((e) => e.name)
+/** Drivers paid the flat per-trip rate (managers + the external driver). */
+const SPECIAL_DRIVERS = new Set<string>([...MANAGER_DRIVERS, OUTSIDE_DRIVER])
+const SPECIAL_FEE_TEN = 100
+const SPECIAL_FEE_SIX = 80
+
+/* Driver picker options: fleet drivers + ผู้จัดการ + คนขับรถนอก. */
+const DRIVER_OPTIONS = Array.from(
+  new Set([...VEHICLES.map((v) => v.driver), ...MANAGER_DRIVERS, OUTSIDE_DRIVER]),
+)
 
 /** Per-trip running fee:
  *  10-wheel (001/002): 35 บาท · 40 if เกิน 20 กม.
  *  6-wheel  (003/004): 25 บาท · 30 if เกิน 20 กม.
- *  +10 if วิ่งหลัง 18:00 · +10 more if วิ่งหลัง 22:00. */
+ *  +10 if วิ่งหลัง 18:00 · +10 more if วิ่งหลัง 22:00.
+ *  EXCEPTION — ผู้จัดการ / คนขับรถนอก: เหมา 100 (10 ล้อ) / 80 (6 ล้อ) ต่อเที่ยว,
+ *  ไม่คิด เกิน20/หลัง18/หลัง22. */
 function tripBase(vehicle: string, over20: boolean): number {
   if (TEN_WHEEL.has(vehicle)) return over20 ? 40 : 35
   return over20 ? 30 : 25
 }
 const OT_BONUS = 10
-function rowFee(vehicle: string | undefined, e: TruckTripEntry): number {
+function isSpecialDriver(driver: string | undefined): boolean {
+  return !!driver && SPECIAL_DRIVERS.has(driver)
+}
+function rowFee(vehicle: string | undefined, e: TruckTripEntry, driver?: string): number {
   if (!vehicle) return 0
+  if (isSpecialDriver(driver)) return TEN_WHEEL.has(vehicle) ? SPECIAL_FEE_TEN : SPECIAL_FEE_SIX
   return tripBase(vehicle, !!e.over20) + (e.ot18 ? OT_BONUS : 0) + (e.ot22 ? OT_BONUS : 0)
 }
 
@@ -39,6 +57,15 @@ function ticketISO(date: string): string {
   if (!dd || !mm || !yy) return ''
   const ce = 1957 + Number(yy) /* 2500+yy (พ.ศ.) − 543 = 1957+yy */
   return `${ce}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
+}
+/** วันนี้ + วันที่ 1 ของเดือนนี้ (ISO) — ใช้ตั้งค่าช่วงเวลาเริ่มต้น. */
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function monthStartIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 /** ISO "YYYY-MM-DD" → Thai "DD/MM/พ.ศ." for report titles/labels. */
 function isoToThai(iso: string): string {
@@ -57,25 +84,10 @@ export function TruckTrips() {
     [created.tickets, hiddenSet],
   )
 
-  /* Data's own date span — used to seed the from/to inputs. */
-  const span = useMemo(() => {
-    let min = '', max = ''
-    for (const t of allTickets) {
-      const iso = ticketISO(t.date)
-      if (!iso) continue
-      if (!min || iso < min) min = iso
-      if (!max || iso > max) max = iso
-    }
-    return { min, max }
-  }, [allTickets])
-
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  /* Default the range to the full data span on first load (keeps user edits). */
-  useEffect(() => {
-    setFrom((f) => f || span.min)
-    setTo((t) => t || span.max)
-  }, [span.min, span.max])
+  /* Default range: ตั้งแต่ = วันที่ 1 ของเดือนนี้, จนถึง = วันนี้. */
+  const [from, setFrom] = useState(monthStartIso)
+  const [to, setTo] = useState(todayIso)
+  const today = todayIso()
 
   /* Tickets within the selected range, oldest first. */
   const inRange = useMemo(() => {
@@ -102,7 +114,7 @@ export function TruckTrips() {
       const vehicle = t.vehicle /* read-only, straight from the delivery ticket */
       const defDriver = vehicle ? VEHICLE_MAP[vehicle]?.driver ?? '' : ''
       const driver = e.driver ?? defDriver
-      const fee = isCust ? rowFee(vehicle, e) : 0
+      const fee = isCust ? rowFee(vehicle, e, driver) : 0
       totalM3 += t.m3
       let trip = 0
       if (isCust) trip = ++tripSeq
@@ -204,11 +216,11 @@ export function TruckTrips() {
         <div className="row wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
-            <Input type="date" value={from} min={span.min} max={span.max} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />
+            <Input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />
           </label>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>จนถึง</span>
-            <Input type="date" value={to} min={span.min} max={span.max} onChange={(e) => setTo(e.target.value)} style={{ width: 170 }} />
+            <Input type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} style={{ width: 170 }} />
           </label>
           <span style={{ fontSize: 12, color: 'var(--kpc-text-faint)' }}>
             ดึงใบจ่าย {inRange.length} รายการ · งานลูกค้านับเที่ยว, โรงหล่อ/ใช้เองไม่คิดค่าเที่ยว
@@ -248,6 +260,7 @@ export function TruckTrips() {
               <tr><td colSpan={13}><div className="empty-state"><span className="et">ไม่พบใบจ่ายในช่วงวันที่เลือก</span></div></td></tr>
             ) : rowData.map((r, i) => {
               const dim = !r.isCust /* โรงหล่อ / ใช้เอง — no trip fee */
+              const special = isSpecialDriver(r.driver) /* ผู้จัดการ/รถนอก = เหมา */
               return (
                 <tr key={r.t.dtNo} style={dim ? { background: '#fdf2f8' } : undefined}>
                   <td style={{ color: 'var(--kpc-text-faint)' }}>{i + 1}</td>
@@ -272,21 +285,21 @@ export function TruckTrips() {
                         onChange={(e) => setTruckTrip(r.t.dtNo, { driver: e.target.value === r.defDriver ? undefined : e.target.value })}
                         style={{ padding: '4px 8px', fontSize: 13, minWidth: 150 }}
                       >
-                        {/* Keep any custom saved driver selectable even if not in the fleet list. */}
-                        {!DRIVERS.includes(r.driver) && r.driver && <option value={r.driver}>{r.driver}</option>}
-                        {DRIVERS.map((d) => <option key={d} value={d}>{d}{d === r.defDriver ? ' (ประจำรถ)' : ''}</option>)}
+                        {/* Keep any custom saved driver selectable even if not in the list. */}
+                        {!DRIVER_OPTIONS.includes(r.driver) && r.driver && <option value={r.driver}>{r.driver}</option>}
+                        {DRIVER_OPTIONS.map((d) => <option key={d} value={d}>{d}{d === r.defDriver ? ' (ประจำรถ)' : ''}{SPECIAL_DRIVERS.has(d) ? ' · เหมา' : ''}</option>)}
                       </Select>
                     ) : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}
                   </td>
                   <td className="num mono">{qm(r.t.m3)}</td>
                   <td className="ctr">
-                    {r.isCust && r.vehicle && <input type="checkbox" checked={!!r.e.over20} onChange={(e) => setTruckTrip(r.t.dtNo, { over20: e.target.checked })} />}
+                    {r.isCust && r.vehicle && <input type="checkbox" checked={special ? false : !!r.e.over20} disabled={special} title={special ? 'เหมา — ไม่คิดระยะทาง' : undefined} onChange={(e) => setTruckTrip(r.t.dtNo, { over20: e.target.checked })} />}
                   </td>
                   <td className="ctr">
-                    {r.isCust && r.vehicle && <input type="checkbox" checked={!!r.e.ot18} onChange={(e) => setTruckTrip(r.t.dtNo, { ot18: e.target.checked })} />}
+                    {r.isCust && r.vehicle && <input type="checkbox" checked={special ? false : !!r.e.ot18} disabled={special} title={special ? 'เหมา — ไม่คิดเวลา' : undefined} onChange={(e) => setTruckTrip(r.t.dtNo, { ot18: e.target.checked })} />}
                   </td>
                   <td className="ctr">
-                    {r.isCust && r.vehicle && <input type="checkbox" checked={!!r.e.ot22} onChange={(e) => setTruckTrip(r.t.dtNo, { ot22: e.target.checked })} />}
+                    {r.isCust && r.vehicle && <input type="checkbox" checked={special ? false : !!r.e.ot22} disabled={special} title={special ? 'เหมา — ไม่คิดเวลา' : undefined} onChange={(e) => setTruckTrip(r.t.dtNo, { ot22: e.target.checked })} />}
                   </td>
                   <td className="num mono" style={{ fontWeight: r.fee ? 600 : 400, color: r.fee ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
                     {r.isCust ? (r.vehicle ? money(r.fee) : '—') : '—'}
@@ -301,7 +314,7 @@ export function TruckTrips() {
       {/* Per-truck summary */}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สรุปแยกรถ</span>
-        <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>10 ล้อ 35/40 · 6 ล้อ 25/30 · OT +10/+10</span>
+        <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>10 ล้อ 35/40 · 6 ล้อ 25/30 · OT +10/+10 · ผู้จัดการ/รถนอก เหมา 100/80</span>
       </div>
       <div className="card flush" style={{ overflowX: 'auto', marginBottom: 22 }}>
         <table className="data" style={{ minWidth: 760 }}>

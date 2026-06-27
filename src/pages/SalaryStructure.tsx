@@ -45,14 +45,26 @@ export function SalaryStructure() {
   }, 0)
 
   const exportExcel = () => {
-    const head = ['รหัส', 'ชื่อ-สกุล', 'ฝ่าย', 'เงินรายวัน', 'เงินเดือน', 'ประสบการณ์', 'ปกส.', 'อัตรา OT (บาท/นาที)']
+    const head = ['รหัส', 'ชื่อ-สกุล', 'ฝ่าย', 'เงินรายวัน', 'เงินเดือน', 'ประสบการณ์', 'ปกส.', 'อัตรา OT (บาท/นาที)', 'รับเงิน OT', 'รับคอมมิชชั่น', 'ค่าเที่ยวรถโม่']
     const body = rows.map(({ emp, s }) => [
-      emp.id, emp.name, DEPARTMENT_LABEL[emp.department].th, s.dailyWage, s.baseSalary, s.experiencePay, s.socialSecurity, computeOtRate(s),
+      emp.id, emp.name, DEPARTMENT_LABEL[emp.department].th, s.dailyWage, s.baseSalary, s.experiencePay, s.socialSecurity,
+      s.otEligible === false ? '-' : computeOtRate(s),
+      s.otEligible !== false ? 'ร่วม' : 'ไม่ร่วม', s.commissionEligible !== false ? 'ร่วม' : 'ไม่ร่วม',
+      s.truckTripEligible === true ? 'ร่วม' : 'ไม่ร่วม',
     ])
     downloadCsv('salary-structure', [head, ...body])
   }
 
   const money = (n: number) => (n ? <span className="mono">{baht(n)}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>)
+
+  const EligPill = ({ on }: { on: boolean }) => (
+    <span style={{
+      fontSize: 12, fontWeight: 600, padding: '2px 10px', borderRadius: 999,
+      background: on ? 'rgba(34,197,94,0.14)' : 'var(--kpc-surface-alt)',
+      color: on ? '#15803d' : 'var(--kpc-text-faint)',
+      border: `1px solid ${on ? 'rgba(34,197,94,0.35)' : 'var(--kpc-border)'}`,
+    }}>{on ? 'ร่วม' : 'ไม่ร่วม'}</span>
+  )
 
   const columns: Column<Row>[] = [
     { key: 'id', header: 'รหัส', cell: (r) => <span className="mono">{r.emp.id}</span>, className: 'docno' },
@@ -70,7 +82,12 @@ export function SalaryStructure() {
     { key: 'base', header: 'เงินเดือน', align: 'right', cell: (r) => money(r.s.baseSalary) },
     { key: 'exp', header: 'ประสบการณ์', align: 'right', cell: (r) => money(r.s.experiencePay) },
     { key: 'sso', header: 'ปกส.', align: 'right', cell: (r) => money(r.s.socialSecurity) },
-    { key: 'ot', header: 'อัตรา OT', align: 'right', cell: (r) => <span className="mono">{computeOtRate(r.s)} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>บาท/นาที</span></span> },
+    { key: 'ot', header: 'อัตรา OT', align: 'right', cell: (r) => (r.s.otEligible === false
+      ? <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      : <span className="mono">{computeOtRate(r.s)} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>บาท/นาที</span></span>) },
+    { key: 'otElig', header: 'รับเงิน OT', align: 'center', cell: (r) => <EligPill on={r.s.otEligible !== false} /> },
+    { key: 'commElig', header: 'รับคอมมิชชั่น', align: 'center', cell: (r) => <EligPill on={r.s.commissionEligible !== false} /> },
+    { key: 'truckElig', header: 'ค่าเที่ยวรถโม่', align: 'center', cell: (r) => <EligPill on={r.s.truckTripEligible === true} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setEditing(r.emp)}>แก้ไข</Button> },
   ]
 
@@ -133,6 +150,9 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
   const [baseSalary, setBaseSalary] = useState('')
   const [experiencePay, setExperiencePay] = useState('')
   const [socialSecurity, setSocialSecurity] = useState('')
+  const [otEligible, setOtEligible] = useState(true)
+  const [commissionEligible, setCommissionEligible] = useState(true)
+  const [truckTripEligible, setTruckTripEligible] = useState(false)
 
   useEffect(() => {
     if (!employee || !current) return
@@ -140,6 +160,9 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
     setBaseSalary(current.baseSalary ? String(current.baseSalary) : '')
     setExperiencePay(current.experiencePay ? String(current.experiencePay) : '')
     setSocialSecurity(current.socialSecurity ? String(current.socialSecurity) : '')
+    setOtEligible(current.otEligible !== false)
+    setCommissionEligible(current.commissionEligible !== false)
+    setTruckTripEligible(current.truckTripEligible === true)
   }, [employee, current])
 
   if (!employee) return null
@@ -156,6 +179,9 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
       experiencePay: Number(experiencePay) || 0,
       socialSecurity: Number(socialSecurity) || 0,
       otRatePerMinute: derivedOt,
+      otEligible,
+      commissionEligible,
+      truckTripEligible,
       lastAdjustedAt: new Date().toISOString(),
     }
     const isLabor = employee.department === 'labor' || next.dailyWage > 0 || (current?.dailyWage ?? 0) > 0
@@ -201,6 +227,32 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
             {derivedOt.toFixed(2)} <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--kpc-text-muted)', marginLeft: 6 }}>บาท/นาที</span>
           </div>
         </Field>
+      </div>
+
+      {/* Eligibility toggles — drive the Payroll OT field + the Commission page. */}
+      <div className="card" style={{ marginTop: 14, padding: 12, background: 'var(--kpc-surface-alt)', border: '1px solid var(--kpc-border)', borderRadius: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--kpc-text-strong)' }}>การเข้าร่วม</div>
+        <label className="row" style={{ gap: 10, alignItems: 'flex-start', cursor: 'pointer', marginBottom: 10 }}>
+          <input type="checkbox" checked={otEligible} onChange={(e) => setOtEligible(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16 }} />
+          <span className="stack" style={{ gap: 2 }}>
+            <span style={{ fontWeight: 600 }}>ร่วมเงิน OT {otEligible ? '(ร่วม)' : '(ไม่ร่วม)'}</span>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>คำนวณ OT จากบันทึกลงเวลางาน — ถ้าไม่ร่วม ช่อง OT ในใบจ่ายเงินเดือนจะถูกปิดและเป็น 0</span>
+          </span>
+        </label>
+        <label className="row" style={{ gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+          <input type="checkbox" checked={commissionEligible} onChange={(e) => setCommissionEligible(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16 }} />
+          <span className="stack" style={{ gap: 2 }}>
+            <span style={{ fontWeight: 600 }}>ร่วมค่าคอมมิชชั่น {commissionEligible ? '(ร่วม)' : '(ไม่ร่วม)'}</span>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ถ้าไม่ร่วม พนักงานคนนี้จะไม่แสดงในหน้าบันทึกค่าคอมมิชชั่น (จับคู่ด้วยชื่อ-สกุล)</span>
+          </span>
+        </label>
+        <label className="row" style={{ gap: 10, alignItems: 'flex-start', cursor: 'pointer', marginTop: 10 }}>
+          <input type="checkbox" checked={truckTripEligible} onChange={(e) => setTruckTripEligible(e.target.checked)} style={{ marginTop: 3, width: 16, height: 16 }} />
+          <span className="stack" style={{ gap: 2 }}>
+            <span style={{ fontWeight: 600 }}>ร่วมค่าเที่ยวรถโม่ {truckTripEligible ? '(ร่วม)' : '(ไม่ร่วม)'}</span>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ปกติเฉพาะฝ่ายจัดส่งและผู้จัดการที่ร่วม</span>
+          </span>
+        </label>
       </div>
     </Modal>
   )

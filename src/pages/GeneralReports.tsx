@@ -5,6 +5,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { TruckTripReportDoc } from '../components/documents/TruckTripReportDoc'
 import { CommissionReportDoc } from '../components/documents/CommissionReportDoc'
+import { AttendanceReportDoc } from '../components/documents/AttendanceReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -13,14 +14,18 @@ const money = (n: number) => '฿' + n.toLocaleString('en-US', { minimumFraction
 const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'truck-trips': 'บันทึกเที่ยวรถโม่',
   'commission': 'ค่าคอมมิชชั่น',
+  'attendance': 'บันทึกลงเวลางาน',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
-const reportAmount = (r: GeneralReport) => (r.kind === 'commission' ? r.total : r.totals.feeTotal)
+const reportAmount = (r: GeneralReport): number | null =>
+  r.kind === 'commission' ? r.total : r.kind === 'truck-trips' ? r.totals.feeTotal : null
 const reportSummary = (r: GeneralReport) =>
   r.kind === 'commission'
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
-    : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+    : r.kind === 'attendance'
+      ? `${r.totals.employees} คน · ${r.totals.days} วัน · OT ${r.totals.otMin} นาที`
+      : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -50,7 +55,7 @@ export function GeneralReports() {
     },
     { key: 'kind', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone="info" pip={false} square>{KIND_LABEL[r.kind]}</Badge> },
     { key: 'range', header: 'ช่วงวันที่', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{r.fromLabel} – {r.toLabel}</span> },
-    { key: 'fee', header: 'ยอดรวม (บาท)', align: 'right', cell: (r) => <span className="amt mono">{money(reportAmount(r))}</span> },
+    { key: 'fee', header: 'ยอดรวม (บาท)', align: 'right', cell: (r) => { const a = reportAmount(r); return a === null ? <span style={{ color: 'var(--kpc-text-faint)' }}>—</span> : <span className="amt mono">{money(a)}</span> } },
     { key: 'savedby', header: 'ผู้สร้าง', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     {
       key: 'act',
@@ -88,7 +93,9 @@ export function GeneralReports() {
       <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)}>
         {active && (active.kind === 'commission'
           ? <CommissionReportDoc report={active} />
-          : <TruckTripReportDoc report={active} />)}
+          : active.kind === 'attendance'
+            ? <AttendanceReportDoc report={active} />
+            : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )
