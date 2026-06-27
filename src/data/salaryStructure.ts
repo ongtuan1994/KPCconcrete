@@ -45,6 +45,10 @@ export const SALARY_STRUCTURE_SEED: Record<string, SalaryStructure> = {
   E013: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE },
   E014: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 525, otRatePerMinute: DEFAULT_OT_RATE },
   E015: { baseSalary: 10500, dailyWage: 0, experiencePay: 1500, socialSecurity: 0,   otRatePerMinute: DEFAULT_OT_RATE },
+
+  /* Interns — day-rate trainees (เด็กฝึกงาน · รายวัน 100 บาท/วัน) */
+  E016: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31 },
+  E017: { baseSalary: 0, dailyWage: 100, experiencePay: 0, socialSecurity: 0, otRatePerMinute: 0.31 },
 }
 
 /** Effective structure for an employee: per-employee override → seed → defaults.
