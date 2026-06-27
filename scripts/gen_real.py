@@ -154,7 +154,7 @@ def main():
         f.write('  branch: "สำนักงานใหญ่",\n')
         f.write('  address: "6/138 หมู่ 1 ตำบลบางนอน อำเภอเมือง จังหวัดระนอง 85000",\n')
         f.write('  taxId: "0855557000138",\n')
-        f.write('  tel: "077-800-100",\n')
+        f.write('  tel: "093-582-6138",\n')
         f.write("} as const\n\n")
 
         f.write("export interface Month { num: number; key: string; label: string; short: string }\n")

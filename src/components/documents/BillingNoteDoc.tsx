@@ -11,7 +11,7 @@ export function BillingNoteDoc({ bn }: { bn: BillingNote }) {
         <MetaRow k="เลขที่เอกสาร :" v={bn.no} mono />
         <MetaRow k="ที่อยู่ :" v={cust.address} />
         <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
-        <MetaRow k="หน่วยงาน :" v={bn.customer} />
+        <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="จำนวนรายการ :" v={`${bn.invoices.length} ใบ`} />
       </div>
 

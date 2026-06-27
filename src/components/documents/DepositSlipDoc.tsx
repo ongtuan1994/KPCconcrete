@@ -2,19 +2,19 @@ import { bahtText } from '../../data/bahtText'
 import type { PayrollPayment } from '../../data/createdDocs'
 
 /* Print offsets (in mm) onto the pre-printed ttb pay-in / deposit slip, laid out
-   on a #10 envelope in landscape (241 × 105 mm). Adjust these constants to nudge
-   the text so it lines up with the boxes on your physical form. */
+   in landscape on a fixed 9 × 4 inch page (≈ 228.6 × 101.6 mm). Adjust these
+   constants to nudge the text so it lines up with the boxes on your physical form. */
 const POS = {
-  /** Account-number digits — spread across the form's digit boxes. */
-  account: { left: 44, top: 21, fontSize: 15, letterSpacing: 3 },
-  /** Recipient (employee) name, top-right. */
-  name: { left: 150, top: 15, fontSize: 13 },
-  /** Transfer-type tick ("/"), left side. */
-  slash: { left: 21, top: 48, fontSize: 15 },
-  /** Amount in Thai words, centred. */
-  words: { left: 92, top: 48, width: 110, fontSize: 13 },
-  /** Amount in figures, right side. */
-  amount: { left: 187, top: 48, fontSize: 14 },
+  /** Account-number digits — spread across the form's digit boxes (A/C No. row). */
+  account: { left: 27, top: 26, fontSize: 15, letterSpacing: 3 },
+  /** A/C Name — same row as the account boxes, after the "ชื่อบัญชี" label. */
+  name: { left: 120, top: 24, fontSize: 13 },
+  /** Transfer-type tick ("/") on the เงินสด Cash checkbox, left side. */
+  slash: { left: 21, top: 53, fontSize: 15 },
+  /** Amount in Thai words — centred inside the Amount (Letter) cell. */
+  words: { left: 88, top: 62, width: 78, fontSize: 13 },
+  /** Amount in figures — Amount (Numeric) column, right side. */
+  amount: { left: 182, top: 62, fontSize: 14 },
 } as const
 
 const mm = (n: number) => `${n}mm`

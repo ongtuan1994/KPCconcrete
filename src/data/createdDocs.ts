@@ -25,7 +25,7 @@ function stamp<T extends AuditStamp>(rec: T): T {
 }
 
 /** Editable subset of Customer fields — phone/credit kept on top of the master. */
-export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName'>>
+export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName' | 'customerName' | 'unit'>>
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
 export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
@@ -207,6 +207,57 @@ export interface SalaryStructureAdjustment {
   changes: StructureChange[]
 }
 
+/** One delivery ticket's mixer-truck trip record (บันทึกเที่ยวรถโม่ตามใบจ่าย),
+    keyed by DeliveryTicket.dtNo. Only customer (ขายลูกค้า) tickets earn a trip fee;
+    โรงหล่อ / ใช้เอง tickets are logged but never charged. */
+export interface TruckTripEntry {
+  over20?: boolean   /* วิ่งเกิน 20 กม. → higher per-trip rate */
+  ot18?: boolean     /* วิ่งหลัง 18:00 → +10 บาท */
+  ot22?: boolean     /* วิ่งหลัง 22:00 → +10 บาท */
+  /** Per-ticket driver override — defaults to the delivering truck's driver.
+      The truck itself is read straight from the delivery ticket (not editable). */
+  driver?: string
+}
+
+/* ───────── รายงานทั่วไป (General reports — saved snapshots) ───────── */
+
+/** One detail line in a saved mixer-truck-trip report. */
+export interface TruckTripReportRow {
+  trip: number       /* running customer-trip number (0 for โรงหล่อ/ใช้เอง) */
+  forLabel: string   /* ลูกค้า / โรงหล่อ / ใช้เอง */
+  monthLabel: string /* short Thai month, e.g. เม.ย. */
+  date: string       /* DD/MM/YY as printed on the ticket */
+  dp: string         /* delivery-ticket DP number */
+  vehicle: string    /* '' when the ticket has no truck */
+  plate: string
+  driver: string
+  m3: number
+  over20: boolean
+  ot18: boolean
+  ot22: boolean
+  fee: number
+}
+/** Per-truck rollup row in a saved report. */
+export interface TruckTripReportTruck {
+  vehicle: string; plate: string; wheel: string; driver: string
+  trips: number; normal: number; over: number; ot18: number; ot22: number; m3: number; fee: number
+}
+/** A saved report shown under the รายงานทั่วไป menu. Currently only the
+    mixer-truck-trip kind; the snapshot is enough to re-render & print to PDF. */
+export interface GeneralReport {
+  id: string
+  kind: 'truck-trips'
+  title: string      /* e.g. "บันทึกเที่ยวรถโม่ 03/01/2569 ถึง 28/04/2569" */
+  fromLabel: string  /* DD/MM/พ.ศ. */
+  toLabel: string
+  rows: TruckTripReportRow[]
+  trucks: TruckTripReportTruck[]
+  drivers: { driver: string; trips: number; fee: number }[]
+  totals: { totalM3: number; tripTotal: number; feeTotal: number }
+  createdBy?: string
+  createdAt: string
+}
+
 const KEY = 'kpc.createdDocs.v1'
 
 interface Hidden {
@@ -248,10 +299,14 @@ export interface CreatedDocs {
   advances: AdvancePayment[]
   /** History of salary-structure adjustments — newest first. */
   salaryStructureAdjustments: SalaryStructureAdjustment[]
+  /** Mixer-truck trip log keyed by DeliveryTicket.dtNo (บันทึกเที่ยวรถโม่). */
+  truckTrips: Record<string, TruckTripEntry>
+  /** Saved general reports (รายงานทั่วไป) — newest first. */
+  generalReports: GeneralReport[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [] }
 
 function read(): CreatedDocs {
   try {
@@ -298,6 +353,8 @@ function read(): CreatedDocs {
       salaryStructures: v.salaryStructures ?? {},
       advances: v.advances ?? [],
       salaryStructureAdjustments: v.salaryStructureAdjustments ?? [],
+      truckTrips: v.truckTrips ?? {},
+      generalReports: v.generalReports ?? [],
     }
   } catch {
     return empty
@@ -475,6 +532,25 @@ export function updateEmployee(id: string, edit: EmployeeEdit) {
   if (Object.keys(merged).length === 0) delete next[id]
   else next[id] = merged
   commit({ ...state, employeeEdits: next })
+}
+
+/* ───────── Mixer-truck trip log (บันทึกเที่ยวรถโม่ตามใบจ่าย) ───────── */
+/** Patch one ticket's trip record (truck assignment / over-20km / OT flags).
+    An empty record (no truck and no flags) is dropped to keep the store lean. */
+export function setTruckTrip(dtNo: string, patch: Partial<TruckTripEntry>) {
+  const merged: TruckTripEntry = { ...(state.truckTrips[dtNo] ?? {}), ...patch }
+  const next = { ...state.truckTrips }
+  if (!merged.over20 && !merged.ot18 && !merged.ot22 && !merged.driver) delete next[dtNo]
+  else next[dtNo] = merged
+  commit({ ...state, truckTrips: next })
+}
+
+/* ───────── รายงานทั่วไป (General reports) ───────── */
+export function addGeneralReport(r: GeneralReport) {
+  commit({ ...state, generalReports: [stamp(r), ...state.generalReports] })
+}
+export function removeGeneralReport(id: string) {
+  commit({ ...state, generalReports: state.generalReports.filter((g) => g.id !== id) })
 }
 
 /** Current effective transport fee schedule (VAT-inclusive). Returns the latest

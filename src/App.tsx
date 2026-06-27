@@ -6,6 +6,7 @@ import { Settings } from './pages/Settings'
 import { AuditReport } from './pages/AuditReport'
 import { ROUTE_RESOURCE, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
+import { TruckTrips } from './pages/TruckTrips'
 import { SalesOrders } from './pages/SalesOrders'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
@@ -20,6 +21,7 @@ import { Ledger } from './pages/Ledger'
 import { Suppliers } from './pages/Suppliers'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { TaxReports } from './pages/TaxReports'
+import { GeneralReports } from './pages/GeneralReports'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
 import { TransportHub } from './pages/TransportHub'
@@ -70,6 +72,7 @@ export default function App() {
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
+        <Route path="/truck-trips" element={<TruckTrips />} />
         <Route path="/invoices" element={<InvoicesHub />} />
         <Route path="/billing" element={<BillingNotes />} />
         <Route path="/receipts" element={<Receipts />} />
@@ -81,6 +84,7 @@ export default function App() {
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/monthly-report" element={<MonthlyReport />} />
         <Route path="/tax-reports" element={<TaxReports />} />
+        <Route path="/general-reports" element={<GeneralReports />} />
         <Route path="/audit-report" element={<AuditReport />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />

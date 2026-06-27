@@ -7,7 +7,7 @@ export const COMPANY = {
   branch: "สำนักงานใหญ่",
   address: "6/138 หมู่ 1 ตำบลบางนอน อำเภอเมือง จังหวัดระนอง 85000",
   taxId: "0855557000138",
-  tel: "077-800-100",
+  tel: "093-582-6138",
 } as const
 
 export interface Month { num: number; key: string; label: string; short: string }
@@ -108,6 +108,13 @@ export const PRODUCT_MAP: Record<string, Product> = Object.fromEntries(PRODUCTS.
 export interface Customer {
   id: string; name: string; type: string; terms: string
   legalName: string; address: string; taxId: string
+  /* ชื่อลูกค้า / หน่วยงาน — the split identity. `name` stays the unique join key
+     (the composite "ชื่อลูกค้า หน่วยงาน") that every delivery ticket / invoice /
+     report references, so it must never change for an existing record. These two
+     hold the parts for grouping (one customer → many units) and 2-field data entry.
+     Legacy seed rows leave them unset and fall back to `name`. */
+  customerName?: string
+  unit?: string
   /* Contact + credit profile — added incrementally. Edited via CustomerMaster
      and merged from the createdDocs store at display time. */
   phone?: string
@@ -2286,6 +2293,20 @@ export const DELIVERY_TICKETS: DeliveryTicket[] = [
   { month: 6, date: "18/06/69", dtNo: "DT26061813559", ref: "13559", type: "ขายลูกค้า", customer: "บ.กิจไพศาลอันดามันซีฟู้ด/พี่ทัด", prod: "KPCROS00300", m3: 6.0, price: 2650.0, amount: 15900.0, invoice: "", billing: "", pay: "เครดิต" as PayMethod, note: "" },
   { month: 6, date: "18/06/69", dtNo: "DT26061813560", ref: "13560", type: "ขายลูกค้า", customer: "บ.กิจไพศาลอันดามันซีฟู้ด/พี่ทัด", prod: "KPCROS00300", m3: 2.25, price: 2650.0, amount: 5962.5, invoice: "", billing: "", pay: "เครดิต" as PayMethod, note: "" },
 ]
+
+/* Backfill the delivering truck on month 1–4 (พ.ศ.2569) seed tickets that never
+   recorded one. Rule: m3 > 3 → 10-wheel 001/002, m3 ≤ 3 → 6-wheel 003/004, each
+   pair filled alternately so the trips split evenly. Done as a one-time pass over
+   the chronological seed array (instead of inline literals, which blow up the
+   array's union type). The driver is snapshotted from the assigned truck. */
+{
+  let bigIdx = 0, smallIdx = 0
+  for (const t of DELIVERY_TICKETS) {
+    if (t.vehicle || t.month < 1 || t.month > 4) continue
+    t.vehicle = t.m3 > 3 ? (bigIdx++ % 2 === 0 ? '001' : '002') : (smallIdx++ % 2 === 0 ? '003' : '004')
+    if (!t.driver) t.driver = VEHICLE_MAP[t.vehicle]?.driver ?? ''
+  }
+}
 
 export interface StockMaterial { code: string; name: string; en: string; unit: string; balance: number; reorder: number }
 export const STOCK_MATERIALS: StockMaterial[] = [

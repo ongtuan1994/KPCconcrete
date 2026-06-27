@@ -48,8 +48,14 @@ export function vehicleForTicket(t: DeliveryTicket): string {
 }
 
 /* ---------- product display ---------- */
+/** Strip the redundant cement-brand suffix "(ปูน ดอกบัว)" / "(ปูน SCG)" from a
+    product name. Only parentheses that start with "ปูน" are removed, so product
+    specs like "(เส้นที่2)" / "(กันซึม)" are kept. The brand stays encoded in the
+    product code, so documents lose nothing — they just don't print the brand. */
+export const cleanProductName = (name: string) => name.replace(/\s*\(ปูน[^)]*\)/g, '').trim()
+
 export function prodName(code: string) {
-  return PRODUCT_MAP[code]?.name ?? code
+  return cleanProductName(PRODUCT_MAP[code]?.name ?? code)
 }
 export function prodShort(code: string) {
   const p = PRODUCT_MAP[code]
@@ -62,10 +68,33 @@ export function prodShort(code: string) {
 }
 
 /* ---------- customer master ---------- */
+/** Split a combined customer name into ชื่อลูกค้า + หน่วยงาน at the FIRST space or
+    "/" — everything after that separator becomes the หน่วยงาน. Migrates the legacy
+    seed `name` (e.g. "คุณจารึก ซอยลัดดา" → "คุณจารึก" / "ซอยลัดดา",
+    "กรีนรีไซเคิล/พี่หนึ่ง" → "กรีนรีไซเคิล" / "พี่หนึ่ง"). */
+export function splitCustomerName(name: string): { person: string; unit: string } {
+  const i = name.search(/[\s/]/)
+  if (i < 0) return { person: name.trim(), unit: '' }
+  return { person: name.slice(0, i).trim(), unit: name.slice(i + 1).trim() }
+}
+/** ชื่อลูกค้า — an explicit customerName wins; otherwise derive it from `name`. */
+export const customerPerson = (c: { name: string; customerName?: string }): string =>
+  c.customerName ?? splitCustomerName(c.name).person
+/** หน่วยงาน — an explicit unit wins; otherwise derive it from `name`. */
+export const customerUnit = (c: { name: string; unit?: string }): string =>
+  c.unit ?? splitCustomerName(c.name).unit
+
 export function customerLegal(name: string) {
   const c = CUSTOMER_MAP[name]
+  /* Split the customer key into ชื่อลูกค้า + หน่วยงาน so documents can show them in
+     their own rows instead of the combined name. `display` (นามลูกค้า) prefers the
+     registered legal name, else the bare ชื่อลูกค้า. */
+  const person = c ? customerPerson(c) : splitCustomerName(name).person
+  const unit = c ? customerUnit(c) : splitCustomerName(name).unit
   return {
-    display: c?.legalName || name,
+    display: c?.legalName || person,
+    person,
+    unit,
     address: c?.address && c.address !== '—' ? c.address : '—',
     taxId: c?.taxId && c.taxId !== '—' ? c.taxId : '—',
     terms: c?.terms ?? '—',
@@ -137,7 +166,7 @@ function buildInvoices(): Invoice[] {
       const ex = lineMap.get(lk)
       if (ex) { ex.qty += t.m3; ex.amount += t.amount } else {
         const p = PRODUCT_MAP[t.prod]
-        lineMap.set(lk, { code: t.prod, name: p?.name ?? t.prod, unit: p?.unit ?? 'คิว', qty: t.m3, price: t.price, amount: t.amount })
+        lineMap.set(lk, { code: t.prod, name: cleanProductName(p?.name ?? t.prod), unit: p?.unit ?? 'คิว', qty: t.m3, price: t.price, amount: t.amount })
       }
     }
     const lines = [...lineMap.values()]

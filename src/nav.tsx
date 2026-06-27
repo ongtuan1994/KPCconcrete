@@ -17,6 +17,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report', icon: <IconBars /> },
       { to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)', icon: <IconInvoice /> },
+      { to: '/general-reports', label: 'รายงานทั่วไป', en: 'General Reports', icon: <IconBars /> },
       { to: '/audit-report', label: 'รายงาน Audit', en: 'Audit Report', icon: <IconSearch /> },
     ],
   },
@@ -25,6 +26,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/sales-orders', label: 'ใบสั่งขาย', en: 'Sales Orders', icon: <IconCart /> },
       { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
+      { to: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', en: 'Mixer Truck Trips', icon: <IconTruck /> },
       { to: '/invoices', label: 'ใบกำกับภาษี / วางบิล', en: 'Tax Invoices / Billing', icon: <IconInvoice /> },
       { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
     ],
