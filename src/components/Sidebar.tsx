@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom'
-import { NAV } from '../nav'
+import { useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import { NAV, type NavItem } from '../nav'
 import { Logo } from './icons'
 import { ROUTE_RESOURCE, useCurrentUser, usePerms } from '../data/auth'
 
@@ -34,16 +35,89 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
         return (
           <div key={gi} style={{ display: 'contents' }}>
             {group.section && <div className="nav-section">{group.section}</div>}
-            {items.map((it) => (
-              <NavLink key={it.to} to={it.to} onClick={onClose} className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}>
-                {it.icon}
-                {it.label}
-              </NavLink>
-            ))}
+            {items.map((it) =>
+              it.children?.length ? (
+                <NavBranch key={it.to} item={it} onClose={onClose} canSee={canSee} />
+              ) : (
+                <NavLink key={it.to} to={it.to} onClick={onClose} className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}>
+                  {it.icon}
+                  {it.label}
+                </NavLink>
+              ),
+            )}
           </div>
         )
       })}
     </aside>
     </>
+  )
+}
+
+/** A parent nav item with a collapsible submenu. The label still navigates to
+    the parent page; the chevron toggles the submenu. Auto-opens when the parent
+    or any child route is active. */
+function NavBranch({
+  item,
+  onClose,
+  canSee,
+}: {
+  item: NavItem
+  onClose?: () => void
+  canSee: (to: string) => boolean
+}) {
+  const loc = useLocation()
+  const children = (item.children ?? []).filter((c) => canSee(c.to))
+  const childActive = children.some((c) => loc.pathname === c.to)
+  const [open, setOpen] = useState(childActive || loc.pathname === item.to)
+
+  return (
+    <div style={{ display: 'contents' }}>
+      <div className="nav-item-row" style={{ display: 'flex', alignItems: 'stretch' }}>
+        <NavLink
+          to={item.to}
+          onClick={onClose}
+          className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}
+          style={{ flex: 1 }}
+        >
+          {item.icon}
+          {item.label}
+        </NavLink>
+        <button
+          type="button"
+          aria-label={open ? 'ยุบเมนูย่อย' : 'ขยายเมนูย่อย'}
+          aria-expanded={open}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setOpen((v) => !v)
+          }}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'inherit',
+            padding: '0 10px',
+            display: 'grid',
+            placeItems: 'center',
+            fontSize: 11,
+          }}
+        >
+          <span style={{ display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+        </button>
+      </div>
+      {open &&
+        children.map((c) => (
+          <NavLink
+            key={c.to}
+            to={c.to}
+            onClick={onClose}
+            className={({ isActive }) => ['nav-item', 'nav-subitem', isActive ? 'active' : ''].filter(Boolean).join(' ')}
+            style={{ paddingLeft: 38, fontSize: '0.92em' }}
+          >
+            {c.icon}
+            {c.label}
+          </NavLink>
+        ))}
+    </div>
   )
 }
