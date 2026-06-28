@@ -4,6 +4,7 @@ import { ROUTE_META } from '../nav'
 import { IconLogout, IconBell, IconMenu } from './icons'
 import { ROLE_LABEL, logout, useCurrentUser, useCanAudit } from '../data/auth'
 import { useAuditItems } from '../data/audit'
+import { useCreatedDocs } from '../data/createdDocs'
 import { useNotiSeen, markNotiSeen } from '../data/notiSeen'
 import { GlobalSearch } from './GlobalSearch'
 
@@ -21,11 +22,24 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   /* Build the notification feed from live app state. */
   const auditItems = useAuditItems()
   const canAudit = useCanAudit()
+  const created = useCreatedDocs()
   const seen = useNotiSeen()
   const allNotices: Notice[] = []
   const pendingAudit = auditItems.filter((i) => !i.verified).length
   if (canAudit && pendingAudit > 0) {
     allNotices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report', signature: `p:${pendingAudit}` })
+  }
+  /* Board users are alerted when employees are marked สิ้นสภาพ. */
+  if (user?.role === 'Board' && created.terminations.length > 0) {
+    const latest = created.terminations[0]
+    const more = created.terminations.length - 1
+    allNotices.push({
+      id: 'terminations',
+      title: `พนักงานสิ้นสภาพ ${created.terminations.length} ราย`,
+      sub: `ล่าสุด: ${latest.empName}${more > 0 ? ` และอีก ${more} ราย` : ''}`,
+      route: '/employees',
+      signature: `term:${created.terminations.length}:${latest.empId}`,
+    })
   }
   /* Accountant receives the audit requests forwarded by the auditor. */
   if (user?.role === 'Accountant') {

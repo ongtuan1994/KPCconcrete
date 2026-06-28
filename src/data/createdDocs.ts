@@ -301,6 +301,16 @@ export interface FoundryDelivery {
   createdAt: string
 }
 
+/** Employee termination record (สิ้นสภาพพนักงาน) — one per employee. Triggers a
+    notification to Board users. */
+export interface EmployeeTermination {
+  id: string          /* = empId */
+  empId: string
+  empName: string
+  createdBy?: string   /* who marked the termination */
+  createdAt?: string
+}
+
 interface GeneralReportBase {
   id: string
   title: string      /* e.g. "บันทึกเที่ยวรถโม่ 03/01/2569 ถึง 28/04/2569" */
@@ -450,10 +460,12 @@ export interface CreatedDocs {
   generalReports: GeneralReport[]
   /** Standing commission rates per employee (บาท/คิว) for the commission page. */
   commissionRates: CommissionRate[]
+  /** Employees marked สิ้นสภาพ — newest first. Notifies Board users. */
+  terminations: EmployeeTermination[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [] }
 
 function read(): CreatedDocs {
   try {
@@ -504,6 +516,7 @@ function read(): CreatedDocs {
       truckTrips: v.truckTrips ?? {},
       generalReports: v.generalReports ?? [],
       commissionRates: v.commissionRates ?? DEFAULT_COMMISSION_RATES,
+      terminations: v.terminations ?? [],
     }
   } catch {
     return empty
@@ -612,6 +625,16 @@ export function addFoundryDelivery(fd: FoundryDelivery) {
 }
 export function removeFoundryDelivery(fdNo: string) {
   commit({ ...state, foundryDeliveries: state.foundryDeliveries.filter((f) => f.fdNo !== fdNo) })
+}
+
+/* Employee terminations (สิ้นสภาพพนักงาน) — notifies Board users. */
+export function addEmployeeTermination(empId: string, empName: string) {
+  if (state.terminations.some((t) => t.empId === empId)) return
+  const rec: EmployeeTermination = { id: empId, empId, empName }
+  commit({ ...state, terminations: [stamp(rec), ...state.terminations] })
+}
+export function removeEmployeeTermination(empId: string) {
+  commit({ ...state, terminations: state.terminations.filter((t) => t.empId !== empId) })
 }
 
 /* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */

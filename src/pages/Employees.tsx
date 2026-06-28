@@ -17,7 +17,7 @@ import {
   type Site,
   type Nationality,
 } from '../data/employees'
-import { useCreatedDocs, addEmployee, updateEmployee, type EmployeeEdit } from '../data/createdDocs'
+import { useCreatedDocs, addEmployee, updateEmployee, addEmployeeTermination, removeEmployeeTermination, type EmployeeEdit } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
@@ -66,6 +66,7 @@ export function Employees() {
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showForm, setShowForm] = useState(false)
   const created = useCreatedDocs()
+  const terminatedSet = useMemo(() => new Set(created.terminations.map((t) => t.empId)), [created.terminations])
 
   const list = useMemo(
     () => [...created.employeesAdded, ...EMPLOYEES].map((e) => mergeEmployee(e, created.employeeEdits)),
@@ -110,7 +111,10 @@ export function Employees() {
       header: 'ชื่อ-สกุล',
       cell: (r) => (
         <div className="stack" style={{ gap: 2 }}>
-          <span className="th" style={{ color: 'var(--kpc-text-strong)', fontWeight: 600 }}>{r.name}</span>
+          <span className="th" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--kpc-text-strong)', fontWeight: 600 }}>
+            {r.name}
+            {terminatedSet.has(r.id) && <Badge tone="danger" pip={false} square>สิ้นสภาพ</Badge>}
+          </span>
           {r.nickname && <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>({r.nickname})</span>}
         </div>
       ),
@@ -368,6 +372,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
   const [startDate, setStartDate] = useState('')
+  const created = useCreatedDocs()
 
   useEffect(() => {
     if (!employee) return
@@ -384,6 +389,8 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
 
   if (!employee) return null
 
+  const terminated = created.terminations.some((t) => t.empId === employee.id)
+
   const save = () => {
     updateEmployee(employee.id, {
       nickname: nickname.trim() || undefined,
@@ -399,16 +406,40 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
     onClose()
   }
 
+  const terminate = () => {
+    if (!confirm(`ยืนยัน “สิ้นสภาพพนักงาน” ${employee.name}?\n\nระบบจะแจ้งเตือนผู้บริหาร (Board)`)) return
+    addEmployeeTermination(employee.id, employee.name)
+    onClose()
+  }
+  const undoTerminate = () => {
+    if (!confirm(`ยกเลิกสถานะสิ้นสภาพของ ${employee.name}?`)) return
+    removeEmployeeTermination(employee.id)
+    onClose()
+  }
+
   return (
     <Modal
       open={!!employee}
       title={`แก้ไขข้อมูลพนักงาน · ${employee.id}`}
       onClose={onClose}
       maxWidth={560}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
+      footer={
+        <>
+          {terminated ? (
+            <Button variant="secondary" onClick={undoTerminate} style={{ marginRight: 'auto', color: 'var(--kpc-danger)' }}>ยกเลิกสิ้นสภาพ</Button>
+          ) : (
+            <Button variant="secondary" onClick={terminate} style={{ marginRight: 'auto', background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>สิ้นสภาพพนักงาน</Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
+          <Button variant="primary" onClick={save}>บันทึก</Button>
+        </>
+      }
     >
       <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
-        <span style={{ fontSize: 16, fontWeight: 600 }}>{employee.name}</span>
+        <span style={{ fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {employee.name}
+          {terminated && <Badge tone="danger" pip={false} square>สิ้นสภาพแล้ว</Badge>}
+        </span>
         <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
           ชื่อ-สกุลและรหัสไม่สามารถแก้ไขได้ — ฟิลด์อื่นแก้ไขแล้วบันทึกลง localStorage
         </span>
