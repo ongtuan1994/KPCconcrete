@@ -11,11 +11,20 @@ export interface NavItem {
 }
 export interface NavGroup {
   section?: string // section header (Thai · English)
+  /** When true (and `section` is set), the section header toggles its items. */
+  collapsible?: boolean
   items: NavItem[]
 }
 
 export const NAV: NavGroup[] = [
   {
+    items: [
+      { to: '/my-work', label: 'งานของฉัน', en: 'My Work', icon: <IconClock /> },
+    ],
+  },
+  {
+    section: 'รายงาน · Reports',
+    collapsible: true,
     items: [
       { to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report', icon: <IconBars /> },
       { to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)', icon: <IconInvoice /> },

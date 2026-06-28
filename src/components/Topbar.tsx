@@ -8,7 +8,7 @@ import { useCreatedDocs } from '../data/createdDocs'
 import { useNotiSeen, markNotiSeen } from '../data/notiSeen'
 import { GlobalSearch } from './GlobalSearch'
 
-interface Notice { id: string; title: string; sub: string; route?: string; signature: string }
+interface Notice { id: string; title: string; sub: string; route?: string; signature: string; state?: Record<string, unknown> }
 
 export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const loc = useLocation()
@@ -41,6 +41,29 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
       signature: `term:${created.terminations.length}:${latest.empId}`,
     })
   }
+  /* Appointments shared TO me by someone else (the invitee gets notified, not
+     the creator), today onward. */
+  if (user) {
+    const me = user.username
+    const p = (n: number) => String(n).padStart(2, '0')
+    const t = new Date()
+    const todayStr = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`
+    const upcoming = created.appointments
+      .filter((a) => a.owner !== me && a.invitees.includes(me) && a.date >= todayStr)
+      .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
+    if (upcoming.length > 0) {
+      const next = upcoming[0]
+      const [y, mo, d] = next.date.split('-').map(Number)
+      allNotices.push({
+        id: 'appointments',
+        title: `มีนัดหมายถึงคุณ ${upcoming.length} รายการ`,
+        sub: `ใกล้สุด: ${next.title} · ${d}/${p(mo)}/${y + 543}${next.time ? ` ${next.time} น.` : ''} (จาก ${next.owner})`,
+        route: '/my-work',
+        signature: `ap:${upcoming.length}:${next.id}:${next.date}`,
+        state: { focusDate: next.date },
+      })
+    }
+  }
   /* Accountant receives the audit requests forwarded by the auditor. */
   if (user?.role === 'Accountant') {
     const requested = auditItems.filter((i) => i.requested && !i.verified).length
@@ -55,7 +78,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const openNotice = (n: Notice) => {
     markNotiSeen(n.id, n.signature)
     setBellOpen(false)
-    if (n.route) navigate(n.route)
+    if (n.route) navigate(n.route, n.state ? { state: n.state } : undefined)
   }
 
   return (

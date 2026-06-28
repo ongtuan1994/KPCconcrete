@@ -301,6 +301,28 @@ export interface FoundryDelivery {
   createdAt: string
 }
 
+/** A calendar appointment (นัดหมาย) shown on the owner's + invitees' calendars. */
+export interface Appointment {
+  id: string
+  date: string        /* ISO yyyy-mm-dd */
+  time?: string       /* optional HH:mm */
+  title: string
+  note?: string
+  owner: string       /* username who created it */
+  invitees: string[]  /* usernames the appointment is also shown to */
+  createdBy?: string
+  createdAt?: string
+}
+/** A private to-do note (สิ่งที่ต้องทำ) — visible only to its owner. */
+export interface TodoNote {
+  id: string
+  owner: string       /* username */
+  text: string
+  done: boolean
+  createdBy?: string
+  createdAt?: string
+}
+
 /** Employee termination record (สิ้นสภาพพนักงาน) — one per employee. Triggers a
     notification to Board users. */
 export interface EmployeeTermination {
@@ -462,10 +484,14 @@ export interface CreatedDocs {
   commissionRates: CommissionRate[]
   /** Employees marked สิ้นสภาพ — newest first. Notifies Board users. */
   terminations: EmployeeTermination[]
+  /** Calendar appointments (งานของฉัน · นัดหมาย). */
+  appointments: Appointment[]
+  /** Private to-do notes (งานของฉัน · สิ่งที่ต้องทำ). */
+  todoNotes: TodoNote[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [] }
 
 function read(): CreatedDocs {
   try {
@@ -517,6 +543,8 @@ function read(): CreatedDocs {
       generalReports: v.generalReports ?? [],
       commissionRates: v.commissionRates ?? DEFAULT_COMMISSION_RATES,
       terminations: v.terminations ?? [],
+      appointments: v.appointments ?? [],
+      todoNotes: v.todoNotes ?? [],
     }
   } catch {
     return empty
@@ -635,6 +663,28 @@ export function addEmployeeTermination(empId: string, empName: string) {
 }
 export function removeEmployeeTermination(empId: string) {
   commit({ ...state, terminations: state.terminations.filter((t) => t.empId !== empId) })
+}
+
+/* Calendar appointments + to-do notes (งานของฉัน). */
+export function addAppointment(a: Omit<Appointment, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, appointments: [stamp(a as Appointment), ...state.appointments] })
+}
+export function removeAppointment(id: string) {
+  commit({ ...state, appointments: state.appointments.filter((a) => a.id !== id) })
+}
+/** Patch an appointment (e.g. reschedule the date) — owner-driven edits. */
+export function updateAppointment(id: string, patch: Partial<Pick<Appointment, 'date' | 'time' | 'title' | 'note' | 'invitees'>>) {
+  commit({ ...state, appointments: state.appointments.map((a) => (a.id === id ? { ...a, ...patch } : a)) })
+}
+export function addTodoNote(owner: string, text: string) {
+  const rec: TodoNote = { id: `td_${Date.now()}`, owner, text, done: false }
+  commit({ ...state, todoNotes: [stamp(rec), ...state.todoNotes] })
+}
+export function toggleTodoNote(id: string) {
+  commit({ ...state, todoNotes: state.todoNotes.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })
+}
+export function removeTodoNote(id: string) {
+  commit({ ...state, todoNotes: state.todoNotes.filter((t) => t.id !== id) })
 }
 
 /* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */

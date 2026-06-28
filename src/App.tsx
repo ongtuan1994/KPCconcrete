@@ -24,6 +24,7 @@ import { Suppliers } from './pages/Suppliers'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { TaxReports } from './pages/TaxReports'
 import { GeneralReports } from './pages/GeneralReports'
+import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
 import { Pricing } from './pages/Pricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
@@ -88,6 +89,7 @@ export default function App() {
         <Route path="/monthly-report" element={<MonthlyReport />} />
         <Route path="/tax-reports" element={<TaxReports />} />
         <Route path="/general-reports" element={<GeneralReports />} />
+        <Route path="/my-work" element={<MyWork />} />
         <Route path="/audit-report" element={<AuditReport />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
