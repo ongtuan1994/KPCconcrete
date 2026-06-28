@@ -15,7 +15,7 @@ const PRIMARY = 'var(--kpc-primary)'
 const PRIMARY_INK = 'var(--kpc-primary-ink)'
 const PRIMARY_50 = 'var(--kpc-primary-50)'
 
-const thStyle: CSSProperties = { background: PRIMARY, color: '#fff', borderColor: PRIMARY }
+const thStyle: CSSProperties = { background: '#e9e9e9', color: '#111', borderColor: '#b8b8b8' }
 const faint = '#9aa0a6'
 
 /** Printable product price-list report — themed in the KPC brand colour, with a

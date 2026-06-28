@@ -10,7 +10,7 @@ import { STOCK_MATERIALS, type StockMaterial, type DeliveryTicket } from '../dat
 import { CREDITOR_MASTER } from '../data/creditors'
 import { MIX_BY_CODE } from '../data/mixDesign'
 import { baht, qm, prodShort } from '../data/selectors'
-import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, CAN_DELETE, type StockReconcileLine } from '../data/createdDocs'
+import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'low' | 'out'
@@ -44,6 +44,7 @@ function ticketConsumption(t: DeliveryTicket): { code: string; qty: number }[] {
 interface Movement {
   key: string
   date: string
+  iso: string
   sortAt: string
   kind: 'in' | 'out'
   material: string
@@ -61,6 +62,17 @@ function todayIso(): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
+/** First day of the current month (ISO). */
+function firstOfMonthIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+/** Delivery-ticket date "DD/MM/69" (พ.ศ. 2569) → ISO "2026-MM-DD" for comparison. */
+function ticketIso(date: string): string {
+  const m = date.match(/^(\d{1,2})\/(\d{1,2})\/\d{2}$/)
+  if (!m) return date
+  return `2026-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+}
 function fmtDate(iso: string): string {
   if (!iso) return '—'
   const [y, m, d] = iso.split('-')
@@ -77,37 +89,44 @@ function status(m: StockMaterial): { th: string; en: string; tone: Tone } {
 export function Stock() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const [from, setFrom] = useState(firstOfMonthIso())
+  const [to, setTo] = useState(todayIso())
   const [showReceive, setShowReceive] = useState(false)
   const [showReconcile, setShowReconcile] = useState(false)
   const created = useCreatedDocs()
   const navigate = useNavigate()
 
+  /* Movements up to the "จนถึง" date count toward the displayed balance (so the
+     balance reflects the end of the selected period); empty `to` = all-time. */
+  const upTo = (iso: string) => !to || iso <= to
+
   /* Sum received quantity per material code, then add it onto the seed balance. */
   const receivedByCode = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const r of created.stockReceipts) m[r.code] = (m[r.code] ?? 0) + r.qty
+    for (const r of created.stockReceipts) if (upTo(r.date)) m[r.code] = (m[r.code] ?? 0) + r.qty
     return m
-  }, [created.stockReceipts])
+  }, [created.stockReceipts, to])
 
   /* Approved reconciliations adjust the balance by their per-line diff. */
   const adjustByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const rc of created.stockReconciles) {
-      if (rc.status !== 'approved') continue
+      if (rc.status !== 'approved' || !upTo(rc.date)) continue
       for (const l of rc.lines) if (l.diff) m[l.code] = (m[l.code] ?? 0) + l.diff
     }
     return m
-  }, [created.stockReconciles])
+  }, [created.stockReconciles, to])
 
   /* Auto-issue: user-created delivery tickets consume raw materials (seed
      tickets are excluded — the seed balance already reflects past use). */
   const issuedByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const t of created.tickets) {
+      if (!upTo(ticketIso(t.date))) continue
       for (const c of ticketConsumption(t)) m[c.code] = (m[c.code] ?? 0) + c.qty
     }
     return m
-  }, [created.tickets])
+  }, [created.tickets, to])
 
   const materials = useMemo(
     () => STOCK_MATERIALS.map((m) => ({
@@ -135,17 +154,18 @@ export function Stock() {
   const movements: Movement[] = useMemo(() => {
     const out: Movement[] = []
     for (const r of created.stockReceipts) {
-      out.push({ key: `in_${r.id}`, date: fmtDate(r.date), sortAt: r.createdAt ?? r.date, kind: 'in', material: r.material, unit: r.unit, qty: r.qty, ref: r.voucherNo ?? '', detail: r.note, by: r.createdBy, at: r.createdAt, receiptId: r.id })
+      out.push({ key: `in_${r.id}`, date: fmtDate(r.date), iso: r.date, sortAt: r.createdAt ?? r.date, kind: 'in', material: r.material, unit: r.unit, qty: r.qty, ref: r.voucherNo ?? '', detail: r.note, by: r.createdBy, at: r.createdAt, receiptId: r.id })
     }
     for (const t of created.tickets) {
       for (const c of ticketConsumption(t)) {
         const mat = MAT_BY_CODE[c.code]
-        out.push({ key: `out_${t.dtNo}_${c.code}`, date: t.date, sortAt: t.createdAt ?? t.date, kind: 'out', material: mat?.name ?? c.code, unit: mat?.unit ?? 'ตัน', qty: c.qty, ref: t.dtNo, detail: `${t.customer} · ${prodShort(t.prod)}`, by: t.createdBy, at: t.createdAt })
+        out.push({ key: `out_${t.dtNo}_${c.code}`, date: t.date, iso: ticketIso(t.date), sortAt: t.createdAt ?? t.date, kind: 'out', material: mat?.name ?? c.code, unit: mat?.unit ?? 'ตัน', qty: c.qty, ref: t.dtNo, detail: `${t.customer} · ${prodShort(t.prod)}`, by: t.createdBy, at: t.createdAt })
       }
     }
-    out.sort((a, b) => b.sortAt.localeCompare(a.sortAt))
     return out
-  }, [created.stockReceipts, created.tickets])
+      .filter((mv) => (!from || mv.iso >= from) && (!to || mv.iso <= to))
+      .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
+  }, [created.stockReceipts, created.tickets, from, to])
 
   const moveColumns: Column<Movement>[] = [
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
@@ -162,6 +182,37 @@ export function Stock() {
         : <span style={{ color: 'var(--kpc-text-faint)', fontSize: 11 }}>อัตโนมัติ</span>),
     }] : []),
   ]
+
+  /* Build a stock report from the current period (date range) → รายงานทั่วไป. */
+  const periodLabel = from || to
+    ? `${from ? `ตั้งแต่ ${fmtDate(from)}` : ''}${from && to ? ' ' : ''}${to ? `ถึง ${fmtDate(to)}` : ''}`.trim()
+    : 'ยอดปัจจุบัน (ทั้งหมด)'
+  const createReport = () => {
+    const inRange = (iso: string) => (!from || iso >= from) && (!to || iso <= to)
+    const recv: Record<string, number> = {}, iss: Record<string, number> = {}
+    for (const r of created.stockReceipts) if (inRange(r.date)) recv[r.code] = (recv[r.code] ?? 0) + r.qty
+    for (const t of created.tickets) if (inRange(ticketIso(t.date))) for (const c of ticketConsumption(t)) iss[c.code] = (iss[c.code] ?? 0) + c.qty
+    const report: StockReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'stock',
+      title: `คลังวัตถุดิบ · ${periodLabel}`,
+      fromLabel: from ? fmtDate(from) : '—',
+      toLabel: to ? fmtDate(to) : 'ปัจจุบัน',
+      scopeLabel: periodLabel,
+      rows: materials.map((m) => ({
+        code: m.code, material: m.name, unit: m.unit,
+        received: Math.round((recv[m.code] ?? 0) * 100) / 100,
+        issued: Math.round((iss[m.code] ?? 0) * 100) / 100,
+        balance: m.balance, reorder: m.reorder, status: status(m).th,
+      })),
+      movements: movements.map((mv) => ({ date: mv.date, kind: mv.kind, material: mv.material, unit: mv.unit, qty: mv.qty, ref: mv.ref, detail: mv.detail })),
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   const columns: Column<StockMaterial>[] = [
     { key: 'code', header: 'รหัส', cell: (r) => r.code, className: 'docno' },
@@ -210,6 +261,7 @@ export function Stock() {
               const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.reorder, status(r).th])
               downloadCsv('stock', [head, ...body])
             }}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
             <Button variant="secondary" onClick={() => navigate('/stock-reconcile')}>ประวัติการกระทบยอด</Button>
             <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>
             <Button variant="primary" onClick={() => setShowReceive(true)}>
@@ -229,10 +281,18 @@ export function Stock() {
           <Pill active={filter === 'low'} onClick={() => setFilter('low')}>ใกล้หมด {low}</Pill>
           <Pill active={filter === 'out'} onClick={() => setFilter('out')}>หมด {out}</Pill>
         </div>
-        <div style={{ width: 280 }}>
-          <SearchInput placeholder="รหัส / ชื่อวัตถุดิบ" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: 150 }} />
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>จนถึง</span>
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 150 }} />
+          {(from || to) && <Button variant="ghost" size="sm" onClick={() => { setFrom(''); setTo('') }}>ล้างช่วง</Button>}
+          <div style={{ width: 240 }}>
+            <SearchInput placeholder="รหัส / ชื่อวัตถุดิบ" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
         </div>
       </div>
+      {to && <p className="page-sub" style={{ marginTop: -6, marginBottom: 12, fontSize: 12 }}>* คอลัมน์ "คงเหลือ" แสดงยอด ณ วันที่ {fmtDate(to)} (รวมการเคลื่อนไหวถึงวันนั้น)</p>}
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
 
       <div style={{ marginTop: 28 }}>

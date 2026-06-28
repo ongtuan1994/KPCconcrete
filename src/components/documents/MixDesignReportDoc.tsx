@@ -12,7 +12,7 @@ function fmtCreated(iso?: string): string {
 const PRIMARY = 'var(--kpc-primary)'
 const PRIMARY_INK = 'var(--kpc-primary-ink)'
 const PRIMARY_50 = 'var(--kpc-primary-50)'
-const th: CSSProperties = { background: PRIMARY, color: '#fff', borderColor: PRIMARY }
+const th: CSSProperties = { background: '#e9e9e9', color: '#111', borderColor: '#b8b8b8' }
 const faint = '#9aa0a6'
 const n = (v?: number) => (v ? v.toLocaleString() : '—')
 

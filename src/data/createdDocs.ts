@@ -498,7 +498,35 @@ export interface MixDesignReport extends GeneralReportBase {
   scopeLabel: string
   rows: MixDesignReportRow[]
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport
+/** One material row in a saved stock report. */
+export interface StockReportRow {
+  code: string
+  material: string
+  unit: string
+  received: number   /* รับเข้าในช่วง */
+  issued: number     /* จ่ายออกในช่วง */
+  balance: number    /* คงเหลือ ณ สิ้นช่วง */
+  reorder: number
+  status: string
+}
+/** One movement line (รับเข้า/จ่ายออก) included in a stock report. */
+export interface StockReportMovement {
+  date: string
+  kind: 'in' | 'out'
+  material: string
+  unit: string
+  qty: number
+  ref: string
+  detail?: string
+}
+/** Raw-material stock report (รายงานคลังวัตถุดิบ) for a period. */
+export interface StockReport extends GeneralReportBase {
+  kind: 'stock'
+  scopeLabel: string
+  rows: StockReportRow[]
+  movements: StockReportMovement[]
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport
 
 const KEY = 'kpc.createdDocs.v1'
 
