@@ -34,6 +34,7 @@ export function FoundryDeliveryDoc({ fd }: { fd: FoundryDelivery }) {
             <th className="ctr" style={{ width: 36 }}>ลำดับ</th>
             <th style={{ width: 130 }}>รหัสสินค้า</th>
             <th>รายการ</th>
+            <th className="ctr" style={{ width: 70 }}>การรับของ</th>
             <th className="num" style={{ width: 80 }}>จำนวน</th>
             <th className="ctr" style={{ width: 60 }}>หน่วย</th>
           </tr>
@@ -44,12 +45,13 @@ export function FoundryDeliveryDoc({ fd }: { fd: FoundryDelivery }) {
               <td className="ctr">{i + 1}</td>
               <td className="mono">{it.code}</td>
               <td className="th">{it.name}</td>
+              <td className="ctr">{it.pickup ?? '—'}</td>
               <td className="num mono">{it.qty.toLocaleString()}</td>
               <td className="ctr">{it.unit}</td>
             </tr>
           ))}
           {Array.from({ length: padRows }).map((_, i) => (
-            <tr className="spacer" key={`s${i}`}><td colSpan={5} /></tr>
+            <tr className="spacer" key={`s${i}`}><td colSpan={6} /></tr>
           ))}
         </tbody>
       </table>

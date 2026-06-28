@@ -33,8 +33,8 @@ export function StockReportDoc({ report }: { report: StockReport }) {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: PRIMARY_INK }}>รายงานคลังวัตถุดิบ</div>
-          <div style={{ fontSize: 12, fontWeight: 600 }}>Raw Material Stock</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: PRIMARY_INK }}>{report.heading ?? 'รายงานคลังวัตถุดิบ'}</div>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>Stock Report</div>
           <div style={{ fontSize: 11.5 }}>{report.scopeLabel} · {report.rows.length} รายการ</div>
           <div style={{ fontSize: 10.5, color: faint }}>สร้างเมื่อ {fmtCreated(report.createdAt)}{report.createdBy ? ` · โดย ${report.createdBy}` : ''}</div>
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
@@ -18,11 +19,10 @@ import { downloadCsv } from '../utils/csv'
 
 /* Foundry-only products feed the line-item picker. */
 const FOUNDRY_PRODUCTS = PRODUCTS.filter((p) => p.site === 'foundry')
-/** Dropdown label — append การรับของ so the รับเอง / จัดส่ง variants are distinct. */
+const PROD_BY_CODE = Object.fromEntries(FOUNDRY_PRODUCTS.map((p) => [p.code, p]))
 const optionLabel = (code: string) => {
-  const p = FOUNDRY_PRODUCTS.find((x) => x.code === code)
-  if (!p) return code
-  return `${cleanName(p.name)} (${p.unit})${p.pickup ? ` · ${p.pickup}` : ''}`
+  const p = PROD_BY_CODE[code]
+  return p ? `${cleanName(p.name)} (${p.unit})` : code
 }
 
 function todayIso(): string {
@@ -42,6 +42,7 @@ export function FoundryDeliveries() {
   const [showForm, setShowForm] = useState(false)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
   const created = useCreatedDocs()
+  const navigate = useNavigate()
   const all = created.foundryDeliveries
 
   const rows = useMemo(
@@ -123,15 +124,22 @@ export function FoundryDeliveries() {
         onSaved={(f) => { setShowForm(false); setQuery(f.fdNo); setActive(f) }}
       />
 
-      <DocModal open={!!active} title={active ? `ใบส่งสินค้าชั่วคราว ${active.fdNo}` : ''} onClose={() => setActive(null)}>
+      <DocModal
+        open={!!active}
+        title={active ? `ใบส่งสินค้าชั่วคราว ${active.fdNo}` : ''}
+        onClose={() => setActive(null)}
+        extraActions={active ? (
+          <Button variant="tonal" onClick={() => navigate('/invoices', { state: { invoiceFromFoundry: active.fdNo } })}>ออกใบกำกับภาษี</Button>
+        ) : undefined}
+      >
         {active && <FoundryDeliveryDoc fd={active} />}
       </DocModal>
     </>
   )
 }
 
-type ItemDraft = { code: string; qty: string }
-const emptyItem = (): ItemDraft => ({ code: FOUNDRY_PRODUCTS[0]?.code ?? '', qty: '' })
+type ItemDraft = { code: string; qty: string; pickup: 'รับเอง' | 'จัดส่ง' }
+const emptyItem = (): ItemDraft => ({ code: FOUNDRY_PRODUCTS[0]?.code ?? '', qty: '', pickup: 'รับเอง' })
 
 function NewFoundryDeliveryForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: FoundryDelivery[]; onSaved: (f: FoundryDelivery) => void }) {
   const [fdNo, setFdNo] = useState('')
@@ -162,8 +170,8 @@ function NewFoundryDeliveryForm({ open, onClose, existing, onSaved }: { open: bo
     if (filled.length === 0) return setErr('กรุณาเลือกรายการสินค้าอย่างน้อย 1 รายการ (พร้อมจำนวน)')
 
     const savedItems: FoundryDeliveryItem[] = filled.map((it) => {
-      const p = FOUNDRY_PRODUCTS.find((x) => x.code === it.code)!
-      return { code: p.code, name: cleanName(p.name), unit: p.unit, qty: Number(it.qty) }
+      const p = PROD_BY_CODE[it.code]
+      return { code: p.code, name: cleanName(p.name), unit: p.unit, qty: Number(it.qty), pickup: p.pickupPrices ? it.pickup : undefined }
     })
     const fd: FoundryDelivery = {
       id: fdNo.trim(), fdNo: fdNo.trim(), date, customer: customer.trim(), vehicle: vehicle.trim(),
@@ -204,20 +212,32 @@ function NewFoundryDeliveryForm({ open, onClose, existing, onSaved }: { open: bo
         <div className="stack" style={{ gap: 8 }}>
           <div className="row" style={{ gap: 8, fontSize: 11, color: 'var(--kpc-text-muted)', fontWeight: 600 }}>
             <span style={{ flex: 1 }}>สินค้า</span>
+            <span style={{ width: 130 }}>การรับของ</span>
             <span style={{ width: 90, textAlign: 'right' }}>จำนวน</span>
             <span style={{ width: 28 }} />
           </div>
-          {items.map((it, i) => (
-            <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
-              <div style={{ flex: 1 }}>
-                <Select value={it.code} onChange={(e) => setItem(i, { code: e.target.value })}>
-                  {FOUNDRY_PRODUCTS.map((p) => <option key={p.code} value={p.code}>{optionLabel(p.code)}</option>)}
-                </Select>
+          {items.map((it, i) => {
+            const byPickup = !!PROD_BY_CODE[it.code]?.pickupPrices
+            return (
+              <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <Select value={it.code} onChange={(e) => setItem(i, { code: e.target.value })}>
+                    {FOUNDRY_PRODUCTS.map((p) => <option key={p.code} value={p.code}>{optionLabel(p.code)}</option>)}
+                  </Select>
+                </div>
+                <div style={{ width: 130 }}>
+                  {byPickup
+                    ? <Select value={it.pickup} onChange={(e) => setItem(i, { pickup: e.target.value as 'รับเอง' | 'จัดส่ง' })}>
+                        <option value="รับเอง">รับเอง</option>
+                        <option value="จัดส่ง">จัดส่ง</option>
+                      </Select>
+                    : <span style={{ fontSize: 12, color: 'var(--kpc-text-faint)' }}>—</span>}
+                </div>
+                <Input style={{ width: 90, textAlign: 'right' }} type="number" min={0} step="any" placeholder="0" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
+                <Button variant="ghost" size="sm" onClick={() => removeItem(i)} style={{ width: 28, color: 'var(--kpc-danger)' }} aria-label="ลบรายการ">✕</Button>
               </div>
-              <Input style={{ width: 90, textAlign: 'right' }} type="number" min={0} step="any" placeholder="0" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
-              <Button variant="ghost" size="sm" onClick={() => removeItem(i)} style={{ width: 28, color: 'var(--kpc-danger)' }} aria-label="ลบรายการ">✕</Button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

@@ -286,6 +286,8 @@ export interface FoundryDeliveryItem {
   name: string
   unit: string
   qty: number
+  /** การรับของ for price-by-pickup items (เสาไอ) — รับเอง / จัดส่ง. */
+  pickup?: 'รับเอง' | 'จัดส่ง'
 }
 /** Foundry goods-delivery note (ใบส่งสินค้าชั่วคราว · โรงหล่อ) — a non-priced
     delivery slip for foundry products. The delivery number is keyed in by hand. */
@@ -333,6 +335,10 @@ export interface StockReceipt {
   date: string        /* ISO yyyy-mm-dd */
   supplier?: string
   voucherNo?: string  /* เลขใบสำคัญจ่าย (related goods-payment voucher) */
+  /* Foundry receipts — production report references. */
+  reportBook?: string /* เล่มใบรายงาน */
+  reportNo?: string   /* เลขที่ใบรายงาน */
+  bench?: string      /* แท่นผลิต */
   note?: string
   createdBy?: string
   createdAt?: string
@@ -358,6 +364,8 @@ export type StockReconcileStatus = 'draft' | 'pending' | 'approved'
     applied to the on-hand balance only once a Board user approves it. */
 export interface StockReconcile {
   id: string
+  /** Which stock this reconciles — raw materials (default) or foundry products. */
+  scope?: 'material' | 'foundry'
   date: string        /* ISO yyyy-mm-dd */
   lines: StockReconcileLine[]
   totalDiffValue: number  /* Σ diffValue (net, signed) */
@@ -522,6 +530,7 @@ export interface StockReportMovement {
 /** Raw-material stock report (รายงานคลังวัตถุดิบ) for a period. */
 export interface StockReport extends GeneralReportBase {
   kind: 'stock'
+  heading?: string    /* doc title — defaults to "รายงานคลังวัตถุดิบ" */
   scopeLabel: string
   rows: StockReportRow[]
   movements: StockReportMovement[]

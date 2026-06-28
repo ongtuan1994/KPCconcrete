@@ -22,13 +22,15 @@ const STATUS_LABEL: Record<StockReconcileStatus, { th: string; tone: Tone }> = {
 }
 const statusOf = (r: StockReconcile): StockReconcileStatus => r.status ?? 'draft'
 
-export function StockReconcileHistory() {
+export function StockReconcileHistory({ scope = 'material' }: { scope?: 'material' | 'foundry' }) {
   const created = useCreatedDocs()
   const navigate = useNavigate()
   const user = useCurrentUser()
   const isBoard = user?.role === 'Board'
   const [activeId, setActiveId] = useState<string | null>(null)
-  const rows = created.stockReconciles
+  const backTo = scope === 'foundry' ? '/foundry-stock' : '/stock'
+  const backLabel = scope === 'foundry' ? '← กลับไปสต๊อกสินค้าโรงหล่อ' : '← กลับไปคลังวัตถุดิบ'
+  const rows = created.stockReconciles.filter((r) => (r.scope ?? 'material') === scope)
   /* Live record so the modal reflects status changes after request/approve. */
   const active = activeId ? rows.find((r) => r.id === activeId) ?? null : null
   const setActive = (r: StockReconcile | null) => setActiveId(r ? r.id : null)
@@ -53,14 +55,14 @@ export function StockReconcileHistory() {
   return (
     <>
       <PageHeader
-        title="ประวัติการกระทบยอดคงคลัง"
+        title={scope === 'foundry' ? 'ประวัติการกระทบยอดสต๊อกโรงหล่อ' : 'ประวัติการกระทบยอดคงคลัง'}
         sub={`Stock Reconciliation History · ${rows.length} ครั้ง`}
-        actions={<Button variant="secondary" onClick={() => navigate('/stock')}>← กลับไปคลังวัตถุดิบ</Button>}
+        actions={<Button variant="secondary" onClick={() => navigate(backTo)}>{backLabel}</Button>}
       />
 
       {rows.length === 0 ? (
         <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--kpc-text-muted)' }}>
-          ยังไม่มีประวัติการกระทบยอด — ทำได้จากหน้า <strong>คลังวัตถุดิบ</strong> → ปุ่ม “กระทบยอดคงคลัง”
+          ยังไม่มีประวัติการกระทบยอด — ทำได้จากหน้าสต๊อก → ปุ่ม “กระทบยอดคงคลัง”
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ครั้ง`} />

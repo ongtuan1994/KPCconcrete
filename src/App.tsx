@@ -99,6 +99,7 @@ export default function App() {
         <Route path="/stock" element={<Stock />} />
         <Route path="/foundry-stock" element={<FoundryStock />} />
         <Route path="/stock-reconcile" element={<StockReconcileHistory />} />
+        <Route path="/foundry-stock-reconcile" element={<StockReconcileHistory scope="foundry" />} />
         <Route path="/pricing" element={<Pricing />} />
         {/* ราคาค่าขนส่ง now lives inside /pricing; this route is the รถขนส่งปูน fleet page. */}
         <Route path="/mix-design" element={<MixDesign />} />

@@ -111,7 +111,7 @@ export function Stock() {
   const adjustByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const rc of created.stockReconciles) {
-      if (rc.status !== 'approved' || !upTo(rc.date)) continue
+      if (rc.status !== 'approved' || (rc.scope ?? 'material') !== 'material' || !upTo(rc.date)) continue
       for (const l of rc.lines) if (l.diff) m[l.code] = (m[l.code] ?? 0) + l.diff
     }
     return m
@@ -475,7 +475,7 @@ function ReconcileModal({ open, onClose, materials }: { open: boolean; onClose: 
       }
     })
     addStockReconcile({
-      id: `rc_${Date.now()}`, date, lines,
+      id: `rc_${Date.now()}`, scope: 'material', date, lines,
       totalDiffValue: Math.round(totals.net * 100) / 100,
       lossValue: Math.round(totals.loss * 100) / 100,
       note: overall.trim() || undefined,

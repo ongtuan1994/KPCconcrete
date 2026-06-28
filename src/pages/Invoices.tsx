@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
@@ -12,10 +13,16 @@ import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
+import { PRODUCT_MAP } from '../data/real'
 import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
+
+/** SITE of an invoice — โรงหล่อ if any line is a foundry product, else แพล้นปูน. */
+function invoiceSite(inv: Invoice): 'foundry' | 'plant' {
+  return inv.lines.some((l) => PRODUCT_MAP[l.code]?.site === 'foundry') ? 'foundry' : 'plant'
+}
 
 const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {
   paid: { th: 'ชำระแล้ว', tone: 'success' },
@@ -29,12 +36,26 @@ export function Invoices() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [fdRefs, setFdRefs] = useState<string | undefined>(undefined)
   const [downloading, setDownloading] = useState<Invoice | null>(null)
   const [receiptForInvoice, setReceiptForInvoice] = useState<Invoice | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [zipQueue, setZipQueue] = useState<Invoice[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  /* When navigated here from a foundry delivery note ("ออกใบกำกับภาษี"), open the
+     invoice form pre-filled + auto-pulled. Clear router state so a refresh won't re-trigger. */
+  useEffect(() => {
+    const st = location.state as { invoiceFromFoundry?: string } | null
+    if (st?.invoiceFromFoundry) {
+      setFdRefs(st.invoiceFromFoundry)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const hiddenSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const allInvoices = useMemo(
@@ -86,6 +107,7 @@ export function Invoices() {
     { key: 'no', header: 'เลขที่ใบกำกับ', cell: (r) => r.no, className: 'docno' },
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
     { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'site', header: 'SITE', align: 'center', cell: (r) => { const s = invoiceSite(r); return <Badge tone={s === 'foundry' ? 'warning' : 'info'} pip={false} square>{s === 'foundry' ? 'โรงหล่อ' : 'แพล้นปูน'}</Badge> } },
     { key: 'm3', header: 'ปริมาณ', align: 'right', cell: (r) => <span className="mono">{qm(r.lines.reduce((s, l) => s + l.qty, 0))} m³</span> },
     { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
@@ -201,9 +223,10 @@ export function Invoices() {
 
       <NewInvoiceForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setFdRefs(undefined) }}
         createdInvoices={created.invoices}
-        onIssued={(inv) => { setShowForm(false); setActive(inv) }}
+        initialFdRefs={fdRefs}
+        onIssued={(inv) => { setShowForm(false); setFdRefs(undefined); setActive(inv) }}
       />
 
       <NewReceiptForm

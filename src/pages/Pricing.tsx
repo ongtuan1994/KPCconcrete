@@ -180,11 +180,23 @@ function ProductPricing() {
     { key: 'cat', header: 'ประเภท', align: 'center', cell: (r) => { const t = prodType(r); return <Badge tone={t.tone} pip={false} square>{t.th}</Badge> } },
     {
       key: 'pickup', header: 'การรับของ', align: 'center',
-      cell: (r) => r.pickup
-        ? <Badge tone={r.pickup === 'จัดส่ง' ? 'info' : 'neutral'} pip={false} square>{r.pickup}</Badge>
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
+      cell: (r) => r.pickupPrices
+        ? <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>รับเอง / จัดส่ง</span>
+        : r.pickup
+          ? <Badge tone={r.pickup === 'จัดส่ง' ? 'info' : 'neutral'} pip={false} square>{r.pickup}</Badge>
+          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
     },
-    { key: 'price', header: 'ราคา/หน่วย (รวม VAT)', align: 'right', cell: (r) => (r.price ? baht(r.price) : <span style={{ color: 'var(--kpc-text-faint)' }}>ภายใน</span>), className: 'amt' },
+    {
+      key: 'price', header: 'ราคา/หน่วย (รวม VAT)', align: 'right', className: 'amt',
+      cell: (r) => r.pickupPrices
+        ? (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, fontSize: 12 }}>
+            <span>รับเอง <strong className="mono">{baht(r.pickupPrices['รับเอง'])}</strong></span>
+            <span>จัดส่ง <strong className="mono">{baht(r.pickupPrices['จัดส่ง'])}</strong></span>
+          </span>
+        )
+        : (r.price ? baht(r.price) : <span style={{ color: 'var(--kpc-text-faint)' }}>ภายใน</span>),
+    },
   ]
 
   /** Build a price-list report from the rows currently shown (respects the SITE /

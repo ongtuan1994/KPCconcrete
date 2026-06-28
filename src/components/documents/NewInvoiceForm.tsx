@@ -49,6 +49,7 @@ export function NewInvoiceForm({
   onIssued,
   createdInvoices,
   initialRefs,
+  initialFdRefs,
 }: {
   open: boolean
   onClose: () => void
@@ -56,6 +57,8 @@ export function NewInvoiceForm({
   createdInvoices: Invoice[]
   /** When set, pre-fill the refs field and auto-pull ticket data on open. */
   initialRefs?: string
+  /** When set, pre-fill the foundry-delivery refs and auto-pull on open. */
+  initialFdRefs?: string
 }) {
   const created = useCreatedDocs()
   const [customer, setCustomer] = useState('')
@@ -166,6 +169,17 @@ export function NewInvoiceForm({
     }
   }, [open, initialRefs]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* When opened from a foundry delivery note, seed รหัสใบส่งสินค้าโรงหล่อ and auto-pull. */
+  const lastInitialFd = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!open) { lastInitialFd.current = undefined; return }
+    if (initialFdRefs && initialFdRefs !== lastInitialFd.current) {
+      lastInitialFd.current = initialFdRefs
+      setFdRefs(initialFdRefs)
+      pullFromFoundry(initialFdRefs)
+    }
+  }, [open, initialFdRefs]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Look up tickets by the refs input, then prefill customer / month / day / pay
       and group volumes by product into invoice lines. */
   const pullFromTickets = (override?: string) => {
@@ -271,7 +285,10 @@ export function NewInvoiceForm({
     let priceFilledFromMaster = 0
     for (const f of matched) {
       for (const it of f.items) {
-        const masterPrice = PRODUCT_MAP[it.code]?.price || 0
+        const prod = PRODUCT_MAP[it.code]
+        const masterPrice = (prod?.pickupPrices && it.pickup)
+          ? prod.pickupPrices[it.pickup]
+          : (prod?.price || 0)
         const key = `${it.code}__${masterPrice}`
         const existing = byKey.get(key)
         if (existing) {

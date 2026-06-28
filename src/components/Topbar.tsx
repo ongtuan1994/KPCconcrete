@@ -29,17 +29,15 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   if (canAudit && pendingAudit > 0) {
     allNotices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report', signature: `p:${pendingAudit}` })
   }
-  /* Board users approve stock reconciliations — alert on pending ones. */
+  /* Board users approve stock reconciliations — alert on pending ones (per scope). */
   if (user?.role === 'Board') {
-    const pending = created.stockReconciles.filter((r) => r.status === 'pending')
-    if (pending.length > 0) {
-      allNotices.push({
-        id: 'stock-reconcile',
-        title: `มีคำขออนุมัติกระทบยอดคงคลัง ${pending.length} รายการ`,
-        sub: 'กดเพื่อตรวจสอบและอนุมัติ',
-        route: '/stock-reconcile',
-        signature: `rc:${pending.length}:${pending[0].id}`,
-      })
+    const pendMat = created.stockReconciles.filter((r) => r.status === 'pending' && (r.scope ?? 'material') === 'material')
+    if (pendMat.length > 0) {
+      allNotices.push({ id: 'stock-reconcile', title: `มีคำขออนุมัติกระทบยอดคลังวัตถุดิบ ${pendMat.length} รายการ`, sub: 'กดเพื่อตรวจสอบและอนุมัติ', route: '/stock-reconcile', signature: `rc:${pendMat.length}:${pendMat[0].id}` })
+    }
+    const pendFdy = created.stockReconciles.filter((r) => r.status === 'pending' && r.scope === 'foundry')
+    if (pendFdy.length > 0) {
+      allNotices.push({ id: 'foundry-reconcile', title: `มีคำขออนุมัติกระทบยอดสต๊อกโรงหล่อ ${pendFdy.length} รายการ`, sub: 'กดเพื่อตรวจสอบและอนุมัติ', route: '/foundry-stock-reconcile', signature: `frc:${pendFdy.length}:${pendFdy[0].id}` })
     }
   }
   /* Board users are alerted when employees are marked สิ้นสภาพ. */
