@@ -7,6 +7,8 @@ import { TruckTripReportDoc } from '../components/documents/TruckTripReportDoc'
 import { CommissionReportDoc } from '../components/documents/CommissionReportDoc'
 import { AttendanceReportDoc } from '../components/documents/AttendanceReportDoc'
 import { PriceListReportDoc } from '../components/documents/PriceListReportDoc'
+import { TransportPriceReportDoc } from '../components/documents/TransportPriceReportDoc'
+import { PayrollReportDoc } from '../components/documents/PayrollReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -17,11 +19,16 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'commission': 'ค่าคอมมิชชั่น',
   'attendance': 'บันทึกลงเวลางาน',
   'price-list': 'ราคาสินค้า',
+  'transport-pricing': 'ราคาค่าขนส่ง',
+  'payroll': 'จ่ายเงินเดือน',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
 const reportAmount = (r: GeneralReport): number | null =>
-  r.kind === 'commission' ? r.total : r.kind === 'truck-trips' ? r.totals.feeTotal : null
+  r.kind === 'commission' ? r.total
+    : r.kind === 'truck-trips' ? r.totals.feeTotal
+      : r.kind === 'payroll' ? r.totals.net
+        : null
 const reportSummary = (r: GeneralReport) =>
   r.kind === 'commission'
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
@@ -29,7 +36,11 @@ const reportSummary = (r: GeneralReport) =>
       ? `${r.totals.employees} คน · ${r.totals.days} วัน · OT ${r.totals.otMin} นาที`
       : r.kind === 'price-list'
         ? `${r.totalItems} รายการ · ${r.groups.length} หมวด`
-        : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+        : r.kind === 'transport-pricing'
+          ? `${r.fees.length} ระดับการขนส่งไม่เต็มเที่ยว`
+          : r.kind === 'payroll'
+            ? `${r.rows.length} คน · ${r.payMonthLabel}`
+            : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -101,7 +112,11 @@ export function GeneralReports() {
             ? <AttendanceReportDoc report={active} />
             : active.kind === 'price-list'
               ? <PriceListReportDoc report={active} />
-              : <TruckTripReportDoc report={active} />)}
+              : active.kind === 'transport-pricing'
+                ? <TransportPriceReportDoc report={active} />
+                : active.kind === 'payroll'
+                  ? <PayrollReportDoc report={active} />
+                  : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

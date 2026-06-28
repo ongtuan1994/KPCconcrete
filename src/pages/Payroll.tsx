@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
@@ -14,13 +15,28 @@ import { EMPLOYEES, DEPARTMENT_LABEL } from '../data/employees'
 import { salaryStructureFor, computeOtRate } from '../data/salaryStructure'
 import { useAttendance, computeAttendance } from '../data/attendance'
 import {
-  useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, CAN_DELETE,
-  type PayrollPayment, type PayMethodOut, type AdvancePayment,
+  useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport, CAN_DELETE,
+  type PayrollPayment, type PayMethodOut, type AdvancePayment, type PayrollReport, type PayrollReportScope, type PayrollReportRow,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const METHOD_TONE: Record<PayMethodOut, Tone> = { เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+/** "YYYY-MM" → "พฤษภาคม 2569" (full Thai month). */
+function fmtMonthFull(ym: string): string {
+  const [y, m] = ym.split('-').map(Number)
+  if (!y || !m) return ym
+  return `${THAI_MONTHS_FULL[m - 1]} ${y + 543}`
+}
+
+const PAYROLL_SCOPES: { id: PayrollReportScope; label: string }[] = [
+  { id: 'plant', label: 'จ่ายเงินเดือนแพล้นปูน' },
+  { id: 'foundry-thai', label: 'จ่ายเงินเดือนโรงหล่อ (ไทย)' },
+  { id: 'foundry-myanmar', label: 'จ่ายเงินเดือนโรงหล่อพม่า' },
+  { id: 'all', label: 'จ่ายเงินเดือนรวม' },
+]
 
 function todayIso(): string {
   const d = new Date()
@@ -84,9 +100,72 @@ export function Payroll() {
   const [showAdvance, setShowAdvance] = useState(false)
   const [slip, setSlip] = useState<PayrollPayment | null>(null)
   const [deposit, setDeposit] = useState<PayrollPayment | null>(null)
+  /* Selected report group for the "สร้างรายงาน" action. */
+  const [reportScope, setReportScope] = useState<PayrollReportScope>('plant')
   const created = useCreatedDocs()
+  const navigate = useNavigate()
   const all = created.payrollPayments
   const advAll = created.advances
+
+  /* Resolve each employee's current SITE + สัญชาติ (master + edits) for grouping. */
+  const empInfo = useMemo(() => {
+    const m = new Map<string, { site: string; nationality?: string }>()
+    for (const e of [...created.employeesAdded, ...EMPLOYEES]) {
+      if (m.has(e.id)) continue
+      const edit = created.employeeEdits[e.id]
+      m.set(e.id, { site: edit?.site ?? e.site ?? 'plant', nationality: edit?.nationality ?? e.nationality })
+    }
+    return m
+  }, [created.employeesAdded, created.employeeEdits])
+
+  const inScope = (empId: string, scope: PayrollReportScope): boolean => {
+    const info = empInfo.get(empId)
+    const site = info?.site ?? 'plant'
+    const nat = info?.nationality
+    if (scope === 'plant') return site === 'plant'
+    if (scope === 'foundry-thai') return site === 'foundry' && nat === 'ไทย'
+    if (scope === 'foundry-myanmar') return site === 'foundry' && nat === 'พม่า'
+    return true /* all */
+  }
+
+  /** Build a payroll report for the selected งวด (monthFilter) + group, then save
+      it to รายงานทั่วไป. Only payments already recorded in that period are pulled. */
+  const createPayrollReport = () => {
+    if (!monthFilter) { alert('กรุณาเลือกงวดเดือนก่อนสร้างรายงาน'); return }
+    const picked = all.filter((p) => p.payMonth === monthFilter && inScope(p.employeeId, reportScope))
+    const scopeLabel = PAYROLL_SCOPES.find((s) => s.id === reportScope)!.label.replace(/^จ่ายเงินเดือน/, '')
+    if (picked.length === 0) { alert(`ไม่มีใบทำจ่ายในงวด ${fmtMonthFull(monthFilter)} สำหรับกลุ่ม ${scopeLabel}`); return }
+    const rows: PayrollReportRow[] = picked.map((p) => ({
+      ppNo: p.ppNo, employeeName: p.employeeName, department: p.department,
+      daysWorked: p.daysWorked, dailyWage: p.dailyWage,
+      baseSalary: p.baseSalary, experiencePay: p.experiencePay, specialPay: p.specialPay,
+      vehiclePay: p.vehiclePay, otherIncome: p.otherIncome, totalIncome: p.totalIncome,
+      socialSecurity: p.socialSecurity, advance: p.advance, otherDeduction: p.otherDeduction,
+      totalDeduction: p.totalDeduction, netAmount: p.netAmount,
+    }))
+    const totals = rows.reduce(
+      (a, r) => ({ income: a.income + r.totalIncome, deduction: a.deduction + r.totalDeduction, net: a.net + r.netAmount }),
+      { income: 0, deduction: 0, net: 0 },
+    )
+    const payMonthLabel = fmtMonthFull(monthFilter)
+    const report: PayrollReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'payroll',
+      scope: reportScope,
+      scopeLabel,
+      title: `รายงานจ่ายเงินเดือน${scopeLabel} · ${payMonthLabel}`,
+      fromLabel: payMonthLabel,
+      toLabel: payMonthLabel,
+      payMonthLabel,
+      rows,
+      totals,
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" (${rows.length} คน) เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   /* Resolve the employee's bank account for the deposit slip — prefer the one
      stamped on the payment, then the (possibly edited) employee master record. */
@@ -209,15 +288,26 @@ export function Payroll() {
             <KpiCard label="พนักงาน · Employees" value={new Set(all.map((p) => p.employeeId)).size.toString()} note="รายที่จ่ายแล้ว" />
           </div>
 
-          <div className="row wrap" style={{ justifyContent: 'flex-end', marginBottom: 16, gap: 12 }}>
-            <div style={{ width: 200 }}>
-              <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} aria-label="งวดเดือน">
-                <option value="">ทุกงวดเดือน</option>
-                {payMonths.map((m) => <option key={m} value={m}>{fmtMonth(m)}</option>)}
-              </Select>
+          <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+            <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>สร้างรายงาน (ตามงวดที่เลือก):</span>
+              <div style={{ width: 240 }}>
+                <Select value={reportScope} onChange={(e) => setReportScope(e.target.value as PayrollReportScope)} aria-label="ประเภทรายงาน">
+                  {PAYROLL_SCOPES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </Select>
+              </div>
+              <Button variant="secondary" onClick={createPayrollReport} disabled={!monthFilter}>สร้างรายงาน</Button>
             </div>
-            <div style={{ width: 320 }}>
-              <SearchInput placeholder="เลขที่ / พนักงาน / งวดเดือน" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <div className="row wrap" style={{ gap: 12 }}>
+              <div style={{ width: 200 }}>
+                <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} aria-label="งวดเดือน">
+                  <option value="">ทุกงวดเดือน</option>
+                  {payMonths.map((m) => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+                </Select>
+              </div>
+              <div style={{ width: 320 }}>
+                <SearchInput placeholder="เลขที่ / พนักงาน / งวดเดือน" value={query} onChange={(e) => setQuery(e.target.value)} />
+              </div>
             </div>
           </div>
 

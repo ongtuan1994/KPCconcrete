@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Field, Input, Badge } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { KpiCard } from '../components/charts'
 import { TRANSPORT_FEES, TRANSPORT_FULL_M3 } from '../data/real'
-import { addTransportRateAdjustment, useCreatedDocs, type TransportRateAdjustment } from '../data/createdDocs'
+import { addTransportRateAdjustment, addGeneralReport, useCreatedDocs, type TransportRateAdjustment, type TransportPriceReport } from '../data/createdDocs'
 import { baht, qm } from '../data/selectors'
 import { downloadCsv } from '../utils/csv'
+
+/** Today as DD/MM/พ.ศ. for report labels. */
+function todayThai(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear() + 543}`
+}
 
 /* Bangchak retail Hi-Diesel S price snapshot (manual refresh — no CORS-friendly
    public API). Update from https://www.bangchak.co.th/th/oilprice/historical
@@ -44,6 +52,7 @@ function formatTimestamp(iso: string): string {
 
 export function TransportPricing() {
   const created = useCreatedDocs()
+  const navigate = useNavigate()
   /* Full history = user adjustments (newest first) + the seed baseline at the tail. */
   const allAdjustments = useMemo<TransportRateAdjustment[]>(
     () => [...created.transportAdjustments, SEED_ADJUSTMENT],
@@ -56,6 +65,28 @@ export function TransportPricing() {
   const stepWithVat = stepRow?.totalWithVat ?? 0
 
   const [open, setOpen] = useState(false)
+
+  /** Snapshot the current fee schedule into รายงานทั่วไป. */
+  const createReport = () => {
+    if (currentFees.length === 0) { alert('ไม่มีตารางค่าขนส่งให้สร้างรายงาน'); return }
+    const today = todayThai()
+    const report: TransportPriceReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'transport-pricing',
+      title: `ราคาค่าขนส่ง (ไม่เต็มเที่ยว) ณ ${today}`,
+      fromLabel: today,
+      toLabel: today,
+      fees: currentFees.map((r) => ({ m3: r.m3, totalWithVat: r.totalWithVat })),
+      fullM3: TRANSPORT_FULL_M3,
+      fuelPrice: HI_DIESEL.price,
+      fuelAsOf: HI_DIESEL.asOf,
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   const columns: Column<FeeRow>[] = [
     { key: 'm3', header: 'จำนวนคิว', align: 'center', cell: (r) => <span className="mono">{qm(r.m3)}</span> },
@@ -95,6 +126,7 @@ export function TransportPricing() {
               }
               downloadCsv('transport-pricing', rows)
             }}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
             <Button variant="primary" onClick={() => setOpen(true)}>ปรับราคาค่าขนส่ง</Button>
           </>
         }

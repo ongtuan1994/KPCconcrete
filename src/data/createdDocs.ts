@@ -28,7 +28,7 @@ function stamp<T extends AuditStamp>(rec: T): T {
 export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName' | 'customerName' | 'unit'>>
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
-export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
+export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'nationality' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */
@@ -361,7 +361,45 @@ export interface PriceListReport extends GeneralReportBase {
   groups: PriceListReportGroup[]
   totalItems: number
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport
+/** Transport-surcharge price snapshot (ราคาค่าขนส่งไม่เต็มเที่ยว). */
+export interface TransportPriceReport extends GeneralReportBase {
+  kind: 'transport-pricing'
+  fees: { m3: number; totalWithVat: number }[]
+  fullM3: number      /* full-load คิว threshold (ค่าขนส่งคิดเมื่อต่ำกว่านี้) */
+  fuelPrice?: number  /* Hi-Diesel snapshot บาท/ลิตร */
+  fuelAsOf?: string
+}
+/** One payroll-payment row in a saved payroll report (mirrors PayrollPayment). */
+export interface PayrollReportRow {
+  ppNo: string
+  employeeName: string
+  department?: string
+  daysWorked?: number
+  dailyWage?: number
+  baseSalary: number
+  experiencePay: number
+  specialPay: number
+  vehiclePay: number      /* OT amount (ทั่วไป) หรือ ค่าเที่ยววิ่ง (ฝ่ายขนส่ง) */
+  otherIncome: number
+  totalIncome: number
+  socialSecurity: number
+  advance: number
+  otherDeduction: number
+  totalDeduction: number
+  netAmount: number
+}
+/** Group a payroll report filters into: plant / foundry-Thai / foundry-Myanmar / all. */
+export type PayrollReportScope = 'plant' | 'foundry-thai' | 'foundry-myanmar' | 'all'
+/** Payroll payout report (รายงานการจ่ายเงินเดือน) for one pay period + group. */
+export interface PayrollReport extends GeneralReportBase {
+  kind: 'payroll'
+  scope: PayrollReportScope
+  scopeLabel: string
+  payMonthLabel: string   /* e.g. "พฤษภาคม 2569" */
+  rows: PayrollReportRow[]
+  totals: { income: number; deduction: number; net: number }
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport
 
 const KEY = 'kpc.createdDocs.v1'
 
