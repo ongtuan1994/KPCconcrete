@@ -149,7 +149,7 @@ export function Creditors() {
             onClick={() => navigate('/goods-payments', {
               state: { payFromPurchaseOrder: { supplier: r.name, amount: String(r.outstanding ?? '') } },
             })}
-            title="บันทึกใบทำจ่ายให้ซัพพลายเออร์รายนี้"
+            title="ออกใบสำคัญจ่ายให้ซัพพลายเออร์รายนี้"
           >
             ชำระหนี้
           </Button>

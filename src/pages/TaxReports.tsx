@@ -8,9 +8,55 @@ import { DocModal } from '../components/documents/DocModal'
 import { baht } from '../data/selectors'
 import { COMPANY } from '../data/real'
 import { TAX_SALE, TAX_PURCHASE, type TaxMonthData, type TaxRow } from '../data/taxReports'
+import { useCreatedDocs, type GoodsPayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Kind = 'sale' | 'purchase'
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+/** Split a VAT-inclusive gross amount into base value + 7% VAT (2-dp rounded,
+    value + vat === gross). */
+function splitVat(gross: number): { value: number; vat: number } {
+  const value = r2(gross / 1.07)
+  return { value, vat: r2(gross - value) }
+}
+
+/** Merge VAT-bearing ใบสำคัญจ่าย (goods payments marked "ลง VAT") into the seed
+    purchase-tax report, grouped by the payment month and following the same row
+    format. The paid amount is treated as VAT-inclusive. */
+function mergePurchaseTax(seed: TaxMonthData[], payments: GoodsPayment[]): TaxMonthData[] {
+  const vatPays = payments.filter((p) => p.withVat !== false)
+  if (vatPays.length === 0) return seed
+
+  const byMonth = new Map<number, TaxMonthData>()
+  for (const md of seed) byMonth.set(md.month, { ...md, rows: [...md.rows] })
+
+  /* Oldest first so the running sequence numbers stay stable. */
+  const sorted = [...vatPays].sort((a, b) => a.payDate.localeCompare(b.payDate))
+  for (const p of sorted) {
+    const m = p.payDate.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!m) continue
+    const [, y, mm, dd] = m
+    const month = Number(mm)
+    let md = byMonth.get(month)
+    if (!md) { md = { month, rows: [], totalValue: 0, totalVat: 0 }; byMonth.set(month, md) }
+    const { value, vat } = splitVat(p.amount)
+    md.rows.push({
+      seq: `${month}/${md.rows.length + 1}`,
+      date: `${Number(dd)}/${month}/${y}`,
+      docNo: p.taxInvoiceNo || p.ref || p.gpNo,
+      name: p.supplier,
+      taxId: '',
+      branch: '',
+      value,
+      vat,
+    })
+    md.totalValue = r2(md.totalValue + value)
+    md.totalVat = r2(md.totalVat + vat)
+  }
+  return [...byMonth.values()].sort((a, b) => a.month - b.month)
+}
 
 const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -29,8 +75,11 @@ export function TaxReports() {
   const [kind, setKind] = useState<Kind>('sale')
   const [month, setMonth] = useState<number>(1)
   const [showPrint, setShowPrint] = useState(false)
+  const created = useCreatedDocs()
 
-  const data = kind === 'sale' ? TAX_SALE : TAX_PURCHASE
+  /* รายงานภาษีซื้อ pulls in ใบสำคัญจ่าย ที่ลง VAT on top of the seed data. */
+  const purchaseData = useMemo(() => mergePurchaseTax(TAX_PURCHASE, created.goodsPayments), [created.goodsPayments])
+  const data = kind === 'sale' ? TAX_SALE : purchaseData
   const available = data.map((d) => d.month)
   const current: TaxMonthData | undefined = useMemo(() => data.find((d) => d.month === month), [data, month])
   const rows = current?.rows ?? []

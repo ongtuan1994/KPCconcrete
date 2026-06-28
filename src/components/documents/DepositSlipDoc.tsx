@@ -2,10 +2,13 @@ import { bahtText } from '../../data/bahtText'
 import type { PayrollPayment } from '../../data/createdDocs'
 
 /* Print offsets (in mm) onto the pre-printed ttb pay-in / deposit slip, laid out
-   in landscape on a fixed 9 × 4 inch page (≈ 228.6 × 101.6 mm). Adjust these
-   constants to nudge the text so it lines up with the boxes on your physical form. */
+   in landscape on the real slip paper: 210 × 110 mm (DL-ish). The first A/C No.
+   box's top-left corner sits at (25 mm, 25 mm) from the top/left edges, so the
+   account digits are anchored just inside it. Adjust these constants to nudge the
+   text so it lines up with the boxes on your physical form. */
 const POS = {
-  /** Account-number digits — spread across the form's digit boxes (A/C No. row). */
+  /** Account-number digits — spread across the form's digit boxes (A/C No. row).
+      First box corner is at (25, 25); the digits start just inside it. */
   account: { left: 27, top: 26, fontSize: 15, letterSpacing: 3 },
   /** A/C Name — same row as the account boxes, after the "ชื่อบัญชี" label. */
   name: { left: 120, top: 24, fontSize: 13 },

@@ -245,7 +245,7 @@ function PurchaseOrderDetail({ order, onClose, onPay }: { order: PurchaseOrder |
           {order.status === 'รอรับของ' && (
             <Button variant="tonal" onClick={() => { markPurchaseOrderReceived(order.poNo); onClose() }}>ทำเครื่องหมายรับของแล้ว</Button>
           )}
-          <Button variant="primary" onClick={() => onPay(order)}>ทำจ่ายสินค้า/วัสดุ</Button>
+          <Button variant="primary" onClick={() => onPay(order)}>ออกใบสำคัญจ่าย</Button>
         </>
       }>
       <div className="row" style={{ marginBottom: 12 }}>

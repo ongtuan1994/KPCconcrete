@@ -6,6 +6,7 @@ import { DocModal } from '../components/documents/DocModal'
 import { TruckTripReportDoc } from '../components/documents/TruckTripReportDoc'
 import { CommissionReportDoc } from '../components/documents/CommissionReportDoc'
 import { AttendanceReportDoc } from '../components/documents/AttendanceReportDoc'
+import { PriceListReportDoc } from '../components/documents/PriceListReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -15,6 +16,7 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'truck-trips': 'บันทึกเที่ยวรถโม่',
   'commission': 'ค่าคอมมิชชั่น',
   'attendance': 'บันทึกลงเวลางาน',
+  'price-list': 'ราคาสินค้า',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
@@ -25,7 +27,9 @@ const reportSummary = (r: GeneralReport) =>
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
     : r.kind === 'attendance'
       ? `${r.totals.employees} คน · ${r.totals.days} วัน · OT ${r.totals.otMin} นาที`
-      : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+      : r.kind === 'price-list'
+        ? `${r.totalItems} รายการ · ${r.groups.length} หมวด`
+        : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -95,7 +99,9 @@ export function GeneralReports() {
           ? <CommissionReportDoc report={active} />
           : active.kind === 'attendance'
             ? <AttendanceReportDoc report={active} />
-            : <TruckTripReportDoc report={active} />)}
+            : active.kind === 'price-list'
+              ? <PriceListReportDoc report={active} />
+              : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

@@ -28,7 +28,7 @@ function stamp<T extends AuditStamp>(rec: T): T {
 export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName' | 'customerName' | 'unit'>>
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
-export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
+export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */
@@ -120,15 +120,30 @@ export interface PurchaseOrder {
 
 /** Goods / material payment voucher (ใบทำจ่ายสินค้า/วัสดุ) — recording a payment
     made to a supplier for purchased goods. */
+/** One product / material line on a goods-payment voucher.
+    Line total = qty × unitPrice. */
+export interface GoodsPaymentItem {
+  name: string
+  qty: number
+  unitPrice: number
+}
+
 export interface GoodsPayment {
   id: string         /* = gpNo */
   gpNo: string       /* running no., e.g. GP00001 */
   payDate: string    /* ISO */
   supplier: string
+  /** Itemised product/material lines. When present, `amount` = Σ(qty×unitPrice). */
+  items?: GoodsPaymentItem[]
   amount: number     /* baht paid */
   method: PayMethodOut
   chequeNo?: string  /* เลขที่เช็ค — required when method is 'เช็ค' */
   ref?: string       /* optional reference — PO no. / invoice no. */
+  /** Whether this voucher records VAT (ลง VAT). Defaults to true when omitted. */
+  withVat?: boolean
+  /** Supplier's tax-invoice number (เลขที่ใบกำกับ) — shown as the doc no. in
+      the purchase-tax report when this voucher is ลง VAT. */
+  taxInvoiceNo?: string
   note?: string
   createdBy?: string  /* username of the saver (audit) */
   createdAt: string
@@ -265,6 +280,27 @@ export const DEFAULT_COMMISSION_RATES: CommissionRate[] = [
 ]
 
 /* Fields common to every saved report shown under the รายงานทั่วไป menu. */
+/** One line on a foundry goods-delivery note (ใบส่งสินค้าโรงหล่อ). */
+export interface FoundryDeliveryItem {
+  code: string
+  name: string
+  unit: string
+  qty: number
+}
+/** Foundry goods-delivery note (ใบส่งสินค้าชั่วคราว · โรงหล่อ) — a non-priced
+    delivery slip for foundry products. The delivery number is keyed in by hand. */
+export interface FoundryDelivery {
+  id: string          /* = fdNo */
+  fdNo: string        /* เลขที่ส่งสินค้า — entered manually */
+  date: string        /* ISO yyyy-mm-dd */
+  customer: string
+  vehicle: string     /* ทะเบียนรถ */
+  items: FoundryDeliveryItem[]
+  note?: string
+  createdBy?: string
+  createdAt: string
+}
+
 interface GeneralReportBase {
   id: string
   title: string      /* e.g. "บันทึกเที่ยวรถโม่ 03/01/2569 ถึง 28/04/2569" */
@@ -306,7 +342,26 @@ export interface AttendanceReport extends GeneralReportBase {
   employees: AttendanceReportEmployee[]
   totals: { employees: number; days: number; lateMin: number; otMin: number }
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport
+/** One product row in a saved price-list report. */
+export interface PriceListReportRow {
+  code: string
+  name: string
+  brand?: string     /* ปูนซีเมนต์ — ดอกบัว / SCG (concrete items only) */
+  zone?: string      /* ระยะส่ง — e.g. "On Site (≤20 km)" (concrete items only) */
+  unit: string
+  pickup?: string    /* การรับของ — รับเอง / จัดส่ง (foundry items only) */
+  price: number
+}
+/** One category group (หมวดหมู่) in a price-list report. */
+export interface PriceListReportGroup { label: string; rows: PriceListReportRow[] }
+/** Price-list snapshot (ราคาสินค้า) — products grouped by category, listed down. */
+export interface PriceListReport extends GeneralReportBase {
+  kind: 'price-list'
+  scopeLabel: string  /* which SITE/filter the snapshot covers, e.g. "โรงหล่อ" */
+  groups: PriceListReportGroup[]
+  totalItems: number
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport
 
 const KEY = 'kpc.createdDocs.v1'
 
@@ -341,6 +396,8 @@ export interface CreatedDocs {
   purchaseOrders: PurchaseOrder[]
   /** Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ) — newest first. */
   goodsPayments: GoodsPayment[]
+  /** Foundry goods-delivery notes (ใบส่งสินค้าโรงหล่อ) — newest first. */
+  foundryDeliveries: FoundryDelivery[]
   /** Payroll payment vouchers (ใบทำจ่ายเงินเดือน) — newest first. */
   payrollPayments: PayrollPayment[]
   /** Standing salary structure per employee (keyed by Employee.id). */
@@ -358,7 +415,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES }
 
 function read(): CreatedDocs {
   try {
@@ -382,6 +439,7 @@ function read(): CreatedDocs {
       salesOrders: (v.salesOrders ?? []).map((s) => ({ ...s, status: s.status ?? 'รอผลิต' })),
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
+      foundryDeliveries: v.foundryDeliveries ?? [],
       /* Backfill the detailed pay-slip fields for records saved before the
          breakdown existed (older shape only had additions/deductions). */
       payrollPayments: (v.payrollPayments ?? []).map((p) => {
@@ -508,6 +566,14 @@ export function addGoodsPayment(gp: GoodsPayment) {
 }
 export function removeGoodsPayment(gpNo: string) {
   commit({ ...state, goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo) })
+}
+
+/* Foundry goods-delivery notes (ใบส่งสินค้าโรงหล่อ). */
+export function addFoundryDelivery(fd: FoundryDelivery) {
+  commit({ ...state, foundryDeliveries: [stamp(fd), ...state.foundryDeliveries] })
+}
+export function removeFoundryDelivery(fdNo: string) {
+  commit({ ...state, foundryDeliveries: state.foundryDeliveries.filter((f) => f.fdNo !== fdNo) })
 }
 
 /* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */

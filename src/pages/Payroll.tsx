@@ -78,6 +78,8 @@ function sumAdvances(advances: AdvancePayment[], empId: string, payMonth: string
 export function Payroll() {
   const [view, setView] = useState<'payroll' | 'advances'>('payroll')
   const [query, setQuery] = useState('')
+  /* Pay-period (งวดเดือน) filter — '' = all periods. Reset on view switch. */
+  const [monthFilter, setMonthFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showAdvance, setShowAdvance] = useState(false)
   const [slip, setSlip] = useState<PayrollPayment | null>(null)
@@ -94,21 +96,34 @@ export function Payroll() {
     return created.employeeEdits[pp.employeeId]?.bankAccount || emp?.bankAccount || ''
   }
 
+  /* Distinct pay periods present in each dataset, newest first — feeds the
+     งวดเดือน dropdowns so only periods that actually have rows are listed. */
+  const payMonths = useMemo(
+    () => [...new Set(all.map((p) => p.payMonth))].sort().reverse(),
+    [all],
+  )
+  const advMonths = useMemo(
+    () => [...new Set(advAll.map((a) => a.payMonth))].sort().reverse(),
+    [advAll],
+  )
+
   const rows = useMemo(
     () =>
       all.filter((p) => {
+        if (monthFilter && p.payMonth !== monthFilter) return false
         if (!query) return true
         return `${p.ppNo} ${p.employeeName} ${fmtMonth(p.payMonth)} ${p.note ?? ''}`.toLowerCase().includes(query.toLowerCase())
       }),
-    [all, query],
+    [all, query, monthFilter],
   )
   const advRows = useMemo(
     () =>
       advAll.filter((a) => {
+        if (monthFilter && a.payMonth !== monthFilter) return false
         if (!query) return true
         return `${a.advNo} ${a.employeeName} ${fmtMonth(a.payMonth)} ${a.note ?? ''}`.toLowerCase().includes(query.toLowerCase())
       }),
-    [advAll, query],
+    [advAll, query, monthFilter],
   )
 
   const totalNet = all.reduce((s, p) => s + p.netAmount, 0)
@@ -182,8 +197,8 @@ export function Payroll() {
       />
 
       <div className="pills" style={{ marginBottom: 20 }}>
-        <Pill active={view === 'payroll'} onClick={() => { setView('payroll'); setQuery('') }}>บันทึกจ่ายเงินเดือน {all.length}</Pill>
-        <Pill active={view === 'advances'} onClick={() => { setView('advances'); setQuery('') }}>เบิกล่วงหน้า {advAll.length}</Pill>
+        <Pill active={view === 'payroll'} onClick={() => { setView('payroll'); setQuery(''); setMonthFilter('') }}>บันทึกจ่ายเงินเดือน {all.length}</Pill>
+        <Pill active={view === 'advances'} onClick={() => { setView('advances'); setQuery(''); setMonthFilter('') }}>เบิกล่วงหน้า {advAll.length}</Pill>
       </div>
 
       {view === 'payroll' ? (
@@ -195,6 +210,12 @@ export function Payroll() {
           </div>
 
           <div className="row wrap" style={{ justifyContent: 'flex-end', marginBottom: 16, gap: 12 }}>
+            <div style={{ width: 200 }}>
+              <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} aria-label="งวดเดือน">
+                <option value="">ทุกงวดเดือน</option>
+                {payMonths.map((m) => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+              </Select>
+            </div>
             <div style={{ width: 320 }}>
               <SearchInput placeholder="เลขที่ / พนักงาน / งวดเดือน" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
@@ -217,6 +238,12 @@ export function Payroll() {
           </div>
 
           <div className="row wrap" style={{ justifyContent: 'flex-end', marginBottom: 16, gap: 12 }}>
+            <div style={{ width: 200 }}>
+              <Select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} aria-label="หักจากงวด">
+                <option value="">ทุกงวดเดือน</option>
+                {advMonths.map((m) => <option key={m} value={m}>{fmtMonth(m)}</option>)}
+              </Select>
+            </div>
             <div style={{ width: 320 }}>
               <SearchInput placeholder="เลขที่ / พนักงาน / งวดเดือน" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>

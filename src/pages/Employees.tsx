@@ -8,10 +8,12 @@ import { IconPlus } from '../components/icons'
 import {
   EMPLOYEES,
   DEPARTMENT_LABEL,
+  SITE_LABEL,
   THAI_BANKS,
   yearsOfService,
   type Employee,
   type Department,
+  type Site,
 } from '../data/employees'
 import { useCreatedDocs, addEmployee, updateEmployee, type EmployeeEdit } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -23,6 +25,11 @@ const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neut
   labor: 'danger',
   transport: 'neutral',
   intern: 'info',
+}
+
+const SITE_TONE: Record<Site, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
+  plant: 'info',
+  foundry: 'warning',
 }
 
 /* Order departments deterministically for both the filter pills and the table
@@ -63,7 +70,7 @@ export function Employees() {
       if (filter !== 'all' && e.department !== filter) return false
       if (query) {
         const q = query.toLowerCase()
-        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
+        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.site ? SITE_LABEL[e.site].th : ''} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -81,9 +88,9 @@ export function Employees() {
   const hasPhone = list.filter((e) => !!e.phone).length
 
   const exportExcel = () => {
-    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
+    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'Site', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
     const body = rows.map((e) => [
-      e.id, e.name, e.nickname ?? '', e.role, DEPARTMENT_LABEL[e.department].th,
+      e.id, e.name, e.nickname ?? '', e.role, DEPARTMENT_LABEL[e.department].th, e.site ? SITE_LABEL[e.site].th : '',
       e.phone ?? '', e.bankName ?? '', e.bankAccount ?? '', e.startDate ?? '', yearsOfService(e.startDate) ?? '',
     ])
     downloadCsv('employees', [head, ...body])
@@ -107,6 +114,14 @@ export function Employees() {
       header: 'ฝ่าย',
       align: 'center',
       cell: (r) => <Badge tone={DEPARTMENT_TONE[r.department]} pip={false} square>{DEPARTMENT_LABEL[r.department].th}</Badge>,
+    },
+    {
+      key: 'site',
+      header: 'Site',
+      align: 'center',
+      cell: (r) => r.site
+        ? <Badge tone={SITE_TONE[r.site]} pip={false} square>{SITE_LABEL[r.site].th}</Badge>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
     },
     {
       key: 'phone',
@@ -229,6 +244,7 @@ function NewEmployeeForm({
   const [nickname, setNickname] = useState('')
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
+  const [site, setSite] = useState<Site>('plant')
   const [phone, setPhone] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
@@ -237,7 +253,7 @@ function NewEmployeeForm({
 
   useEffect(() => {
     if (!open) return
-    setName(''); setNickname(''); setRole(''); setDepartment('production')
+    setName(''); setNickname(''); setRole(''); setDepartment('production'); setSite('plant')
     setPhone(''); setBankName(''); setBankAccount(''); setStartDate(''); setErr('')
   }, [open])
 
@@ -256,6 +272,7 @@ function NewEmployeeForm({
       nickname: nickname.trim() || undefined,
       role: trimmedRole,
       department,
+      site,
       phone: phone.trim() || undefined,
       bankName: bankName.trim() || undefined,
       bankAccount: bankAccount.trim() || undefined,
@@ -292,6 +309,13 @@ function NewEmployeeForm({
             ))}
           </Select>
         </Field>
+        <Field label="Site" required>
+          <Select value={site} onChange={(e) => setSite(e.target.value as Site)}>
+            {(Object.keys(SITE_LABEL) as Site[]).map((s) => (
+              <option key={s} value={s}>{SITE_LABEL[s].th}</option>
+            ))}
+          </Select>
+        </Field>
         <Field label="เบอร์ติดต่อ" hint="เช่น 081-234-5678">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
         </Field>
@@ -316,6 +340,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   const [nickname, setNickname] = useState('')
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
+  const [site, setSite] = useState<Site>('plant')
   const [phone, setPhone] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
@@ -326,6 +351,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
     setNickname(employee.nickname ?? '')
     setRole(employee.role)
     setDepartment(employee.department)
+    setSite(employee.site ?? 'plant')
     setPhone(employee.phone ?? '')
     setBankName(employee.bankName ?? '')
     setBankAccount(employee.bankAccount ?? '')
@@ -339,6 +365,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       nickname: nickname.trim() || undefined,
       role: role.trim() || employee.role,
       department,
+      site,
       phone: phone.trim() || undefined,
       bankName: bankName.trim() || undefined,
       bankAccount: bankAccount.trim() || undefined,
@@ -373,6 +400,13 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
           <Select value={department} onChange={(e) => setDepartment(e.target.value as Department)}>
             {(Object.keys(DEPARTMENT_LABEL) as Department[]).map((d) => (
               <option key={d} value={d}>{DEPARTMENT_LABEL[d].th}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Site" required>
+          <Select value={site} onChange={(e) => setSite(e.target.value as Site)}>
+            {(Object.keys(SITE_LABEL) as Site[]).map((s) => (
+              <option key={s} value={s}>{SITE_LABEL[s].th}</option>
             ))}
           </Select>
         </Field>

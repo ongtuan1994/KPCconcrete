@@ -28,15 +28,20 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/sales-orders', label: 'ใบสั่งขาย', en: 'Sales Orders', icon: <IconCart /> },
       { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
-      { to: '/invoices', label: 'ใบกำกับภาษี / วางบิล', en: 'Tax Invoices / Billing', icon: <IconInvoice /> },
-      { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
+      { to: '/foundry-deliveries', label: 'ใบส่งสินค้าโรงหล่อ', en: 'Foundry Delivery Notes', icon: <IconOrder /> },
+      {
+        to: '/invoices', label: 'ใบกำกับภาษี / วางบิล', en: 'Tax Invoices / Billing', icon: <IconInvoice />,
+        children: [
+          { to: '/receipts', label: 'ใบเสร็จรับเงิน', en: 'Receipts', icon: <IconReceipt /> },
+        ],
+      },
     ],
   },
   {
     section: 'การซื้อ / การจ่าย · Purchasing',
     items: [
       { to: '/purchase-orders', label: 'ใบสั่งซื้อ', en: 'Purchase Orders', icon: <IconCart /> },
-      { to: '/goods-payments', label: 'ใบทำจ่ายสินค้า/วัสดุ', en: 'Goods / Material Payments', icon: <IconWallet /> },
+      { to: '/goods-payments', label: 'ใบสำคัญจ่าย', en: 'Goods / Material Payments', icon: <IconWallet /> },
       {
         to: '/payroll', label: 'เบิกและจ่ายเงินเดือน', en: 'Advance / Payroll', icon: <IconUsers />,
         children: [
@@ -59,8 +64,12 @@ export const NAV: NavGroup[] = [
     section: 'คลัง & ราคา · Inventory',
     items: [
       { to: '/stock', label: 'คลังวัตถุดิบ', en: 'Raw Material Stock', icon: <IconStock /> },
-      { to: '/pricing', label: 'ราคาสินค้า', en: 'Price List', icon: <IconTag /> },
-      { to: '/transport-pricing', label: 'ราคาค่าขนส่ง', en: 'Transport Surcharge', icon: <IconTruck /> },
+      {
+        to: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', en: 'Price List / Transport', icon: <IconTag />,
+        children: [
+          { to: '/transport-pricing', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
+        ],
+      },
     ],
   },
   {

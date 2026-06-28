@@ -62,11 +62,12 @@ export const RESOURCES: Resource[] = [
 
   { key: 'sales-orders', route: '/sales-orders', label: 'ใบสั่งขาย', section: 'การขาย · Sales' },
   { key: 'delivery-tickets', route: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', section: 'การขาย · Sales' },
+  { key: 'foundry-deliveries', route: '/foundry-deliveries', label: 'ใบส่งสินค้าโรงหล่อ', section: 'การขาย · Sales' },
   { key: 'invoices', route: '/invoices', label: 'ใบกำกับภาษี / วางบิล', section: 'การขาย · Sales' },
   { key: 'receipts', route: '/receipts', label: 'ใบเสร็จรับเงิน', section: 'การขาย · Sales' },
 
   { key: 'purchase-orders', route: '/purchase-orders', label: 'ใบสั่งซื้อ', section: 'การซื้อ / การจ่าย · Purchasing' },
-  { key: 'goods-payments', route: '/goods-payments', label: 'ใบทำจ่ายสินค้า/วัสดุ', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'goods-payments', route: '/goods-payments', label: 'ใบสำคัญจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'payroll', route: '/payroll', label: 'ใบเบิก / ทำจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ลูกค้า · Customers' },
@@ -74,8 +75,8 @@ export const RESOURCES: Resource[] = [
   { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'ลูกค้า · Customers' },
 
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'คลัง & ราคา · Inventory' },
-  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า', section: 'คลัง & ราคา · Inventory' },
-  { key: 'transport-pricing', route: '/transport-pricing', label: 'ราคาค่าขนส่ง', section: 'คลัง & ราคา · Inventory' },
+  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'คลัง & ราคา · Inventory' },
+  { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'คลัง & ราคา · Inventory' },
 
   { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'องค์กร · Organization' },
   { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'องค์กร · Organization' },
@@ -103,9 +104,9 @@ function row(levels: Level[]): Record<string, Level> {
 }
 
 /* Column order for the arrays below — keep in sync with RESOURCES:
-   monthly, tax, audit, SO, delivery, invoice, receipt, PO, goods, payroll,
-   custMaster, suppliers, ledger, stock, pricing, transport, employees,
-   attendance, salaryStruct, settings */
+   monthly, tax, audit, SO, delivery, foundryDelivery, invoice, receipt, PO,
+   goods, payroll, custMaster, suppliers, ledger, stock, pricing, transport,
+   employees, attendance, salaryStruct, settings */
 
 /** Default permission matrix — a sensible reading of the supplied chart.
     Fully editable + persisted from the Settings page, so any cell can be
@@ -113,17 +114,17 @@ function row(levels: Level[]): Record<string, Level> {
     which only Admin and Auditor may access. */
 export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
-  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
+  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
   /* Board — full access (owner), except audit + system settings. */
-  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
+  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
-  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
+  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
   /* Manager — operational: edits sales + customers + time attendance, views
      the rest, no audit, no purchasing/payments, no settings. */
-  Manager: row([V, V, N, E, E, V, V, N, N, N, E, V, V, V, V, V, V, E, V, N]),
+  Manager: row([V, V, N, E, E, E, V, V, N, N, N, E, V, V, V, V, V, V, E, V, N]),
   /* Accountant — finance: edits all sales/purchasing/customers/reports,
      views inventory & HR + attendance + the Audit report (read-only), no settings. */
-  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, V, N]),
+  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, V, N]),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */

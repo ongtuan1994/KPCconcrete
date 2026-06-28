@@ -1,18 +1,58 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, Field, Input, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
-import { PRODUCTS, type Product } from '../data/real'
+import { PRODUCTS, type Product, type ProductSite, type FoundryKind } from '../data/real'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
-import { addPriceAdjustment, useCreatedDocs, type PriceAdjustment } from '../data/createdDocs'
+import { addPriceAdjustment, addGeneralReport, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
+
+/** Today as DD/MM/พ.ศ. for report labels. */
+function todayThai(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear() + 543}`
+}
+import { TransportPricing } from './TransportPricing'
+
+/** Combined ราคาสินค้า / ค่าขนส่ง view — a toggle switches between the product
+    price list and the transport-surcharge schedule. Defaults to products. */
+export function Pricing() {
+  const [view, setView] = useState<'products' | 'transport'>('products')
+  return (
+    <>
+      <div className="pills" style={{ marginBottom: 20 }}>
+        <Pill active={view === 'products'} onClick={() => setView('products')}>ราคาสินค้า</Pill>
+        <Pill active={view === 'transport'} onClick={() => setView('transport')}>ค่าขนส่ง</Pill>
+      </div>
+      {view === 'products' ? <ProductPricing /> : <TransportPricing />}
+    </>
+  )
+}
 
 const CAT: Record<Product['category'], { th: string; tone: Tone }> = {
   concrete: { th: 'คอนกรีตผสมเสร็จ', tone: 'info' },
   precast: { th: 'พรีคาสท์', tone: 'warning' },
   lean: { th: 'Lean', tone: 'neutral' },
 }
+
+/* Work site (SITE) — แพล้นปูน / โรงหล่อ. Products with no `site` count as plant. */
+const SITES: { id: ProductSite; label: string }[] = [
+  { id: 'plant', label: 'แพล้นปูน' },
+  { id: 'foundry', label: 'โรงหล่อ' },
+]
+const productSite = (p: Product): ProductSite => p.site ?? 'plant'
+
+/* Foundry product types — drive the ประเภท column for โรงหล่อ items. */
+const FOUNDRY_KIND: Record<FoundryKind, { th: string; tone: Tone }> = {
+  plank: { th: 'แผ่นพื้น', tone: 'info' },
+  ipole: { th: 'เสาไอ', tone: 'warning' },
+  wallpanel: { th: 'แผ่นผนัง', tone: 'success' },
+}
+/** ประเภท shown per row: foundry kind when set, otherwise the concrete category. */
+const prodType = (p: Product): { th: string; tone: Tone } => (p.kind ? FOUNDRY_KIND[p.kind] : CAT[p.category])
 
 /* Delivery zone is encoded in the product code (positions 6-9):
    OS00 = On Site (≤20 km), OV21 / OV31 / OV41 = the next 10-km bands. */
@@ -53,12 +93,14 @@ function cementBrand(code: string): Brand | null {
   return null
 }
 
-export function Pricing() {
-  const [cat, setCat] = useState<'all' | Product['category']>('all')
+function ProductPricing() {
+  const [site, setSite] = useState<'all' | ProductSite>('all')
+  const [type, setType] = useState<'all' | string>('all')
   const [zone, setZone] = useState<'all' | ZoneId>('all')
   const [brand, setBrand] = useState<'all' | BrandId>('all')
   const [open, setOpen] = useState(false)
   const created = useCreatedDocs()
+  const navigate = useNavigate()
 
   /* Current effective price overrides = latest adjustment snapshot. */
   const currentOverrides: Record<string, number> = created.priceAdjustments[0]?.prices ?? {}
@@ -70,7 +112,8 @@ export function Pricing() {
   )
 
   const rows = products.filter((p) => {
-    if (cat !== 'all' && p.category !== cat) return false
+    if (site !== 'all' && productSite(p) !== site) return false
+    if (type !== 'all' && prodType(p).th !== type) return false
     if (zone !== 'all') {
       const z = deliveryZone(p.code)
       if (!z || z.id !== zone) return false
@@ -84,6 +127,20 @@ export function Pricing() {
 
   const zoneCount = (id: ZoneId) => PRODUCTS.filter((p) => deliveryZone(p.code)?.id === id).length
   const brandCount = (id: BrandId) => PRODUCTS.filter((p) => cementBrand(p.code)?.id === id).length
+  const siteCount = (id: ProductSite) => PRODUCTS.filter((p) => productSite(p) === id).length
+
+  /* ประเภท options — distinct prodType labels within the selected SITE, in first-
+     seen order, each with its product count. Resets to "all" when SITE changes. */
+  const typeOptions = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of PRODUCTS) {
+      if (site !== 'all' && productSite(p) !== site) continue
+      const th = prodType(p).th
+      m.set(th, (m.get(th) ?? 0) + 1)
+    }
+    return [...m.entries()].map(([label, count]) => ({ label, count }))
+  }, [site])
+  const selectSite = (s: 'all' | ProductSite) => { setSite(s); setType('all') }
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
@@ -120,9 +177,55 @@ export function Pricing() {
       },
     },
     { key: 'unit', header: 'หน่วย', align: 'center', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>{r.unit}</span> },
-    { key: 'cat', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone={CAT[r.category].tone} pip={false} square>{CAT[r.category].th}</Badge> },
+    { key: 'cat', header: 'ประเภท', align: 'center', cell: (r) => { const t = prodType(r); return <Badge tone={t.tone} pip={false} square>{t.th}</Badge> } },
+    {
+      key: 'pickup', header: 'การรับของ', align: 'center',
+      cell: (r) => r.pickup
+        ? <Badge tone={r.pickup === 'จัดส่ง' ? 'info' : 'neutral'} pip={false} square>{r.pickup}</Badge>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
+    },
     { key: 'price', header: 'ราคา/หน่วย (รวม VAT)', align: 'right', cell: (r) => (r.price ? baht(r.price) : <span style={{ color: 'var(--kpc-text-faint)' }}>ภายใน</span>), className: 'amt' },
   ]
+
+  /** Build a price-list report from the rows currently shown (respects the SITE /
+      ปูนซีเมนต์ / ระยะส่ง filters), grouped by ประเภท, and save it to รายงานทั่วไป. */
+  const createReport = () => {
+    if (rows.length === 0) { alert('ไม่มีรายการสินค้าให้สร้างรายงาน'); return }
+    const groupsMap = new Map<string, PriceListReport['groups'][number]['rows']>()
+    for (const p of rows) {
+      const label = prodType(p).th
+      const arr = groupsMap.get(label) ?? []
+      const z = deliveryZone(p.code)
+      arr.push({
+        code: p.code,
+        name: cleanName(p.name),
+        brand: cementBrand(p.code)?.label,
+        zone: z ? `${z.label} (${z.range})` : undefined,
+        unit: p.unit,
+        pickup: p.pickup,
+        price: p.price,
+      })
+      groupsMap.set(label, arr)
+    }
+    const groups = [...groupsMap.entries()].map(([label, rows]) => ({ label, rows }))
+    const scopeLabel = site === 'all' ? 'ทุก SITE' : SITES.find((s) => s.id === site)!.label
+    const today = todayThai()
+    const report: PriceListReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'price-list',
+      title: `ราคาสินค้า (${scopeLabel}) ณ ${today}`,
+      fromLabel: today,
+      toLabel: today,
+      scopeLabel,
+      groups,
+      totalItems: rows.length,
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   return (
     <>
@@ -132,28 +235,31 @@ export function Pricing() {
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'ราคา/หน่วย (รวม VAT)']
+              const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
               const body = rows.map((p) => [
                 p.code, cleanName(p.name),
                 cementBrand(p.code)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
-                p.unit, CAT[p.category].th, p.price || '',
+                p.unit, prodType(p).th, p.pickup ?? '', p.price || '',
               ])
               downloadCsv('pricing', [head, ...body])
             }}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             <Button variant="primary" onClick={() => setOpen(true)}>ปรับราคา</Button>
           </>
         }
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
         <div className="row wrap" style={{ gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ประเภท</span>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>SITE</span>
           <div className="pills">
-            <Pill active={cat === 'all'} onClick={() => setCat('all')}>ทั้งหมด {PRODUCTS.length}</Pill>
-            <Pill active={cat === 'concrete'} onClick={() => setCat('concrete')}>คอนกรีต</Pill>
-            <Pill active={cat === 'precast'} onClick={() => setCat('precast')}>พรีคาสท์</Pill>
-            <Pill active={cat === 'lean'} onClick={() => setCat('lean')}>Lean</Pill>
+            <Pill active={site === 'all'} onClick={() => selectSite('all')}>ทั้งหมด {PRODUCTS.length}</Pill>
+            {SITES.map((s) => (
+              <Pill key={s.id} active={site === s.id} onClick={() => selectSite(s.id)}>
+                {s.label} {siteCount(s.id)}
+              </Pill>
+            ))}
           </div>
         </div>
         <div className="row wrap" style={{ gap: 10 }}>
@@ -163,6 +269,17 @@ export function Pricing() {
             {BRANDS.map((b) => (
               <Pill key={b.id} active={brand === b.id} onClick={() => setBrand(b.id)}>
                 {b.label} {brandCount(b.id)}
+              </Pill>
+            ))}
+          </div>
+        </div>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ประเภท</span>
+          <div className="pills">
+            <Pill active={type === 'all'} onClick={() => setType('all')}>ทั้งหมด</Pill>
+            {typeOptions.map((t) => (
+              <Pill key={t.label} active={type === t.label} onClick={() => setType(t.label)}>
+                {t.label} {t.count}
               </Pill>
             ))}
           </div>

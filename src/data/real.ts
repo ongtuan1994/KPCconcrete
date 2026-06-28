@@ -21,7 +21,15 @@ export const MONTHS: Month[] = [
 ]
 
 export type ProductCategory = 'concrete' | 'precast' | 'lean'
-export interface Product { code: string; name: string; strengthKsc: number; unit: string; category: ProductCategory; price: number }
+/** Work site the product belongs to — แพล้นปูน (plant) or โรงหล่อ (foundry).
+    Omitted = plant (all current products are plant). */
+export type ProductSite = 'plant' | 'foundry'
+/** Foundry (โรงหล่อ) product type — drives the ประเภท column for foundry items. */
+export type FoundryKind = 'plank' | 'ipole' | 'wallpanel'
+/** Goods-collection method (การรับของ) — รับเอง (self-pickup) or จัดส่ง (delivery).
+    Only set on foundry items that are priced per collection method. */
+export type ProductPickup = 'รับเอง' | 'จัดส่ง'
+export interface Product { code: string; name: string; strengthKsc: number; unit: string; category: ProductCategory; site?: ProductSite; kind?: FoundryKind; pickup?: ProductPickup; price: number }
 export const PRODUCTS: Product[] = [
   /* ปูน ดอกบัว — On Site (≤20 km) */
   { code: "KPCR2OS00000", name: "คอนกรีต Lean (ปูน ดอกบัว)", strengthKsc: 0, unit: "คิว", category: 'lean', price: 2100.0 },
@@ -102,6 +110,47 @@ export const PRODUCTS: Product[] = [
   { code: "KPCROV41280", name: "คอนกรีตกำลังอัด 280 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 280, unit: "คิว", category: 'concrete', price: 2845.0 },
   { code: "KPCROV41300", name: "คอนกรีตกำลังอัด 300 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 300, unit: "คิว", category: 'concrete', price: 2950.0 },
   { code: "KPCROV41320", name: "คอนกรีตกำลังอัด 320 กก./ตร.ซม. (ปูน SCG)", strengthKsc: 320, unit: "คิว", category: 'concrete', price: 2980.0 },
+
+  /* ───────── โรงหล่อ (Foundry) — precast products ───────── */
+  /* แผ่นพื้น (floor planks · 0.05×0.35×len) — ราคา/แผ่น */
+  { code: "KPCFDPL100", name: "แผ่นพื้น 0.05x0.35x1.00 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 77.0 },
+  { code: "KPCFDPL150", name: "แผ่นพื้น 0.05x0.35x1.50 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 115.5 },
+  { code: "KPCFDPL195", name: "แผ่นพื้น 0.05x0.35x1.95 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 150.15 },
+  { code: "KPCFDPL200", name: "แผ่นพื้น 0.05x0.35x2.00 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 154.0 },
+  { code: "KPCFDPL250", name: "แผ่นพื้น 0.05x0.35x2.50 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 192.5 },
+  { code: "KPCFDPL270", name: "แผ่นพื้น 0.05x0.35x2.70 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 207.9 },
+  { code: "KPCFDPL290", name: "แผ่นพื้น 0.05x0.35x2.90 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 223.3 },
+  { code: "KPCFDPL295", name: "แผ่นพื้น 0.05x0.35x2.95 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 227.15 },
+  { code: "KPCFDPL300", name: "แผ่นพื้น 0.05x0.35x3.00 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 231.0 },
+  { code: "KPCFDPL310", name: "แผ่นพื้น 0.05x0.35x3.10 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 254.98 },
+  { code: "KPCFDPL325", name: "แผ่นพื้น 0.05x0.35x3.25 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 267.31 },
+  { code: "KPCFDPL335", name: "แผ่นพื้น 0.05x0.35x3.35 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 275.54 },
+  { code: "KPCFDPL350", name: "แผ่นพื้น 0.05x0.35x3.50 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 287.88 },
+  { code: "KPCFDPL355", name: "แผ่นพื้น 0.05x0.35x3.55 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 291.99 },
+  { code: "KPCFDPL370", name: "แผ่นพื้น 0.05x0.35x3.70 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 304.33 },
+  { code: "KPCFDPL400", name: "แผ่นพื้น 0.05x0.35x4.00 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 329.0 },
+  { code: "KPCFDPL425", name: "แผ่นพื้น 0.05x0.35x4.25 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 394.19 },
+  { code: "KPCFDPL440", name: "แผ่นพื้น 0.05x0.35x4.40 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 408.1 },
+  { code: "KPCFDPL450", name: "แผ่นพื้น 0.05x0.35x4.50 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'plank', price: 417.38 },
+
+  /* เสาไอ (I-poles · 0.15×0.15×len) — ราคา/ต้น · รับเอง */
+  { code: "KPCFDIP250R", name: "เสาไอ 0.15x0.15x2.50 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 325.0 },
+  { code: "KPCFDIP270R", name: "เสาไอ 0.15x0.15x2.70 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 351.0 },
+  { code: "KPCFDIP600R", name: "เสาไอ 0.15x0.15x6.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 780.0 },
+  { code: "KPCFDIP300R", name: "เสาไอ 0.15x0.15x3.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 390.0 },
+  { code: "KPCFDIP200R", name: "เสาไอ 0.15x0.15x2.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 260.0 },
+  { code: "KPCFDIP280R", name: "เสาไอ 0.15x0.15x2.80 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'รับเอง', price: 364.0 },
+  /* เสาไอ — ราคา/ต้น · จัดส่ง */
+  { code: "KPCFDIP250D", name: "เสาไอ 0.15x0.15x2.50 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 400.0 },
+  { code: "KPCFDIP270D", name: "เสาไอ 0.15x0.15x2.70 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 432.0 },
+  { code: "KPCFDIP600D", name: "เสาไอ 0.15x0.15x6.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 960.0 },
+  { code: "KPCFDIP300D", name: "เสาไอ 0.15x0.15x3.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 480.0 },
+  { code: "KPCFDIP200D", name: "เสาไอ 0.15x0.15x2.00 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 320.0 },
+  { code: "KPCFDIP280D", name: "เสาไอ 0.15x0.15x2.80 ม.", strengthKsc: 0, unit: "ต้น", category: 'precast', site: 'foundry', kind: 'ipole', pickup: 'จัดส่ง', price: 448.0 },
+
+  /* แผ่นผนัง (wall panels · 0.06×0.50×2.90) — ราคา/แผ่น · รับเอง */
+  { code: "KPCFDWP1", name: "แผ่นผนังไอกลาง 0.06x0.50x2.90 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'wallpanel', pickup: 'รับเอง', price: 440.0 },
+  { code: "KPCFDWP2", name: "แผ่นผนังไอทับหลัง 0.06x0.50x2.90 ม.", strengthKsc: 0, unit: "แผ่น", category: 'precast', site: 'foundry', kind: 'wallpanel', pickup: 'รับเอง', price: 550.0 },
 ]
 export const PRODUCT_MAP: Record<string, Product> = Object.fromEntries(PRODUCTS.map(p => [p.code, p]))
 
