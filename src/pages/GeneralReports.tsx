@@ -9,6 +9,7 @@ import { AttendanceReportDoc } from '../components/documents/AttendanceReportDoc
 import { PriceListReportDoc } from '../components/documents/PriceListReportDoc'
 import { TransportPriceReportDoc } from '../components/documents/TransportPriceReportDoc'
 import { PayrollReportDoc } from '../components/documents/PayrollReportDoc'
+import { MixDesignReportDoc } from '../components/documents/MixDesignReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -21,6 +22,7 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'price-list': 'ราคาสินค้า',
   'transport-pricing': 'ราคาค่าขนส่ง',
   'payroll': 'จ่ายเงินเดือน',
+  'mix-design': 'Mix Design',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
@@ -40,7 +42,9 @@ const reportSummary = (r: GeneralReport) =>
           ? `${r.fees.length} ระดับการขนส่งไม่เต็มเที่ยว`
           : r.kind === 'payroll'
             ? `${r.rows.length} คน · ${r.payMonthLabel}`
-            : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+            : r.kind === 'mix-design'
+              ? `${r.rows.length} สูตร`
+              : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -116,7 +120,9 @@ export function GeneralReports() {
                 ? <TransportPriceReportDoc report={active} />
                 : active.kind === 'payroll'
                   ? <PayrollReportDoc report={active} />
-                  : <TruckTripReportDoc report={active} />)}
+                  : active.kind === 'mix-design'
+                    ? <MixDesignReportDoc report={active} />
+                    : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

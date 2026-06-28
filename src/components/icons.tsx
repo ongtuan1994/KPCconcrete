@@ -144,6 +144,12 @@ export const IconClock = ({ size = 18 }: IconProps) => (
     <path d="M9 5.2V9l2.6 1.6" stroke="#969CA6" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
+export const IconCalendar = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 18 18" fill="none">
+    <rect x="2.5" y="3.5" width="13" height="12" rx="2" stroke="#969CA6" strokeWidth="1.5" />
+    <path d="M2.5 7h13M6 2.2v2.6M12 2.2v2.6" stroke="#969CA6" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+)
 export const IconMenu = ({ size = 20, stroke = '#3A3F47' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
     <line x1="3" y1="6" x2="17" y2="6" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />

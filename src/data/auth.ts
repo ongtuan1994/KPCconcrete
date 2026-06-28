@@ -72,17 +72,17 @@ export const RESOURCES: Resource[] = [
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ลูกค้า · Customers' },
   { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ลูกค้า · Customers' },
-  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'ลูกค้า · Customers' },
+  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
 
-  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'คลัง & ราคา · Inventory' },
-  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'คลัง & ราคา · Inventory' },
-  { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'คลัง & ราคา · Inventory' },
+  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'จัดการคลัง · Inventory' },
+  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'ฐานข้อมูล · Database' },
+  { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'ฐานข้อมูล · Database' },
+  { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'ฐานข้อมูล · Database' },
 
-  { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'องค์กร · Organization' },
   { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'องค์กร · Organization' },
-  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'องค์กร · Organization' },
 
-  { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'องค์กร · Organization' },
+  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'ระบบ · System' },
+  { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'ระบบ · System' },
 ]
 
 /** route → resource key, for guarding the router. */

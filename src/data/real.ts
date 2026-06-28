@@ -2357,13 +2357,14 @@ export const DELIVERY_TICKETS: DeliveryTicket[] = [
   }
 }
 
-export interface StockMaterial { code: string; name: string; en: string; unit: string; balance: number; reorder: number }
+/** `cost` = estimated unit cost (บาท/หน่วย) for valuing stock variances; editable. */
+export interface StockMaterial { code: string; name: string; en: string; unit: string; balance: number; reorder: number; cost?: number }
 export const STOCK_MATERIALS: StockMaterial[] = [
-  { code: "SAN", name: "ทรายหยาบ", en: "River sand", unit: "ตัน", balance: 189.36, reorder: 200 },
-  { code: "AGG", name: "หิน 3/4\"", en: "Aggregate 3/4\"", unit: "ตัน", balance: -149.75, reorder: 200 },
-  { code: "CEM-1", name: "ปูนซีเมนต์ผง SCG (ซีเมนต์ 1)", en: "Cement SCG", unit: "ตัน", balance: 13.23, reorder: 40 },
-  { code: "CEM-2", name: "ปูนซีเมนต์ผง ดอกบัว (ซีเมนต์ 2)", en: "Cement Dokbua", unit: "ตัน", balance: 33.84, reorder: 40 },
-  { code: "ADM-D", name: "น้ำยา Plastomix-704 (หน่วง)", en: "Retarder admixture", unit: "ลิตร", balance: 832.36, reorder: 300 },
-  { code: "ADM-F", name: "น้ำยา PCE-1 Gold 500 SF (เร่ง)", en: "Accelerator admixture", unit: "ลิตร", balance: 923.4, reorder: 300 },
-  { code: "ADM-W", name: "น้ำยา SikaPlastocrete N (กันซึม)", en: "Waterproof admixture", unit: "ลิตร", balance: 200.0, reorder: 150 },
+  { code: "SAN", name: "ทรายหยาบ", en: "River sand", unit: "ตัน", balance: 189.36, reorder: 200, cost: 400 },
+  { code: "AGG", name: "หิน 3/4\"", en: "Aggregate 3/4\"", unit: "ตัน", balance: -149.75, reorder: 200, cost: 500 },
+  { code: "CEM-1", name: "ปูนซีเมนต์ผง SCG (ซีเมนต์ 1)", en: "Cement SCG", unit: "ตัน", balance: 13.23, reorder: 40, cost: 2000 },
+  { code: "CEM-2", name: "ปูนซีเมนต์ผง ดอกบัว (ซีเมนต์ 2)", en: "Cement Dokbua", unit: "ตัน", balance: 33.84, reorder: 40, cost: 1900 },
+  { code: "ADM-D", name: "น้ำยา Plastomix-704 (หน่วง)", en: "Retarder admixture", unit: "ลิตร", balance: 832.36, reorder: 300, cost: 45 },
+  { code: "ADM-F", name: "น้ำยา PCE-1 Gold 500 SF (เร่ง)", en: "Accelerator admixture", unit: "ลิตร", balance: 923.4, reorder: 300, cost: 60 },
+  { code: "ADM-W", name: "น้ำยา SikaPlastocrete N (กันซึม)", en: "Waterproof admixture", unit: "ลิตร", balance: 200.0, reorder: 150, cost: 80 },
 ]

@@ -29,6 +29,19 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   if (canAudit && pendingAudit > 0) {
     allNotices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report', signature: `p:${pendingAudit}` })
   }
+  /* Board users approve stock reconciliations — alert on pending ones. */
+  if (user?.role === 'Board') {
+    const pending = created.stockReconciles.filter((r) => r.status === 'pending')
+    if (pending.length > 0) {
+      allNotices.push({
+        id: 'stock-reconcile',
+        title: `มีคำขออนุมัติกระทบยอดคงคลัง ${pending.length} รายการ`,
+        sub: 'กดเพื่อตรวจสอบและอนุมัติ',
+        route: '/stock-reconcile',
+        signature: `rc:${pending.length}:${pending[0].id}`,
+      })
+    }
+  }
   /* Board users are alerted when employees are marked สิ้นสภาพ. */
   if (user?.role === 'Board' && created.terminations.length > 0) {
     const latest = created.terminations[0]

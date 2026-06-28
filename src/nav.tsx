@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock } from './components/icons'
+import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock, IconCalendar } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -19,7 +19,7 @@ export interface NavGroup {
 export const NAV: NavGroup[] = [
   {
     items: [
-      { to: '/my-work', label: 'งานของฉัน', en: 'My Work', icon: <IconClock /> },
+      { to: '/my-work', label: 'งานของฉัน', en: 'My Work', icon: <IconCalendar /> },
     ],
   },
   {
@@ -29,6 +29,7 @@ export const NAV: NavGroup[] = [
       { to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report', icon: <IconBars /> },
       { to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)', icon: <IconInvoice /> },
       { to: '/general-reports', label: 'รายงานทั่วไป', en: 'General Reports', icon: <IconBars /> },
+      { to: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', en: 'Debtors / Creditors', icon: <IconPie /> },
       { to: '/audit-report', label: 'รายงาน Audit', en: 'Audit Report', icon: <IconSearch /> },
     ],
   },
@@ -62,35 +63,31 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    section: 'ลูกค้า · Customers',
+    section: 'จัดการคลัง · Inventory',
+    items: [
+      { to: '/stock', label: 'คลังวัตถุดิบ', en: 'Raw Material Stock', icon: <IconStock /> },
+      { to: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', en: 'Foundry Product Stock', icon: <IconStock /> },
+    ],
+  },
+  {
+    section: 'ฐานข้อมูล · Database',
     items: [
       { to: '/customer-master', label: 'ทะเบียนลูกค้า', en: 'Customer Master', icon: <IconUsers /> },
       { to: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', en: 'Supplier', icon: <IconTruck /> },
-      { to: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', en: 'Debtors / Creditors', icon: <IconPie /> },
-    ],
-  },
-  {
-    section: 'คลัง & ราคา · Inventory',
-    items: [
-      { to: '/stock', label: 'คลังวัตถุดิบ', en: 'Raw Material Stock', icon: <IconStock /> },
       {
         to: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', en: 'Price List / Transport', icon: <IconTag />,
         children: [
+          { to: '/mix-design', label: 'Mix Design', en: 'Mix Design', icon: <IconTag /> },
           { to: '/transport-pricing', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
         ],
       },
-    ],
-  },
-  {
-    section: 'องค์กร · Organization',
-    items: [
       { to: '/employees', label: 'รายชื่อพนักงาน', en: 'Employee List', icon: <IconUsers /> },
-      { to: '/salary-structure', label: 'ปรับโครงสร้าง', en: 'Salary Structure', icon: <IconTag /> },
     ],
   },
   {
     section: 'ระบบ · System',
     items: [
+      { to: '/salary-structure', label: 'ปรับโครงสร้าง', en: 'Salary Structure', icon: <IconTag /> },
       { to: '/settings', label: 'ตั้งค่าระบบ', en: 'Settings', icon: <IconSliders /> },
     ],
   },

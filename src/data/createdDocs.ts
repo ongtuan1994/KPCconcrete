@@ -323,6 +323,55 @@ export interface TodoNote {
   createdAt?: string
 }
 
+/** A raw-material stock receipt (รับเข้าวัตถุดิบ) — adds to the on-hand balance. */
+export interface StockReceipt {
+  id: string
+  code: string        /* StockMaterial.code */
+  material: string    /* name snapshot */
+  unit: string
+  qty: number         /* received quantity (positive) */
+  date: string        /* ISO yyyy-mm-dd */
+  supplier?: string
+  voucherNo?: string  /* เลขใบสำคัญจ่าย (related goods-payment voucher) */
+  note?: string
+  createdBy?: string
+  createdAt?: string
+}
+
+/** One material line in a stock reconciliation (กระทบยอดคงคลัง). */
+export interface StockReconcileLine {
+  code: string
+  material: string
+  unit: string
+  systemQty: number   /* on-hand per system at reconcile time */
+  countedQty: number  /* physical count */
+  diff: number        /* countedQty − systemQty (negative = ขาด/หาย) */
+  diffPct: number     /* diff / systemQty × 100 */
+  unitCost: number    /* บาท/หน่วย used for valuation */
+  diffValue: number   /* diff × unitCost */
+  note?: string
+}
+/** Approval state of a reconciliation. draft → pending (รออนุมัติ) → approved
+    (Board approves; counted quantities are then applied to stock). */
+export type StockReconcileStatus = 'draft' | 'pending' | 'approved'
+/** A stock reconciliation snapshot — recorded for audit. Counted quantities are
+    applied to the on-hand balance only once a Board user approves it. */
+export interface StockReconcile {
+  id: string
+  date: string        /* ISO yyyy-mm-dd */
+  lines: StockReconcileLine[]
+  totalDiffValue: number  /* Σ diffValue (net, signed) */
+  lossValue: number       /* Σ of shortages only (positive baht damaged/lost) */
+  note?: string
+  status: StockReconcileStatus
+  requestedBy?: string
+  requestedAt?: string
+  approvedBy?: string
+  approvedAt?: string
+  createdBy?: string
+  createdAt?: string
+}
+
 /** Employee termination record (สิ้นสภาพพนักงาน) — one per employee. Triggers a
     notification to Board users. */
 export interface EmployeeTermination {
@@ -431,7 +480,25 @@ export interface PayrollReport extends GeneralReportBase {
   rows: PayrollReportRow[]
   totals: { income: number; deduction: number; net: number }
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport
+/** One mix-design row in a saved report (kg/m³ + admixture ลิตร/m³). */
+export interface MixDesignReportRow {
+  code: string
+  name: string
+  brand: string       /* 'SCG' | 'ดอกบัว' */
+  cement: number
+  sand: number
+  aggregate: number
+  plastomix?: number
+  sikament?: number
+  pce?: number
+}
+/** Mix-design report (รายงานสูตรส่วนผสมคอนกรีต). */
+export interface MixDesignReport extends GeneralReportBase {
+  kind: 'mix-design'
+  scopeLabel: string
+  rows: MixDesignReportRow[]
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport
 
 const KEY = 'kpc.createdDocs.v1'
 
@@ -488,10 +555,16 @@ export interface CreatedDocs {
   appointments: Appointment[]
   /** Private to-do notes (งานของฉัน · สิ่งที่ต้องทำ). */
   todoNotes: TodoNote[]
+  /** Raw-material stock receipts (รับเข้าวัตถุดิบ) — newest first. */
+  stockReceipts: StockReceipt[]
+  /** Foundry finished-goods stock receipts (รับเข้าสต๊อกสินค้าโรงหล่อ) — newest first. */
+  foundryReceipts: StockReceipt[]
+  /** Stock reconciliations (กระทบยอดคงคลัง) — newest first. */
+  stockReconciles: StockReconcile[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [] }
 
 function read(): CreatedDocs {
   try {
@@ -545,6 +618,9 @@ function read(): CreatedDocs {
       terminations: v.terminations ?? [],
       appointments: v.appointments ?? [],
       todoNotes: v.todoNotes ?? [],
+      stockReceipts: v.stockReceipts ?? [],
+      foundryReceipts: v.foundryReceipts ?? [],
+      stockReconciles: v.stockReconciles ?? [],
     }
   } catch {
     return empty
@@ -685,6 +761,46 @@ export function toggleTodoNote(id: string) {
 }
 export function removeTodoNote(id: string) {
   commit({ ...state, todoNotes: state.todoNotes.filter((t) => t.id !== id) })
+}
+
+/* Raw-material stock receipts (รับเข้าวัตถุดิบ). */
+export function addStockReceipt(r: Omit<StockReceipt, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, stockReceipts: [stamp(r as StockReceipt), ...state.stockReceipts] })
+}
+export function removeStockReceipt(id: string) {
+  commit({ ...state, stockReceipts: state.stockReceipts.filter((r) => r.id !== id) })
+}
+
+/* Foundry finished-goods stock receipts (รับเข้าสต๊อกสินค้าโรงหล่อ). */
+export function addFoundryReceipt(r: Omit<StockReceipt, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, foundryReceipts: [stamp(r as StockReceipt), ...state.foundryReceipts] })
+}
+export function removeFoundryReceipt(id: string) {
+  commit({ ...state, foundryReceipts: state.foundryReceipts.filter((r) => r.id !== id) })
+}
+
+/* Stock reconciliations (กระทบยอดคงคลัง) — recorded only; do not change balances. */
+export function addStockReconcile(rec: Omit<StockReconcile, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, stockReconciles: [stamp(rec as StockReconcile), ...state.stockReconciles] })
+}
+export function removeStockReconcile(id: string) {
+  commit({ ...state, stockReconciles: state.stockReconciles.filter((r) => r.id !== id) })
+}
+/** Submit a reconciliation for Board approval (รออนุมัติ). */
+export function requestStockReconcileApproval(id: string) {
+  commit({
+    ...state,
+    stockReconciles: state.stockReconciles.map((r) =>
+      r.id === id ? { ...r, status: 'pending', requestedBy: currentUserName(), requestedAt: new Date().toISOString() } : r),
+  })
+}
+/** Board approves a reconciliation — counted quantities then apply to stock. */
+export function approveStockReconcile(id: string) {
+  commit({
+    ...state,
+    stockReconciles: state.stockReconciles.map((r) =>
+      r.id === id ? { ...r, status: 'approved', approvedBy: currentUserName(), approvedAt: new Date().toISOString() } : r),
+  })
 }
 
 /* Payroll payment vouchers (ใบทำจ่ายเงินเดือน). */
