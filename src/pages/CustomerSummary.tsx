@@ -8,6 +8,7 @@ import { customerAgg, baht, bahtShort, qm, monthLabel, type CustomerAgg } from '
 import { AR_OUTSTANDING } from '../data/receivables'
 import { useCan } from '../data/auth'
 import { AuditButton } from '../components/AuditButton'
+import { addGeneralReport, type LedgerReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 /** Render an ISO yyyy-mm-dd as Thai-style dd/mm/yyyy (Buddhist year). */
@@ -127,12 +128,55 @@ export function CustomerSummary() {
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'ลูกหนี้', ref: r.name, label: r.name, sub: r.outstanding > 0 ? `ค้างชำระ ${baht(r.outstanding)}` : `ยอดซื้อ ${baht(r.sales)}`, route: '/ledger' }} /> },
   ]
 
+  const scopeLabel = month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)
+
+  /* Snapshot the current debtors view → รายงานทั่วไป (kept as a PDF). */
+  const createReport = () => {
+    const reportRows = rows.map((r) => {
+      const due = AR_OUTSTANDING[r.name]?.dueDate
+      const s = arStatus(r.outstanding, due)
+      return {
+        name: r.name,
+        tickets: r.tickets,
+        m3: Math.round(r.m3 * 100) / 100,
+        sales: r.sales,
+        outstanding: r.outstanding,
+        dueLabel: r.outstanding > 0 && due ? fmtDate(due) : '',
+        status: s.text,
+        overdue: s.overdue,
+      }
+    })
+    const report: LedgerReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'ledger',
+      side: 'debtors',
+      title: `ลูกหนี้ · ${scopeLabel}`,
+      fromLabel: scopeLabel,
+      toLabel: 'ณ ปัจจุบัน',
+      scopeLabel,
+      rows: reportRows,
+      totals: {
+        count: reportRows.length,
+        outstanding: reportRows.reduce((s, r) => s + r.outstanding, 0),
+        overdue: reportRows.filter((r) => r.overdue).length,
+        sales: reportRows.reduce((s, r) => s + (r.sales ?? 0), 0),
+      },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="ลูกหนี้"
-        sub={`Debtors · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)}`}
+        sub={`Debtors · ${scopeLabel}`}
         actions={
+          <>
+          <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
           <Button variant="primary" onClick={() => {
             const head = ['ลูกค้า / หน่วยงาน', 'ใบจ่าย', 'ปริมาณ (m³)', 'ยอดซื้อ', 'ค้างชำระ', 'วันครบกำหนด', 'สถานะการชำระ']
             const body = rows.map((r) => {
@@ -145,6 +189,7 @@ export function CustomerSummary() {
             const slug = `customer-summary-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
             downloadCsv(slug, [head, ...body])
           }}>ส่งออก Excel</Button>
+          </>
         }
       />
       <div className="grid g-4" style={{ marginBottom: 24 }}>

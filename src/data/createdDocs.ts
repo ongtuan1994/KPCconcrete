@@ -535,7 +535,30 @@ export interface StockReport extends GeneralReportBase {
   rows: StockReportRow[]
   movements: StockReportMovement[]
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport
+/** One debtor/creditor row in a saved ลูกหนี้ / เจ้าหนี้ report. Common fields
+    carry for both sides; the side-specific columns are optional. */
+export interface LedgerReportRow {
+  name: string
+  detail?: string     /* creditor note / supplier code; blank for debtors */
+  terms?: string      /* creditor: เงินสด / เครดิต N วัน (creditors only) */
+  tickets?: number    /* debtor: number of delivery tickets (debtors only) */
+  m3?: number         /* debtor: total volume in คิว (debtors only) */
+  sales?: number      /* debtor: ยอดซื้อในช่วง (debtors only) */
+  outstanding: number /* ค้างชำระ (both sides) */
+  dueLabel?: string   /* วันครบกำหนด — dd/mm/พ.ศ., blank when none */
+  status: string      /* สถานะการชำระ — human-readable */
+  overdue: boolean    /* true → เลยกำหนด (drives the overdue tally) */
+}
+/** Debtors / creditors snapshot (รายงานลูกหนี้ / เจ้าหนี้). One report covers a
+    single side; the toggle on the ลูกหนี้ / เจ้าหนี้ page chooses which. */
+export interface LedgerReport extends GeneralReportBase {
+  kind: 'ledger'
+  side: 'debtors' | 'creditors'
+  scopeLabel: string  /* period / filter the snapshot covers (e.g. "ทั้งปี 2569") */
+  rows: LedgerReportRow[]
+  totals: { count: number; outstanding: number; overdue: number; sales?: number }
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport | LedgerReport
 
 const KEY = 'kpc.createdDocs.v1'
 
