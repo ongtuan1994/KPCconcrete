@@ -346,7 +346,7 @@ export function MonthlyReport() {
             <Button variant="secondary" onClick={exportPdf} disabled={!!exporting}>
               {exporting === 'pdf' ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
             </Button>
-            <Button variant="primary" onClick={exportExcel} disabled={!!exporting}>
+            <Button variant="secondary" onClick={exportExcel} disabled={!!exporting}>
               {exporting === 'excel' ? 'กำลังสร้าง Excel...' : 'ส่งออก Excel'}
             </Button>
           </>

@@ -422,14 +422,22 @@ export interface AttendanceReportEmployee {
   empName: string
   days: number       /* จำนวนวันที่มา (records in range) */
   lateMin: number    /* สายรวม (นาที) */
-  otMin: number      /* OT รวม (นาที) — 0 when not OT-eligible (shown as "-") */
-  otEligible: boolean /* false → OT column shows "-" */
+  leaveDays: number  /* ลา (วัน) — ลาครึ่งวัน (ลาเช้า/ลาบ่าย) นับ 0.5 ต่อครั้ง */
+  forgotCount: number /* ลืมลงเวลา (ครั้ง) — วันที่ลืมขาเข้า/ขาออก ในช่วง */
+  otRawMin: number   /* ล่วงเวลารวม (นาที) — เวลาที่อยู่เกินเลิกงาน ก่อนหักสาย */
+  otMin: number      /* OT สุทธิ (นาที) — หลังหักสาย; 0 when not OT-eligible (shown as "-") */
+  otEligible: boolean /* false → OT columns show "-" */
 }
 /** Time-attendance report snapshot (บันทึกลงเวลางาน) — per-employee วัน/สาย/OT. */
 export interface AttendanceReport extends GeneralReportBase {
   kind: 'attendance'
+  /** Actual data coverage — earliest/latest record date present in the report
+      (DD/MM/พ.ศ.). Differs from from/toLabel, which are the selected filter range
+      (whose `to` may run ahead of the latest data that actually exists). */
+  dataFromLabel?: string
+  dataToLabel?: string
   employees: AttendanceReportEmployee[]
-  totals: { employees: number; days: number; lateMin: number; otMin: number }
+  totals: { employees: number; days: number; leaveDays: number; lateMin: number; forgotCount: number; otRawMin: number; otMin: number }
 }
 /** One product row in a saved price-list report. */
 export interface PriceListReportRow {
@@ -558,7 +566,31 @@ export interface LedgerReport extends GeneralReportBase {
   rows: LedgerReportRow[]
   totals: { count: number; outstanding: number; overdue: number; sales?: number }
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport | LedgerReport
+/** One employee row in a saved รายชื่อพนักงาน report. Labels are snapshotted in
+    Thai so the printed sheet is self-contained. */
+export interface EmployeeReportRow {
+  id: string
+  name: string
+  nickname?: string
+  role: string
+  department: string  /* ฝ่าย — Thai label */
+  site?: string       /* Site — Thai label, blank when unset */
+  nationality?: string
+  phone?: string
+  bankName?: string
+  bankAccount?: string
+  startDate?: string  /* ISO yyyy-mm-dd as displayed */
+  years?: string      /* อายุงาน display (e.g. "2 ปี 3 เดือน") */
+  terminated: boolean /* true → สิ้นสภาพ */
+}
+/** Employee roster snapshot (รายงานรายชื่อพนักงาน) for a department filter. */
+export interface EmployeeReport extends GeneralReportBase {
+  kind: 'employees'
+  scopeLabel: string  /* filter the snapshot covers, e.g. "ทั้งหมด" / "ฝ่ายผลิต" */
+  rows: EmployeeReportRow[]
+  totals: { count: number; active: number; terminated: number }
+}
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport | LedgerReport | EmployeeReport
 
 const KEY = 'kpc.createdDocs.v1'
 

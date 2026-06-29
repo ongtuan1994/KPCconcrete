@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -17,7 +18,7 @@ import {
   type Site,
   type Nationality,
 } from '../data/employees'
-import { useCreatedDocs, addEmployee, updateEmployee, addEmployeeTermination, removeEmployeeTermination, type EmployeeEdit } from '../data/createdDocs'
+import { useCreatedDocs, addEmployee, updateEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeEdit, type EmployeeReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
@@ -66,6 +67,7 @@ export function Employees() {
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showForm, setShowForm] = useState(false)
   const created = useCreatedDocs()
+  const navigate = useNavigate()
   const terminatedSet = useMemo(() => new Set(created.terminations.map((t) => t.empId)), [created.terminations])
 
   const list = useMemo(
@@ -95,6 +97,43 @@ export function Employees() {
   const hasStart = list.filter((e) => !!e.startDate).length
   const hasPhone = list.filter((e) => !!e.phone).length
 
+  const scopeLabel = filter === 'all' ? 'ทั้งหมด' : DEPARTMENT_LABEL[filter].th
+
+  /* Snapshot the current roster view → รายงานทั่วไป (kept as a PDF). */
+  const createReport = () => {
+    const reportRows = rows.map((e) => ({
+      id: e.id,
+      name: e.name,
+      nickname: e.nickname,
+      role: e.role,
+      department: DEPARTMENT_LABEL[e.department].th,
+      site: e.site ? SITE_LABEL[e.site].th : undefined,
+      nationality: e.nationality,
+      phone: e.phone,
+      bankName: e.bankName,
+      bankAccount: e.bankAccount,
+      startDate: e.startDate,
+      years: yearsOfService(e.startDate) ?? undefined,
+      terminated: terminatedSet.has(e.id),
+    }))
+    const terminated = reportRows.filter((r) => r.terminated).length
+    const report: EmployeeReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'employees',
+      title: `รายชื่อพนักงาน · ${scopeLabel}`,
+      fromLabel: scopeLabel,
+      toLabel: 'ณ ปัจจุบัน',
+      scopeLabel,
+      rows: reportRows,
+      totals: { count: reportRows.length, active: reportRows.length - terminated, terminated },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
+
   const exportExcel = () => {
     const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'Site', 'สัญชาติ', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
     const body = rows.map((e) => [
@@ -113,7 +152,7 @@ export function Employees() {
         <div className="stack" style={{ gap: 2 }}>
           <span className="th" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--kpc-text-strong)', fontWeight: 600 }}>
             {r.name}
-            {terminatedSet.has(r.id) && <Badge tone="danger" pip={false} square>สิ้นสภาพ</Badge>}
+            {terminatedSet.has(r.id) && <Badge tone="danger" pip={false} square>พ้นสภาพ</Badge>}
           </span>
           {r.nickname && <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>({r.nickname})</span>}
         </div>
@@ -196,6 +235,7 @@ export function Employees() {
         sub={`Employee List · ${total} คน`}
         actions={
           <>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => setShowForm(true)}>
               <IconPlus /> เพิ่มพนักงาน
@@ -407,12 +447,12 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   }
 
   const terminate = () => {
-    if (!confirm(`ยืนยัน “สิ้นสภาพพนักงาน” ${employee.name}?\n\nระบบจะแจ้งเตือนผู้บริหาร (Board)`)) return
+    if (!confirm(`ยืนยัน “พ้นสภาพ” ${employee.name}?\n\nระบบจะแจ้งเตือนผู้บริหาร (Board)`)) return
     addEmployeeTermination(employee.id, employee.name)
     onClose()
   }
   const undoTerminate = () => {
-    if (!confirm(`ยกเลิกสถานะสิ้นสภาพของ ${employee.name}?`)) return
+    if (!confirm(`ยกเลิกสถานะพ้นสภาพของ ${employee.name}?`)) return
     removeEmployeeTermination(employee.id)
     onClose()
   }
@@ -426,9 +466,9 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       footer={
         <>
           {terminated ? (
-            <Button variant="secondary" onClick={undoTerminate} style={{ marginRight: 'auto', color: 'var(--kpc-danger)' }}>ยกเลิกสิ้นสภาพ</Button>
+            <Button variant="secondary" onClick={undoTerminate} style={{ marginRight: 'auto', color: 'var(--kpc-danger)' }}>ยกเลิกพ้นสภาพ</Button>
           ) : (
-            <Button variant="secondary" onClick={terminate} style={{ marginRight: 'auto', background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>สิ้นสภาพพนักงาน</Button>
+            <Button variant="secondary" onClick={terminate} style={{ marginRight: 'auto', background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>พ้นสภาพ</Button>
           )}
           <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
           <Button variant="primary" onClick={save}>บันทึก</Button>
@@ -438,7 +478,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
         <span style={{ fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           {employee.name}
-          {terminated && <Badge tone="danger" pip={false} square>สิ้นสภาพแล้ว</Badge>}
+          {terminated && <Badge tone="danger" pip={false} square>พ้นสภาพแล้ว</Badge>}
         </span>
         <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
           ชื่อ-สกุลและรหัสไม่สามารถแก้ไขได้ — ฟิลด์อื่นแก้ไขแล้วบันทึกลง localStorage

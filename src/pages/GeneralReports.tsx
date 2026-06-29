@@ -12,6 +12,7 @@ import { PayrollReportDoc } from '../components/documents/PayrollReportDoc'
 import { MixDesignReportDoc } from '../components/documents/MixDesignReportDoc'
 import { StockReportDoc } from '../components/documents/StockReportDoc'
 import { LedgerReportDoc } from '../components/documents/LedgerReportDoc'
+import { EmployeeReportDoc } from '../components/documents/EmployeeReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -27,6 +28,7 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'mix-design': 'Mix Design',
   'stock': 'คลังวัตถุดิบ',
   'ledger': 'ลูกหนี้ / เจ้าหนี้',
+  'employees': 'รายชื่อพนักงาน',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
@@ -53,7 +55,9 @@ const reportSummary = (r: GeneralReport) =>
                 ? `${r.rows.length} รายการ · ${r.scopeLabel}`
                 : r.kind === 'ledger'
                   ? `${r.totals.count} ราย · เลยกำหนด ${r.totals.overdue} ราย · ${r.scopeLabel}`
-                  : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+                  : r.kind === 'employees'
+                    ? `${r.totals.count} คน · ${r.scopeLabel}`
+                    : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -135,7 +139,9 @@ export function GeneralReports() {
                       ? <StockReportDoc report={active} />
                       : active.kind === 'ledger'
                         ? <LedgerReportDoc report={active} />
-                        : <TruckTripReportDoc report={active} />)}
+                        : active.kind === 'employees'
+                          ? <EmployeeReportDoc report={active} />
+                          : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

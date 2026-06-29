@@ -46,7 +46,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
     const more = created.terminations.length - 1
     allNotices.push({
       id: 'terminations',
-      title: `พนักงานสิ้นสภาพ ${created.terminations.length} ราย`,
+      title: `พนักงานพ้นสภาพ ${created.terminations.length} ราย`,
       sub: `ล่าสุด: ${latest.empName}${more > 0 ? ` และอีก ${more} ราย` : ''}`,
       route: '/employees',
       signature: `term:${created.terminations.length}:${latest.empId}`,

@@ -15,6 +15,18 @@ import { EMPLOYEES, type Employee } from './employees'
 export const SHIFT_START_MIN = 8 * 60   /* 08:00 */
 export const SHIFT_END_MIN = 17 * 60    /* 17:00 */
 
+/** A day with only ONE scanner punch is normally read as เวลาเข้า (clock-in).
+    But a lone punch at or after this time means the clock-in scan was missed —
+    that single time is stored as เวลาออก (clock-out) instead, leaving เวลาเข้า
+    blank for the user to fill in. 16:00: too late to be an arrival. */
+export const LONE_PUNCH_OUT_MIN = 16 * 60   /* 16:00 */
+
+/** Half-day leave (ลาครึ่งวัน):
+    - 'morning' (ลาเช้า): works the afternoon → expected shift 13:00–17:00.
+    - 'afternoon' (ลาบ่าย): works the morning → expected shift 08:00–12:00.
+    Drives the late/OT calculation so a half-day isn't counted as late. */
+export type HalfDayLeave = 'morning' | 'afternoon'
+
 export interface AttendanceRecord {
   id: string             /* `${empId}__${date}` */
   date: string           /* ISO yyyy-mm-dd */
@@ -22,7 +34,20 @@ export interface AttendanceRecord {
   empName: string
   clockIn?: string       /* "HH:MM" */
   clockOut?: string      /* "HH:MM" */
+  leave?: HalfDayLeave   /* ลาเช้า / ลาบ่าย — half-day leave (manual entry) */
   source: 'scan' | 'manual'
+}
+
+/* Half-day shift boundaries used when a leave flag is set. */
+export const HALF_DAY_AFTERNOON_START = 13 * 60  /* 13:00 — ลาเช้า: เริ่มงานบ่าย */
+export const HALF_DAY_MORNING_END = 12 * 60      /* 12:00 — ลาบ่าย: เลิกงานเที่ยง */
+
+/** Expected shift start/end (minutes) for a record, accounting for half-day
+    leave. No leave → full shift 08:00–17:00. */
+export function shiftBoundsFor(r: AttendanceRecord): { start: number; end: number } {
+  if (r.leave === 'morning') return { start: HALF_DAY_AFTERNOON_START, end: SHIFT_END_MIN }
+  if (r.leave === 'afternoon') return { start: SHIFT_START_MIN, end: HALF_DAY_MORNING_END }
+  return { start: SHIFT_START_MIN, end: SHIFT_END_MIN }
 }
 
 /* ───────── time helpers ───────── */
@@ -37,12 +62,31 @@ const minToHHMM = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`
 export interface AttendanceCalc { lateMin: number; otRawMin: number; otNetMin: number; workedMin: number }
 
 /** Derive late / OT minutes for a record against the fixed 08:00–17:00 shift. */
+/** ลืมขาเข้า / ลืมขาออก — which punch the employee forgot to scan. */
+export type ForgotPunch = 'in' | 'out'
+
+/** Fill a single missing punch with the standard shift boundary and report which
+    side was forgotten, so the table/report can flag "ลืมลงเวลา":
+      - มีแต่เวลาเข้า (ขาดออก) → เติมออก 17:00, forgot 'out' (ลืมขาออก)
+      - มีแต่เวลาออก (ขาดเข้า) → เติมเข้า 08:00, forgot 'in' (ลืมขาเข้า)
+    Records with both punches (incl. half-day leave) or neither are returned
+    unchanged with forgot = null. */
+export function resolvePunches(r: AttendanceRecord): { clockIn?: string; clockOut?: string; forgot: ForgotPunch | null } {
+  const hasIn = !!r.clockIn, hasOut = !!r.clockOut
+  if (hasIn && !hasOut) return { clockIn: r.clockIn, clockOut: minToHHMM(SHIFT_END_MIN), forgot: 'out' }
+  if (!hasIn && hasOut) return { clockIn: minToHHMM(SHIFT_START_MIN), clockOut: r.clockOut, forgot: 'in' }
+  return { clockIn: r.clockIn, clockOut: r.clockOut, forgot: null }
+}
+
 export function computeAttendance(r: AttendanceRecord): AttendanceCalc {
-  const inM = r.clockIn ? hhmmToMin(r.clockIn) : null
-  const outM = r.clockOut ? hhmmToMin(r.clockOut) : null
-  const lateMin = inM != null ? Math.max(0, inM - SHIFT_START_MIN) : 0
-  const otRawMin = outM != null ? Math.max(0, outM - SHIFT_END_MIN) : 0
-  /* Stayed past 17:00 but clocked in late → net OT deducts the late minutes. */
+  const { start, end } = shiftBoundsFor(r)
+  /* A forgotten punch is auto-filled with the shift boundary before computing. */
+  const eff = resolvePunches(r)
+  const inM = eff.clockIn ? hhmmToMin(eff.clockIn) : null
+  const outM = eff.clockOut ? hhmmToMin(eff.clockOut) : null
+  const lateMin = inM != null ? Math.max(0, inM - start) : 0
+  const otRawMin = outM != null ? Math.max(0, outM - end) : 0
+  /* Stayed past the shift end but clocked in late → net OT deducts the late minutes. */
   const otNetMin = otRawMin > 0 ? Math.max(0, otRawMin - lateMin) : 0
   const workedMin = inM != null && outM != null ? Math.max(0, outM - inM) : 0
   return { lateMin, otRawMin, otNetMin, workedMin }
@@ -309,10 +353,14 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
     }
   }
 
+  /* Drop placeholder 00:00 punches: the scanner emits midnight for a day the
+     employee never scanned (absent) — ignore those so no record is created. */
+  const usablePunches = allPunches.filter((p) => p.at.getHours() !== 0 || p.at.getMinutes() !== 0)
+
   /* Group punches → per employee per day. */
   const byKey = new Map<string, { date: string; empId: string; empName: string; min: Date; max: Date }>()
   const unmatchedIds = new Set<string>()
-  for (const p of allPunches) {
+  for (const p of usablePunches) {
     const emp = resolveEmployee(p.userId, p.name, employees)
     if (!emp) unmatchedIds.add(p.userId || p.name)
     const empId = emp?.id ?? p.userId
@@ -332,8 +380,21 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
   let recordCount = 0
   for (const g of byKey.values()) {
     const id = `${g.empId}__${g.date}`
-    const inHHMM = minToHHMM(g.min.getHours() * 60 + g.min.getMinutes())
-    const outHHMM = g.max > g.min ? minToHHMM(g.max.getHours() * 60 + g.max.getMinutes()) : undefined
+    const minMin = g.min.getHours() * 60 + g.min.getMinutes()
+    const maxMin = g.max.getHours() * 60 + g.max.getMinutes()
+    let inHHMM: string | undefined
+    let outHHMM: string | undefined
+    if (g.max > g.min) {
+      /* Two or more punches that day → earliest = in, latest = out. */
+      inHHMM = minToHHMM(minMin)
+      outHHMM = minToHHMM(maxMin)
+    } else if (minMin >= LONE_PUNCH_OUT_MIN) {
+      /* Single punch at/after 16:00 → missed clock-in; record it as เวลาออก. */
+      outHHMM = minToHHMM(minMin)
+    } else {
+      /* Single punch before 16:00 → treat as เวลาเข้า (the usual case). */
+      inHHMM = minToHHMM(minMin)
+    }
     const existing = next.find((r) => r.id === id)
     if (existing) {
       existing.clockIn = inHHMM
@@ -347,5 +408,5 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
   }
   commit(next)
 
-  return { files: files.length, punches: allPunches.length, records: recordCount, unmatched: unmatchedIds.size, errors }
+  return { files: files.length, punches: usablePunches.length, records: recordCount, unmatched: unmatchedIds.size, errors }
 }

@@ -207,7 +207,7 @@ export function Creditors() {
         actions={
           <>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
-            <Button variant="primary" onClick={exportExcel}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
           </>
         }
       />

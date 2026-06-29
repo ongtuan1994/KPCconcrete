@@ -20,7 +20,12 @@ export function AttendanceReportDoc({ report }: { report: AttendanceReport }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div className="trr-title">สรุปการลงเวลาทำงาน</div>
-          <div className="trr-range">ช่วงวันที่ {report.fromLabel} ถึง {report.toLabel}</div>
+          <div className="trr-range">ช่วงที่เลือก {report.fromLabel} ถึง {report.toLabel}</div>
+          {(report.dataFromLabel || report.dataToLabel) && (
+            <div className="trr-range" style={{ fontSize: 11 }}>
+              ดึงข้อมูลตั้งแต่ {report.dataFromLabel ?? '—'} ถึงข้อมูลล่าสุด {report.dataToLabel ?? '—'}
+            </div>
+          )}
           <div className="trr-meta">สร้างเมื่อ {fmtCreated(report.createdAt)}{report.createdBy ? ` · โดย ${report.createdBy}` : ''}</div>
         </div>
       </div>
@@ -31,9 +36,12 @@ export function AttendanceReportDoc({ report }: { report: AttendanceReport }) {
             <th className="c" style={{ width: 40 }}>ที่</th>
             <th style={{ width: 70 }}>รหัส</th>
             <th>ชื่อ-สกุล</th>
-            <th className="n" style={{ width: 90 }}>มา (วัน)</th>
-            <th className="n" style={{ width: 110 }}>สายรวม (นาที)</th>
-            <th className="n" style={{ width: 110 }}>OT (นาที)</th>
+            <th className="n" style={{ width: 75 }}>มา (วัน)</th>
+            <th className="n" style={{ width: 65 }}>ลา (วัน)</th>
+            <th className="n" style={{ width: 90 }}>สายรวม (นาที)</th>
+            <th className="n" style={{ width: 85 }}>ลืมลงเวลา (ครั้ง)</th>
+            <th className="n" style={{ width: 95 }}>ล่วงเวลา (นาที)</th>
+            <th className="n" style={{ width: 90 }}>OT สุทธิ (นาที)</th>
           </tr>
         </thead>
         <tbody>
@@ -43,21 +51,28 @@ export function AttendanceReportDoc({ report }: { report: AttendanceReport }) {
               <td className="mono">{e.empId}</td>
               <td>{e.empName}</td>
               <td className="n mono">{e.days}</td>
+              <td className="n mono">{(e.leaveDays ?? 0) > 0 ? e.leaveDays : '-'}</td>
               <td className="n mono">{e.lateMin}</td>
+              <td className="n mono" style={(e.forgotCount ?? 0) > 0 ? { color: '#b45309', fontWeight: 600 } : undefined}>{e.forgotCount ?? 0}</td>
+              <td className="n mono">{e.otRawMin ?? 0}</td>
               <td className="n mono">{e.otEligible ? e.otMin : '-'}</td>
             </tr>
           ))}
           <tr className="trr-total">
             <td colSpan={3} className="c">รวมทั้งหมด ({report.totals.employees} คน)</td>
             <td className="n mono">{report.totals.days}</td>
+            <td className="n mono">{report.totals.leaveDays ?? 0}</td>
             <td className="n mono">{report.totals.lateMin}</td>
+            <td className="n mono">{report.totals.forgotCount ?? 0}</td>
+            <td className="n mono">{report.totals.otRawMin ?? 0}</td>
             <td className="n mono">{report.totals.otMin}</td>
           </tr>
         </tbody>
       </table>
 
       <div style={{ fontSize: 11, color: '#6b7280', marginTop: 10 }}>
-        * OT แสดงเป็น "-" สำหรับพนักงานที่ตั้งค่าไม่ร่วม OT · OT คิดสุทธิหลังหักสาย
+        * ล่วงเวลาบันทึกให้ทุกคน · OT สุทธิ แสดง "-" สำหรับพนักงานที่ตั้งค่าไม่ร่วม OT · OT สุทธิ = ล่วงเวลา − สาย (คิดต่อวัน ไม่ติดลบ)<br />
+        * "ลืมลงเวลา" = จำนวนวันที่ลืมขาเข้า/ขาออก (ระบบเติมเวลามาตรฐานให้) · วันที่ลืมลงเวลาจะไม่คิด OT ยกเว้นผู้จัดการ
       </div>
     </div>
   )

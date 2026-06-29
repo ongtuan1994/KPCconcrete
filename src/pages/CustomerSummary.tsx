@@ -177,7 +177,7 @@ export function CustomerSummary() {
         actions={
           <>
           <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
-          <Button variant="primary" onClick={() => {
+          <Button variant="secondary" onClick={() => {
             const head = ['ลูกค้า / หน่วยงาน', 'ใบจ่าย', 'ปริมาณ (m³)', 'ยอดซื้อ', 'ค้างชำระ', 'วันครบกำหนด', 'สถานะการชำระ']
             const body = rows.map((r) => {
               const due = AR_OUTSTANDING[r.name]?.dueDate
