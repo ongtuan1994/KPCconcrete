@@ -32,7 +32,10 @@ export function SalaryStructure() {
         .filter(({ emp }) => {
           if (!query) return true
           return `${emp.id} ${emp.name} ${emp.nickname ?? ''} ${emp.role}`.toLowerCase().includes(query.toLowerCase())
-        }),
+        })
+        /* Always list by รหัส ascending (E001, E002, …) — new employees added
+           via employeesAdded are prepended, so sort explicitly. */
+        .sort((a, b) => a.emp.id.localeCompare(b.emp.id, undefined, { numeric: true })),
     [employees, created.salaryStructures, query],
   )
 
@@ -166,7 +169,6 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
   }, [employee, current])
 
   if (!employee) return null
-  const isLabor = employee.department === 'labor'
 
   /* OT rate is derived live from the wage inputs (เงินรายวัน → ÷480×1.5,
      or เงินเดือน÷30 when no daily wage). */
@@ -207,15 +209,12 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
       </div>
 
       <div className="grid g-2" style={{ gap: 12 }}>
-        {isLabor ? (
-          <Field label="เงินรายวัน (บาท/วัน)" hint="แรงงานรายวัน">
-            <Input type="number" step="0.01" min={0} placeholder="เช่น 400" value={dailyWage} onChange={(e) => setDailyWage(e.target.value)} />
-          </Field>
-        ) : (
-          <Field label="ค่าเงินเดือน (บาท)">
-            <Input type="number" step="0.01" min={0} placeholder="เช่น 15000" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} />
-          </Field>
-        )}
+        <Field label="ค่าเงินเดือน (บาท/เดือน)" hint="พนักงานรายเดือน">
+          <Input type="number" step="0.01" min={0} placeholder="เช่น 15000" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} />
+        </Field>
+        <Field label="ค่าแรงรายวัน (บาท/วัน)" hint="กรอกเมื่อจ่ายเป็นรายวัน">
+          <Input type="number" step="0.01" min={0} placeholder="เช่น 400" value={dailyWage} onChange={(e) => setDailyWage(e.target.value)} />
+        </Field>
         <Field label="ค่าประสบการณ์ (บาท)">
           <Input type="number" step="0.01" min={0} placeholder="เช่น 3000" value={experiencePay} onChange={(e) => setExperiencePay(e.target.value)} />
         </Field>

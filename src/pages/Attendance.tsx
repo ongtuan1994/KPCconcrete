@@ -285,9 +285,10 @@ export function Attendance() {
             ? <span style={{ color: 'var(--kpc-text-faint)', fontSize: 11 }} title="ไม่คิด OT เพราะลืมลงเวลา">ไม่คิด OT</span>
             : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
         }
+        /* สาย เกิน ล่วงเวลา → OT สุทธิ ติดลบ (แสดงเป็นค่าหักแดง). */
         return (
           <div className="stack" style={{ gap: 1, alignItems: 'flex-end' }}>
-            <span className="mono" style={{ fontWeight: 600, color: 'var(--kpc-success-ink)' }}>{e.otNetMin}</span>
+            <span className="mono" style={{ fontWeight: 600, color: e.otNetMin < 0 ? 'var(--kpc-danger-ink)' : 'var(--kpc-success-ink)' }}>{e.otNetMin}</span>
             {e.lateMin > 0 && e.otRawMin > 0 && (
               <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>({e.otRawMin}−{e.lateMin} สาย)</span>
             )}
@@ -412,7 +413,7 @@ export function Attendance() {
                     <td className="num mono" style={{ color: e.otRawMin > 0 ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
                       {e.otRawMin || '—'}
                     </td>
-                    <td className="num mono" style={{ color: !e.otEligible ? 'var(--kpc-text-faint)' : e.otMin > 0 ? 'var(--kpc-success-ink)' : 'var(--kpc-text-faint)', fontWeight: e.otEligible && e.otMin > 0 ? 600 : 400 }}>
+                    <td className="num mono" style={{ color: !e.otEligible ? 'var(--kpc-text-faint)' : e.otMin < 0 ? 'var(--kpc-danger-ink)' : e.otMin > 0 ? 'var(--kpc-success-ink)' : 'var(--kpc-text-faint)', fontWeight: e.otEligible && e.otMin !== 0 ? 600 : 400 }}>
                       {e.otEligible ? (e.otMin || '—') : '-'}
                     </td>
                   </tr>
