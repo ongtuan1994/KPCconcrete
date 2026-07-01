@@ -428,6 +428,21 @@ export interface AttendanceReportEmployee {
   otMin: number      /* OT สุทธิ (นาที) — หลังหักสาย; 0 when not OT-eligible (shown as "-") */
   otEligible: boolean /* false → OT columns show "-" */
 }
+/** One day's clock-in/out detail for the per-employee daily breakdown table.
+    Times are the effective (auto-filled where forgotten) values shown in the grid. */
+export interface AttendanceReportDay {
+  empId: string
+  empName: string
+  date: string           /* DD/MM/พ.ศ. */
+  clockIn: string        /* effective เข้า ('' when none) */
+  clockOut: string       /* effective ออก ('' when none) */
+  forgot: 'in' | 'out' | null  /* ลืมขาเข้า / ลืมขาออก */
+  leave: 'morning' | 'afternoon' | null  /* ลาเช้า / ลาบ่าย */
+  otRawMin: number       /* ล่วงเวลา (นาที) — effective, ก่อนหักสาย */
+  lateMin: number        /* สาย (นาที) — effective */
+  otMin: number          /* OT สุทธิ (นาที) — effective, per day (หลังหักสาย) */
+  source: 'scan' | 'manual'
+}
 /** Time-attendance report snapshot (บันทึกลงเวลางาน) — per-employee วัน/สาย/OT. */
 export interface AttendanceReport extends GeneralReportBase {
   kind: 'attendance'
@@ -437,6 +452,9 @@ export interface AttendanceReport extends GeneralReportBase {
   dataFromLabel?: string
   dataToLabel?: string
   employees: AttendanceReportEmployee[]
+  /** Daily เข้า–ออก detail, sorted by employee then date (person-by-person).
+      Optional so reports saved before this field parse cleanly. */
+  days?: AttendanceReportDay[]
   totals: { employees: number; days: number; leaveDays: number; lateMin: number; forgotCount: number; otRawMin: number; otMin: number }
 }
 /** One product row in a saved price-list report. */

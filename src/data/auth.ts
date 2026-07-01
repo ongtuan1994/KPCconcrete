@@ -54,10 +54,14 @@ export interface Resource {
   section: string  /* group header (Thai · English) */
 }
 
-/** The functions covered by the permission matrix, grouped like the sidebar. */
+/** The functions covered by the permission matrix, in sidebar order and grouped
+    under the same section headers as the sidebar (see nav.tsx). `/my-work` is
+    intentionally ungated (personal page) and therefore has no row here. */
 export const RESOURCES: Resource[] = [
   { key: 'monthly-report', route: '/monthly-report', label: 'รายงานประจำเดือน / ปี', section: 'รายงาน · Reports' },
   { key: 'tax-reports', route: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', section: 'รายงาน · Reports' },
+  { key: 'general-reports', route: '/general-reports', label: 'รายงานทั่วไป', section: 'รายงาน · Reports' },
+  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
   { key: 'audit-report', route: '/audit-report', label: 'รายงาน Audit', section: 'รายงาน · Reports' },
 
   { key: 'sales-orders', route: '/sales-orders', label: 'ใบสั่งขาย', section: 'การขาย · Sales' },
@@ -68,18 +72,20 @@ export const RESOURCES: Resource[] = [
 
   { key: 'purchase-orders', route: '/purchase-orders', label: 'ใบสั่งซื้อ', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'goods-payments', route: '/goods-payments', label: 'ใบสำคัญจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
-  { key: 'payroll', route: '/payroll', label: 'ใบเบิก / ทำจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
-
-  { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ลูกค้า · Customers' },
-  { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ลูกค้า · Customers' },
-  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
+  { key: 'payroll', route: '/payroll', label: 'เบิกและจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'truck-trips', route: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'commission', route: '/commission', label: 'บันทึกค่าคอมมิชชั่น', section: 'การซื้อ / การจ่าย · Purchasing' },
 
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'จัดการคลัง · Inventory' },
+  { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
+
+  { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
+  { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ฐานข้อมูล · Database' },
   { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'ฐานข้อมูล · Database' },
+  { key: 'mix-design', route: '/mix-design', label: 'Mix Design', section: 'ฐานข้อมูล · Database' },
   { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'ฐานข้อมูล · Database' },
   { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'ฐานข้อมูล · Database' },
-
-  { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'องค์กร · Organization' },
 
   { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'ระบบ · System' },
   { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'ระบบ · System' },
@@ -103,28 +109,66 @@ function row(levels: Level[]): Record<string, Level> {
   return m
 }
 
-/* Column order for the arrays below — keep in sync with RESOURCES:
-   monthly, tax, audit, SO, delivery, foundryDelivery, invoice, receipt, PO,
-   goods, payroll, custMaster, suppliers, ledger, stock, pricing, transport,
-   employees, attendance, salaryStruct, settings */
+/* Column order for the arrays below — keep in sync with RESOURCES (sidebar order):
+   Reports:     monthly, tax, general, ledger, audit
+   Sales:       SO, delivery, foundryDelivery, invoice, receipt
+   Purchasing:  PO, goods, payroll, attendance, truckTrips, commission
+   Inventory:   stock, foundryStock
+   Database:    custMaster, suppliers, pricing, mixDesign, transport, employees
+   System:      salaryStruct, settings */
 
 /** Default permission matrix — a sensible reading of the supplied chart.
     Fully editable + persisted from the Settings page, so any cell can be
-    corrected there without touching code. The 3rd column is the Audit report,
-    which only Admin and Auditor may access. */
+    corrected there without touching code. The Audit report (column 5) is
+    restricted to Admin and Auditor. */
 export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
-  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
+  Admin: row([
+    E, E, E, E, E,          // reports
+    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // purchasing
+    E, E,                   // inventory
+    E, E, E, E, E, E,       // database
+    E, E,                   // system
+  ]),
   /* Board — full access (owner), except audit + system settings. */
-  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
+  Board: row([
+    E, E, E, E, N,          // reports (no audit)
+    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // purchasing
+    E, E,                   // inventory
+    E, E, E, E, E, E,       // database
+    E, V,                   // system (settings read-only)
+  ]),
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
-  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
-  /* Manager — operational: edits sales + customers + time attendance, views
-     the rest, no audit, no purchasing/payments, no settings. */
-  Manager: row([V, V, N, E, E, E, V, V, N, N, N, E, V, V, V, V, V, V, E, V, N]),
+  Auditor: row([
+    V, V, V, V, E,          // reports (audit edit)
+    V, V, V, V, V,          // sales
+    V, V, V, V, V, V,       // purchasing
+    V, V,                   // inventory
+    V, V, V, V, V, V,       // database
+    V, N,                   // system (no settings)
+  ]),
+  /* Manager — operational: edits sales + customers + time/trip/commission
+     recording, views the rest; no audit, no purchasing/payments, no settings. */
+  Manager: row([
+    V, V, V, V, N,          // reports (no audit)
+    E, E, E, V, V,          // sales (edits orders/deliveries, views invoices/receipts)
+    N, N, N, E, E, E,       // purchasing (records attendance/trips/commission only)
+    V, V,                   // inventory
+    E, V, V, V, V, V,       // database (edits customer master)
+    V, N,                   // system
+  ]),
   /* Accountant — finance: edits all sales/purchasing/customers/reports,
-     views inventory & HR + attendance + the Audit report (read-only), no settings. */
-  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, V, N]),
+     views inventory & HR recording + the Audit report (read-only), no settings. */
+  Accountant: row([
+    E, E, E, E, V,          // reports (audit view)
+    E, E, E, E, E,          // sales
+    E, E, E, V, V, V,       // purchasing (edits PO/payments/payroll, views recording)
+    E, E,                   // inventory
+    E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
+    V, N,                   // system
+  ]),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */

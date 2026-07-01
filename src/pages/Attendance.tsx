@@ -173,6 +173,26 @@ export function Attendance() {
       empId: e.empId, empName: e.empName, days: e.days, leaveDays: e.leaveDays, lateMin: e.lateMin, forgotCount: e.forgotCount,
       otRawMin: e.otRawMin, otMin: e.otEligible ? e.otMin : 0, otEligible: e.otEligible,
     }))
+    /* Daily เข้า–ออก breakdown, ordered person-by-person (empId, then date). */
+    const days = [...rows]
+      .sort((a, b) => a.empId.localeCompare(b.empId) || a.date.localeCompare(b.date))
+      .map((r) => {
+        const e = effOf(r)
+        const eff = resolvePunches(r)
+        return {
+          empId: r.empId,
+          empName: r.empName,
+          date: fmtDate(r.date),
+          clockIn: eff.clockIn ?? '',
+          clockOut: eff.clockOut ?? '',
+          forgot: (eff.forgot ?? null) as 'in' | 'out' | null,
+          leave: (r.leave ?? null) as 'morning' | 'afternoon' | null,
+          otRawMin: e.otRawMin,
+          lateMin: e.lateMin,
+          otMin: e.otNetMin,
+          source: r.source,
+        }
+      })
     const report: AttendanceReport = {
       id: `gr_${Date.now()}`,
       kind: 'attendance',
@@ -182,6 +202,7 @@ export function Attendance() {
       dataFromLabel,
       dataToLabel,
       employees,
+      days,
       totals: {
         employees: employees.length,
         days: employees.reduce((s, e) => s + e.days, 0),

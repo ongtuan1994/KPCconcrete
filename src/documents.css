@@ -430,3 +430,29 @@
   .trip-report-sheet table.trr-table thead { display: table-header-group; }
   .trip-report-sheet table.trr-table tr { break-inside: avoid; }
 }
+
+/* Attendance report: the daily เข้า–ออก breakdown is a separate section.
+   On screen, separate it from the summary with a dashed rule to hint the
+   page break that happens on paper. */
+.trip-report-sheet.att-report .att-daily {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 2px dashed #c4c4c4;
+}
+
+@media print {
+  /* Uniform paper margins on EVERY page (incl. page 2+). Element padding only
+     pads the first/last printed page, so the four-side margins live on the
+     @page box instead; the sheet's own padding is dropped to avoid doubling. */
+  @page attReport { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet.att-report { page: attReport; padding: 0 !important; }
+
+  /* The daily breakdown always starts on a fresh page (page 2 onward). */
+  .trip-report-sheet.att-report .att-daily {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}
