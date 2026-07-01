@@ -18,7 +18,7 @@ import { truckTripFeeForDriver } from '../data/truckTripFee'
 import { useCurrentUser } from '../data/auth'
 import { useAttendance, computeAttendance } from '../data/attendance'
 import {
-  useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport, CAN_DELETE,
+  useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport,
   type PayrollPayment, type PayMethodOut, type AdvancePayment, type PayrollReport, type PayrollReportScope, type PayrollReportRow, type PayrollReportSection,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -258,12 +258,12 @@ export function Payroll() {
     { key: 'method', header: 'วิธีจ่าย', align: 'center', cell: (r) => <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge> },
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
-    ...(CAN_DELETE ? [{
+    {
       key: 'del', header: '', align: 'center' as const,
       cell: (r: AdvancePayment) => (
         <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบรายการเบิกล่วงหน้า ${r.advNo} ?`)) removeAdvance(r.advNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
       ),
-    }] : []),
+    },
   ]
 
   const columns: Column<PayrollPayment>[] = [
@@ -279,12 +279,12 @@ export function Payroll() {
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ทำจ่ายเงินเดือน', ref: r.ppNo, label: r.ppNo, sub: `${r.employeeName} · ${baht(r.netAmount)}`, route: '/payroll' }} /> },
     { key: 'slip', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setSlip(r)}>สลิป / พิมพ์</Button> },
     { key: 'deposit', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setDeposit(r)}>Deposit Slip</Button> },
-    ...(CAN_DELETE ? [{
+    {
       key: 'del', header: '', align: 'center' as const,
       cell: (r: PayrollPayment) => (
         <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบทำจ่ายเงินเดือน ${r.ppNo} ?`)) removePayrollPayment(r.ppNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
       ),
-    }] : []),
+    },
   ]
 
   return (

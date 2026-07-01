@@ -429,6 +429,11 @@
   .trip-report-sheet table.trr-detail { font-size: 8.5px; }
   .trip-report-sheet table.trr-table thead { display: table-header-group; }
   .trip-report-sheet table.trr-table tr { break-inside: avoid; }
+
+  /* Truck-trip report: uniform paper margins on every page (the sheet's own
+     padding only pads the first/last page of a multi-page table). */
+  @page truckReport { size: A4 portrait; margin: 12mm; }
+  .trip-report-sheet.truck-report { page: truckReport; padding: 0 !important; }
 }
 
 /* Attendance report: the daily เข้า–ออก breakdown is a separate section.
