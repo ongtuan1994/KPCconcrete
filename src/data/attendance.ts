@@ -86,11 +86,11 @@ export function computeAttendance(r: AttendanceRecord): AttendanceCalc {
   const outM = eff.clockOut ? hhmmToMin(eff.clockOut) : null
   const lateMin = inM != null ? Math.max(0, inM - start) : 0
   const otRawMin = outM != null ? Math.max(0, outM - end) : 0
-  /* Stayed past the shift end but clocked in late → net OT deducts the late
-     minutes. If สาย exceeds ล่วงเวลา, OT goes NEGATIVE (e.g. เข้า 08:30 ออก
-     17:11 → ล่วงเวลา 11 − สาย 30 = −19) so the shortfall is carried as a
-     deduction. Days with no ล่วงเวลา at all stay 0 (a plain late day). */
-  const otNetMin = otRawMin > 0 ? otRawMin - lateMin : 0
+  /* Net OT = ล่วงเวลา − สาย, and it is allowed to go NEGATIVE so lateness is
+     always carried as a deduction — even on days with no ล่วงเวลา at all
+     (e.g. สาย 2, ล่วงเวลา 0 → OT −2; ล่วงเวลา 11, สาย 30 → OT −19).
+     Only a fully empty record (no punches) yields 0. */
+  const otNetMin = inM != null || outM != null ? otRawMin - lateMin : 0
   const workedMin = inM != null && outM != null ? Math.max(0, outM - inM) : 0
   return { lateMin, otRawMin, otNetMin, workedMin }
 }

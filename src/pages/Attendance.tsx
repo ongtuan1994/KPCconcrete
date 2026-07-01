@@ -279,8 +279,9 @@ export function Attendance() {
       key: 'ot', header: 'OT (นาที)', align: 'right',
       cell: (r) => {
         const e = effOf(r)
-        if (e.otNetMin <= 0 && e.otRawMin <= 0) {
-          /* OT suppressed because a non-manager forgot a punch. */
+        if (e.otNetMin === 0 && e.otRawMin === 0) {
+          /* Nothing to show: on-time/left-early day, or OT suppressed because a
+             non-manager forgot a punch. */
           return resolvePunches(r).forgot && !isManager(r.empId)
             ? <span style={{ color: 'var(--kpc-text-faint)', fontSize: 11 }} title="ไม่คิด OT เพราะลืมลงเวลา">ไม่คิด OT</span>
             : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
@@ -289,7 +290,7 @@ export function Attendance() {
         return (
           <div className="stack" style={{ gap: 1, alignItems: 'flex-end' }}>
             <span className="mono" style={{ fontWeight: 600, color: e.otNetMin < 0 ? 'var(--kpc-danger-ink)' : 'var(--kpc-success-ink)' }}>{e.otNetMin}</span>
-            {e.lateMin > 0 && e.otRawMin > 0 && (
+            {e.lateMin > 0 && e.otNetMin !== e.otRawMin && (
               <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>({e.otRawMin}−{e.lateMin} สาย)</span>
             )}
           </div>
