@@ -406,6 +406,18 @@ export interface TruckTripReport extends GeneralReportBase {
   drivers: { driver: string; trips: number; fee: number }[]
   totals: { totalM3: number; tripTotal: number; feeTotal: number }
 }
+/** One delivery-ticket detail line in a saved commission report (each รายการ in
+    the selected range). `counted` = a customer sale that feeds the commission
+    volume; false rows are โรงหล่อ/ใช้เอง (shown pink, excluded from the total). */
+export interface CommissionReportTicket {
+  date: string      /* DD/MM/YY as printed on the ticket */
+  dp: string        /* delivery-ticket ref / DP number */
+  customer: string
+  prod: string      /* short product label */
+  type: string      /* ขายลูกค้า / โรงหล่อ / ใช้เอง */
+  m3: number
+  counted: boolean  /* true = ขายลูกค้า (นับรวมยอด); false = โรงหล่อ/ใช้เอง (สีชมพู) */
+}
 /** Sales-commission report snapshot — commission = rate (บาท/คิว) × ยอดขายให้
     ลูกค้า (คิว), paid only when the volume qualifies (≥ 490 คิว). */
 export interface CommissionReport extends GeneralReportBase {
@@ -415,6 +427,9 @@ export interface CommissionReport extends GeneralReportBase {
   status: string     /* human-readable threshold status */
   lines: CommissionLine[]
   total: number
+  /** Per-ticket detail for the selected range (customer + foundry), sorted by
+      date. Optional so reports saved before this field parse cleanly. */
+  tickets?: CommissionReportTicket[]
 }
 /** One employee's row in a saved time-attendance report. */
 export interface AttendanceReportEmployee {

@@ -100,6 +100,23 @@ export function Commission() {
     if (custTickets === 0) { alert('ไม่มียอดขายให้ลูกค้าในช่วงที่เลือก'); return }
     const fromLabel = isoToThai(from)
     const toLabel = isoToThai(to)
+    /* Detail of every ใบจ่าย in the range — customer sales feed the volume;
+       โรงหล่อ/ใช้เอง are shown pink (counted = false), excluded from the total. */
+    const tickets = allTickets
+      .filter((t) => {
+        const iso = ticketISO(t.date)
+        return iso && (!from || iso >= from) && (!to || iso <= to)
+      })
+      .sort((a, b) => ticketISO(a.date).localeCompare(ticketISO(b.date)) || a.dtNo.localeCompare(b.dtNo))
+      .map((t) => ({
+        date: t.date,
+        dp: t.ref || t.dtNo,
+        customer: t.customer,
+        prod: prodShort(t.prod),
+        type: t.type,
+        m3: t.m3,
+        counted: t.type === 'ขายลูกค้า',
+      }))
     const report: CommissionReport = {
       id: `gr_${Date.now()}`,
       kind: 'commission',
@@ -111,6 +128,7 @@ export function Commission() {
       status,
       lines,
       total,
+      tickets,
       createdAt: new Date().toISOString(),
     }
     addGeneralReport(report)

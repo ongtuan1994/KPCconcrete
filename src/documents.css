@@ -456,3 +456,26 @@
     page-break-before: always;
   }
 }
+
+/* Commission report: the per-ticket detail is a separate section, separated
+   on screen by a dashed rule to hint the page break that happens on paper. */
+.trip-report-sheet.comm-report .comm-detail {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 2px dashed #c4c4c4;
+}
+
+@media print {
+  /* Uniform paper margins on every page (see att-report rationale). */
+  @page commReport { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet.comm-report { page: commReport; padding: 0 !important; }
+
+  /* The ticket detail always starts on a fresh page (page 2 onward). */
+  .trip-report-sheet.comm-report .comm-detail {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}

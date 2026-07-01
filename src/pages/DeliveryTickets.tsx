@@ -213,7 +213,7 @@ export function DeliveryTickets() {
       />
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="ใบจ่าย · Tickets" value={monthRows.length.toString()} note="ใบ" />
-        <KpiCard label="ปริมาณรวม · Volume" value={qm(Math.round(totM3))} unit="m³" note="ผลิต+ส่ง" />
+        <KpiCard label="ปริมาณรวม · Volume" value={totM3.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unit="m³" note="ผลิต+ส่ง" />
         <KpiCard label="ยอดขาย · Sales" value={baht(totSales)} note="เฉพาะขายลูกค้า" />
         <KpiCard label="ใช้ภายใน · Internal" value={cnt('โรงหล่อ').toString()} note="โรงหล่อ" invert />
       </div>

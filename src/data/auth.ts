@@ -164,7 +164,7 @@ export const DEFAULT_PERMS: PermMatrix = {
   Accountant: row([
     E, E, E, E, V,          // reports (audit view)
     E, E, E, E, E,          // sales
-    E, E, E, V, V, V,       // purchasing (edits PO/payments/payroll, views recording)
+    E, E, E, E, E, E,       // purchasing (edits PO/payments/payroll + attendance/trips/commission recording)
     E, E,                   // inventory
     E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
     V, N,                   // system
