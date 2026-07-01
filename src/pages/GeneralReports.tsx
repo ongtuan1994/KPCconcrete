@@ -122,7 +122,7 @@ export function GeneralReports() {
         <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายงาน`} />
       )}
 
-      <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)}>
+      <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)} maxWidth={active?.kind === 'payroll' ? 1180 : 820}>
         {active && (active.kind === 'commission'
           ? <CommissionReportDoc report={active} />
           : active.kind === 'attendance'

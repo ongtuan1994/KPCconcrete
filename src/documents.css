@@ -188,7 +188,7 @@
     width: auto !important;
   }
   .modal-head, .modal-foot { display: none !important; }
-  .modal-body { padding: 0 !important; }
+  .modal-body { padding: 0 !important; overflow: visible !important; }
 
   /* The printable sheet IS the full A4 page; uniform padding provides the
      top/right/bottom/left paper margins. `overflow: hidden` plus a height a
@@ -449,6 +449,33 @@
 
   /* The daily breakdown always starts on a fresh page (page 2 onward). */
   .trip-report-sheet.att-report .att-daily {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}
+
+/* Payroll report: each group table (รวม/แพล้นปูน/โรงหล่อไทย/โรงหล่อพม่า) prints
+   on its own page. On screen, separate them with a dashed rule. */
+.trip-report-sheet.payroll-report .payroll-page {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 2px dashed #c4c4c4;
+}
+/* One line per row — never wrap names/labels so each employee is a single row. */
+.trip-report-sheet.payroll-report table.trr-table th,
+.trip-report-sheet.payroll-report table.trr-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+@media print {
+  /* Landscape so the wide single-line payroll table fits the page. */
+  @page payrollReport { size: A4 landscape; margin: 12mm; }
+  .trip-report-sheet.payroll-report { page: payrollReport; padding: 0 !important; }
+  .trip-report-sheet.payroll-report .payroll-page {
     margin-top: 0;
     padding-top: 0;
     border-top: none;

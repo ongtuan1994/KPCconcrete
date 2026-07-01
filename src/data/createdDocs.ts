@@ -520,7 +520,16 @@ export interface PayrollReportRow {
 }
 /** Group a payroll report filters into: plant / foundry-Thai / foundry-Myanmar / all. */
 export type PayrollReportScope = 'plant' | 'foundry-thai' | 'foundry-myanmar' | 'all'
-/** Payroll payout report (รายงานการจ่ายเงินเดือน) for one pay period + group. */
+/** One group's table inside a bundled payroll report (printed one per page). */
+export interface PayrollReportSection {
+  label: string           /* e.g. "เงินเดือนแพล้นปูน" */
+  rows: PayrollReportRow[]
+  totals: { income: number; deduction: number; net: number }
+}
+/** Payroll payout report (รายงานการจ่ายเงินเดือน). Bundles all groups —
+    รวม / แพล้นปูน / โรงหล่อไทย / โรงหล่อพม่า — as `sections`, one table per
+    printed page. `rows`/`totals` mirror the รวม section for backward-compat with
+    reports saved before `sections` existed. */
 export interface PayrollReport extends GeneralReportBase {
   kind: 'payroll'
   scope: PayrollReportScope
@@ -528,6 +537,8 @@ export interface PayrollReport extends GeneralReportBase {
   payMonthLabel: string   /* e.g. "พฤษภาคม 2569" */
   rows: PayrollReportRow[]
   totals: { income: number; deduction: number; net: number }
+  /** Per-group tables (page 1 รวม, 2 แพล้นปูน, 3 โรงหล่อไทย, 4 โรงหล่อพม่า). */
+  sections?: PayrollReportSection[]
 }
 /** One mix-design row in a saved report (kg/m³ + admixture ลิตร/m³). */
 export interface MixDesignReportRow {

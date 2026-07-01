@@ -221,6 +221,18 @@ button.nav-section-toggle:hover { color: var(--kpc-neutral-300); }
 .select-wrap { position: relative; }
 .select { appearance: none; cursor: pointer; padding-right: 38px; }
 .select-wrap .chev { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+
+/* Primary-themed งวดเดือน select (บันทึกใบทำจ่ายเงินเดือน) — blue box, white text. */
+.month-primary .select { background: var(--kpc-primary); color: #fff; font-weight: 600; border-color: var(--kpc-primary); }
+.month-primary .select:focus { border-color: var(--kpc-primary); box-shadow: 0 0 0 3px var(--kpc-primary-50); }
+.month-primary .chev { color: #fff; }
+.month-primary .select option { color: #111; background: #fff; font-weight: 400; }
+
+/* Dark-blue variant (หักจากงวดเดือน · บันทึกเบิกล่วงหน้า). */
+.month-primary-dark .select { background: var(--kpc-primary-ink); color: #fff; font-weight: 600; border-color: var(--kpc-primary-ink); }
+.month-primary-dark .select:focus { border-color: var(--kpc-primary-ink); box-shadow: 0 0 0 3px var(--kpc-primary-50); }
+.month-primary-dark .chev { color: #fff; }
+.month-primary-dark .select option { color: #111; background: #fff; font-weight: 400; }
 .input-icon { position: relative; }
 .input-icon svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); }
 .input-icon .input { padding-left: 38px; }
@@ -312,7 +324,7 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
 .modal { background: #fff; border-radius: var(--kpc-radius); box-shadow: var(--kpc-elev-lg); width: 100%; max-width: 720px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--kpc-border); }
 .modal-title { font-size: 18px; font-weight: 600; color: var(--kpc-text-strong); margin: 0; }
-.modal-body { padding: 24px; }
+.modal-body { padding: 24px; overflow-x: auto; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--kpc-border); background: var(--kpc-surface-alt); border-radius: 0 0 var(--kpc-radius) var(--kpc-radius); }
 .icon-btn { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 6px; display: inline-flex; color: var(--kpc-text-muted); }
 .icon-btn:hover { background: var(--kpc-chip-bg); }

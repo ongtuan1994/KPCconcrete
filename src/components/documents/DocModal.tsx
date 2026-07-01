@@ -11,19 +11,21 @@ export function DocModal({
   onClose,
   children,
   extraActions,
+  maxWidth = 820,
 }: {
   open: boolean
   title: ReactNode
   onClose: () => void
   children: ReactNode
   extraActions?: ReactNode
+  maxWidth?: number
 }) {
   return (
     <Modal
       open={open}
       title={title}
       onClose={onClose}
-      maxWidth={820}
+      maxWidth={maxWidth}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>ปิด</Button>
