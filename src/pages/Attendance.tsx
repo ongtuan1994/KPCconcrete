@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, Checkbox, SearchInput, Field, Input, Select } from '../components/ui'
+import { Button, Badge, Pill, Checkbox, SearchInput, Field, Input, Select, MonthPeriodSelect } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -103,7 +103,7 @@ export function Attendance() {
         }
         return true
       })
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.empId.localeCompare(b.empId)))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.empId.localeCompare(b.empId)))
   }, [records, from, to, query])
 
   const statusCounts = useMemo(() => {
@@ -335,6 +335,9 @@ export function Attendance() {
 
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end' }}>
+          <Field label="งวดเดือน" style={{ width: 170 }}>
+            <MonthPeriodSelect from={from} onPick={(f, t) => { setFrom(f); setTo(t) }} width={170} />
+          </Field>
           <Field label="ตั้งแต่วันที่" style={{ width: 170 }}>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>

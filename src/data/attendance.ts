@@ -95,40 +95,19 @@ export function computeAttendance(r: AttendanceRecord): AttendanceCalc {
   return { lateMin, otRawMin, otNetMin, workedMin }
 }
 
-/* ───────── seed (real logged attendance kept in code) ───────── */
-
-const mk = (empId: string, empName: string, date: string, clockOut: string): AttendanceRecord =>
-  ({ id: `${empId}__${date}`, date, empId, empName, clockIn: '08:00', clockOut, source: 'manual' })
-
-/** Real attendance logged for the new foundry workers (โซ่ E018 · เตเลอ่าว E019),
-    มิ.ย. 2569. Kept in code so it's shared; localStorage records override by id. */
-export const SEED_ATTENDANCE: AttendanceRecord[] = [
-  mk('E018', 'โซ่', '2026-06-25', '17:00'),
-  mk('E018', 'โซ่', '2026-06-26', '17:15'),
-  mk('E018', 'โซ่', '2026-06-27', '17:00'),
-  mk('E018', 'โซ่', '2026-06-30', '17:00'),
-  mk('E019', 'เตเลอ่าว', '2026-06-25', '17:00'),
-  mk('E019', 'เตเลอ่าว', '2026-06-26', '17:15'),
-  mk('E019', 'เตเลอ่าว', '2026-06-27', '17:00'),
-  mk('E019', 'เตเลอ่าว', '2026-06-29', '17:00'),
-  mk('E019', 'เตเลอ่าว', '2026-06-30', '17:00'),
-]
-
 /* ───────── persisted state ───────── */
 
 const KEY = 'kpc.attendance.v1'
 
 function read(): AttendanceRecord[] {
-  let stored: AttendanceRecord[] = []
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) { const v = JSON.parse(raw); if (Array.isArray(v)) stored = v as AttendanceRecord[] }
-  } catch { /* ignore */ }
-  /* Merge seed + stored — a stored record (user edit) overrides the seed by id. */
-  const byId = new Map<string, AttendanceRecord>()
-  for (const r of SEED_ATTENDANCE) byId.set(r.id, r)
-  for (const r of stored) byId.set(r.id, r)
-  return Array.from(byId.values())
+    if (!raw) return []
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? (v as AttendanceRecord[]) : []
+  } catch {
+    return []
+  }
 }
 
 let state: AttendanceRecord[] = read()

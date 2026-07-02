@@ -100,10 +100,6 @@ export const EMPLOYEES: Employee[] = [
   /* Interns — day-rate trainees (เด็กฝึกงาน · รายวัน) */
   { id: 'E016', name: 'กฤต',   nickname: 'กฤต',   role: 'เด็กฝึกงาน', department: 'intern', site: 'plant', nationality: 'ไทย' },
   { id: 'E017', name: 'ปาล์ม', nickname: 'ปาล์ม', role: 'เด็กฝึกงาน', department: 'intern', site: 'plant', nationality: 'ไทย' },
-
-  /* Foundry production — Burmese (added 25/06/2569) */
-  { id: 'E018', name: 'โซ่',      nickname: 'โซ่',      role: 'พนักงานผลิต', department: 'production', site: 'foundry', nationality: 'พม่า', startDate: '2026-06-25' },
-  { id: 'E019', name: 'เตเลอ่าว', nickname: 'เตเลอ่าว', role: 'แรงงาน',       department: 'production', site: 'foundry', nationality: 'พม่า', startDate: '2026-06-25' },
 ]
 
 /** Calculate years-of-service from startDate to `asOf` (default today). Returns

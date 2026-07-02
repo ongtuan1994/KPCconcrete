@@ -421,8 +421,11 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   /* OT date range (วันที่ ตั้งแต่ / ถึง) — pulls OT minutes from the attendance log. */
   const [otFrom, setOtFrom] = useState('')
   const [otTo, setOtTo] = useState('')
+  /* Truck-trip (ค่าเที่ยวรถโม่) date range — separate from OT so it can be
+     computed over a different period. */
+  const [tripFrom, setTripFrom] = useState('')
+  const [tripTo, setTripTo] = useState('')
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
-  const [bankAccount, setBankAccount] = useState('')
   /* income */
   const [daysWorked, setDaysWorked] = useState('') /* แรงงานรายวัน */
   const [baseSalary, setBaseSalary] = useState('')
@@ -434,7 +437,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   const [advance, setAdvance] = useState('')
   const [otherDeduction, setOtherDeduction] = useState('')
   const [payDate, setPayDate] = useState(todayIso())
-  const [method, setMethod] = useState<PayMethodOut>('โอน')
+  const [method, setMethod] = useState<PayMethodOut>('เช็ค')
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
 
@@ -484,10 +487,11 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     const latestPaid = [...new Set(existing.map((p) => p.payMonth))].sort().reverse()[0]
     const tm = latestPaid ?? thisMonth()
     const [rf, rt] = monthRange(tm)
-    setPayMonth(tm); setEmployeeId(firstId); setBankAccount('')
+    setPayMonth(tm); setEmployeeId(firstId)
     setOtFrom(rf); setOtTo(rt)
+    setTripFrom(rf); setTripTo(rt)
     setVehiclePay(''); setOtherIncome(''); setOtherDeduction('')
-    setPayDate(todayIso()); setMethod('โอน'); setNote(''); setErr('')
+    setPayDate(todayIso()); setMethod('เช็ค'); setNote(''); setErr('')
     applyStructure(firstId)
     advancePrefill(firstId, tm)
     tripFeePrefill(firstId, rf, rt)
@@ -545,7 +549,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
 
     const pp: PayrollPayment = {
       id: ppNo, ppNo, payMonth, employeeId: emp.id, employeeName: emp.name,
-      position: emp.role, department: DEPARTMENT_LABEL[emp.department].th, bankAccount: bankAccount.trim() || undefined,
+      position: emp.role, department: DEPARTMENT_LABEL[emp.department].th,
       daysWorked: isLabor ? num(daysWorked) : undefined, dailyWage: isLabor ? dailyWage : undefined,
       baseSalary: effectiveBase, experiencePay: num(experiencePay), specialPay: 0,
       vehiclePay: vehicleOrOt, otherIncome: num(otherIncome), totalIncome,
@@ -577,7 +581,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
             <Select value={payMonth} onChange={(e) => {
               const ym = e.target.value
               setPayMonth(ym); advancePrefill(employeeId, ym)
-              const [rf, rt] = monthRange(ym); setOtFrom(rf); setOtTo(rt)
+              const [rf, rt] = monthRange(ym); setOtFrom(rf); setOtTo(rt); setTripFrom(rf); setTripTo(rt)
               tripFeePrefill(employeeId, rf, rt)
               daysWorkedPrefill(employeeId, rf, rt)
             }}>
@@ -594,16 +598,19 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
         <Field label="จนถึงวันที่">
           <Input type="date" value={otTo} onChange={(e) => setOtTo(e.target.value)} />
         </Field>
+        <Field label="คำนวณเที่ยวรถโม่ ตั้งแต่วันที่" hint="ดึงค่าเที่ยววิ่งจากบันทึกเที่ยวรถโม่">
+          <Input type="date" value={tripFrom} onChange={(e) => { setTripFrom(e.target.value); tripFeePrefill(employeeId, e.target.value, tripTo) }} />
+        </Field>
+        <Field label="จนถึงวันที่">
+          <Input type="date" value={tripTo} onChange={(e) => { setTripTo(e.target.value); tripFeePrefill(employeeId, tripFrom, e.target.value) }} />
+        </Field>
         <Field label="พนักงาน" required style={{ gridColumn: '1 / -1' }} hint={selEmp ? `${selEmp.role} · ${DEPARTMENT_LABEL[selEmp.department].th}` : undefined}>
-          <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth); tripFeePrefill(e.target.value, otFrom, otTo); daysWorkedPrefill(e.target.value, otFrom, otTo) }}>
+          <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth); tripFeePrefill(e.target.value, tripFrom, tripTo); daysWorkedPrefill(e.target.value, otFrom, otTo) }}>
             {employees.map((e) => {
               const done = existing.some((p) => p.employeeId === e.id && p.payMonth === payMonth)
               return <option key={e.id} value={e.id}>{e.name}{e.nickname ? ` (${e.nickname})` : ''} — {e.role}{done ? ' · ✓ สร้างแล้ว' : ''}</option>
             })}
           </Select>
-        </Field>
-        <Field label="เลขที่บัญชี" style={{ gridColumn: '1 / -1' }}>
-          <Input placeholder="เลขบัญชีธนาคาร (ถ้ามี)" value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
         </Field>
       </div>
 

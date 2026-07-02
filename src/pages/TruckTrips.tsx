@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Input, Select } from '../components/ui'
+import { Button, Input, Select, MonthPeriodSelect } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS, VEHICLE_MAP } from '../data/real'
 import { qm, monthShort } from '../data/selectors'
@@ -172,6 +172,10 @@ export function TruckTrips() {
       {/* Date range */}
       <div className="card" style={{ padding: 14, marginBottom: 16 }}>
         <div className="row wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
+          <label className="stack" style={{ gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>งวดเดือน</span>
+            <MonthPeriodSelect from={from} onPick={(f, t) => { setFrom(f); setTo(t) }} width={170} />
+          </label>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
             <Input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />

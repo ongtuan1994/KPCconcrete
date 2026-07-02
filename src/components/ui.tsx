@@ -132,6 +132,34 @@ export function MonthSelect({ value, onChange, allowAll = true }: { value: numbe
   )
 }
 
+const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+/** First & last day (ISO yyyy-mm-dd) of a "YYYY-MM" month. */
+export function monthBoundsIso(ym: string): [string, string] {
+  const [y, m] = ym.split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  return [`${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`]
+}
+
+/** งวดเดือน (Thai พ.ศ.) dropdown that fills a date range. `from` (ISO) determines
+    the shown month; onPick returns the [from, to] bounds of the chosen month. */
+export function MonthPeriodSelect({ from, onPick, width = 168 }: { from: string; onPick: (from: string, to: string) => void; width?: number }) {
+  const opts: string[] = []
+  const now = new Date()
+  let y = now.getFullYear(), m = now.getMonth() + 1
+  for (let i = 0; i < 24; i++) { opts.push(`${y}-${String(m).padStart(2, '0')}`); m--; if (m === 0) { m = 12; y-- } }
+  const ym = from.slice(0, 7)
+  const list = ym && !opts.includes(ym) ? [ym, ...opts] : opts
+  return (
+    <div className="select-wrap" style={{ width }}>
+      <select className="select" value={ym} onChange={(e) => { const [f, t] = monthBoundsIso(e.target.value); onPick(f, t) }} aria-label="งวดเดือน">
+        {list.map((mm) => <option key={mm} value={mm}>{THAI_MONTHS_FULL[Number(mm.slice(5, 7)) - 1]} {Number(mm.slice(0, 4)) + 543}</option>)}
+      </select>
+      <span className="chev"><IconChevron /></span>
+    </div>
+  )
+}
+
 export function Select({ children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <div className="select-wrap">
