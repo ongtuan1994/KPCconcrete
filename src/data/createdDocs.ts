@@ -643,6 +643,9 @@ interface Hidden {
   invoices: string[]
   billingNotes: string[]
   receipts: string[]
+  /** Employee ids deleted from the roster (hides seed employees; added ones are
+      removed from employeesAdded outright). */
+  employees: string[]
 }
 
 export interface CreatedDocs {
@@ -699,7 +702,7 @@ export interface CreatedDocs {
   stockReconciles: StockReconcile[]
 }
 
-const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [] }
+const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
 const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [] }
 
 function read(): CreatedDocs {
@@ -1000,6 +1003,18 @@ export function addPriceAdjustment(adj: PriceAdjustment) {
 /** Push a brand-new employee to the head of the user-added list. */
 export function addEmployee(e: Employee) {
   commit({ ...state, employeesAdded: [stamp(e), ...state.employeesAdded] })
+}
+
+/** Delete an employee from the roster: drop any user-added record and hide the
+    id (also covers seed employees, which can't be removed from code). */
+export function removeEmployee(id: string) {
+  commit({
+    ...state,
+    employeesAdded: state.employeesAdded.filter((e) => e.id !== id),
+    hidden: state.hidden.employees.includes(id)
+      ? state.hidden
+      : { ...state.hidden, employees: [...state.hidden.employees, id] },
+  })
 }
 
 /** Merge an edit onto an employee (by id). Empty-string / undefined values

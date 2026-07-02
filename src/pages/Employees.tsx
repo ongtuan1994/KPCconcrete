@@ -18,26 +18,13 @@ import {
   type Site,
   type Nationality,
 } from '../data/employees'
-import { useCreatedDocs, addEmployee, updateEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeEdit, type EmployeeReport } from '../data/createdDocs'
+import { useCreatedDocs, addEmployee, updateEmployee, removeEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeEdit, type EmployeeReport } from '../data/createdDocs'
+import { useCurrentUser } from '../data/auth'
 import { downloadCsv } from '../utils/csv'
-
-const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
-  manager: 'info',
-  accounting: 'success',
-  production: 'warning',
-  labor: 'danger',
-  transport: 'neutral',
-  intern: 'info',
-}
 
 const SITE_TONE: Record<Site, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
   plant: 'info',
   foundry: 'warning',
-}
-
-const NATIONALITY_TONE: Record<Nationality, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
-  ไทย: 'success',
-  พม่า: 'warning',
 }
 
 /* Order departments deterministically for both the filter pills and the table
@@ -63,6 +50,7 @@ function nextEmployeeId(existing: Employee[]): string {
 
 export function Employees() {
   const [filter, setFilter] = useState<'all' | Department>('all')
+  const [siteFilter, setSiteFilter] = useState<'all' | Site>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -70,14 +58,18 @@ export function Employees() {
   const navigate = useNavigate()
   const terminatedSet = useMemo(() => new Set(created.terminations.map((t) => t.empId)), [created.terminations])
 
+  const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
   const list = useMemo(
-    () => [...created.employeesAdded, ...EMPLOYEES].map((e) => mergeEmployee(e, created.employeeEdits)),
-    [created.employeeEdits, created.employeesAdded],
+    () => [...created.employeesAdded, ...EMPLOYEES]
+      .filter((e) => !hiddenEmp.has(e.id))
+      .map((e) => mergeEmployee(e, created.employeeEdits)),
+    [created.employeeEdits, created.employeesAdded, hiddenEmp],
   )
 
   const rows = useMemo(() => {
     const base = list.filter((e) => {
       if (filter !== 'all' && e.department !== filter) return false
+      if (siteFilter !== 'all' && e.site !== siteFilter) return false
       if (query) {
         const q = query.toLowerCase()
         const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.site ? SITE_LABEL[e.site].th : ''} ${e.nationality ?? ''} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
@@ -90,9 +82,10 @@ export function Employees() {
       const db = DEPARTMENT_ORDER.indexOf(b.department)
       return da - db || a.id.localeCompare(b.id)
     })
-  }, [list, filter, query])
+  }, [list, filter, siteFilter, query])
 
   const cnt = (d: Department) => list.filter((e) => e.department === d).length
+  const siteCnt = (s: Site) => list.filter((e) => e.site === s).length
   const total = list.length
   const hasStart = list.filter((e) => !!e.startDate).length
   const hasPhone = list.filter((e) => !!e.phone).length
@@ -162,8 +155,7 @@ export function Employees() {
     {
       key: 'dept',
       header: 'ฝ่าย',
-      align: 'center',
-      cell: (r) => <Badge tone={DEPARTMENT_TONE[r.department]} pip={false} square>{DEPARTMENT_LABEL[r.department].th}</Badge>,
+      cell: (r) => DEPARTMENT_LABEL[r.department].th,
     },
     {
       key: 'site',
@@ -176,10 +168,7 @@ export function Employees() {
     {
       key: 'nationality',
       header: 'สัญชาติ',
-      align: 'center',
-      cell: (r) => r.nationality
-        ? <Badge tone={NATIONALITY_TONE[r.nationality]} pip={false} square>{r.nationality}</Badge>
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
+      cell: (r) => r.nationality ?? '—',
     },
     {
       key: 'phone',
@@ -262,6 +251,15 @@ export function Employees() {
         </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="ชื่อ / ชื่อเล่น / ตำแหน่ง / เบอร์" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="row wrap" style={{ alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>Site:</span>
+        <div className="pills">
+          <Pill active={siteFilter === 'all'} onClick={() => setSiteFilter('all')}>ทั้งหมด {total}</Pill>
+          <Pill active={siteFilter === 'plant'} onClick={() => setSiteFilter('plant')}>{SITE_LABEL.plant.th} {siteCnt('plant')}</Pill>
+          <Pill active={siteFilter === 'foundry'} onClick={() => setSiteFilter('foundry')}>{SITE_LABEL.foundry.th} {siteCnt('foundry')}</Pill>
         </div>
       </div>
 
@@ -413,6 +411,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   const [bankAccount, setBankAccount] = useState('')
   const [startDate, setStartDate] = useState('')
   const created = useCreatedDocs()
+  const isAdmin = useCurrentUser()?.role === 'Admin'
 
   useEffect(() => {
     if (!employee) return
@@ -456,6 +455,11 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
     removeEmployeeTermination(employee.id)
     onClose()
   }
+  const del = () => {
+    if (!confirm(`ลบพนักงาน ${employee.name} (${employee.id}) ออกจากรายชื่อถาวร?\n\nการลบนี้ไม่สามารถกู้คืนได้`)) return
+    removeEmployee(employee.id)
+    onClose()
+  }
 
   return (
     <Modal
@@ -465,11 +469,14 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       maxWidth={560}
       footer={
         <>
-          {terminated ? (
-            <Button variant="secondary" onClick={undoTerminate} style={{ marginRight: 'auto', color: 'var(--kpc-danger)' }}>ยกเลิกพ้นสภาพ</Button>
-          ) : (
-            <Button variant="secondary" onClick={terminate} style={{ marginRight: 'auto', background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>พ้นสภาพ</Button>
-          )}
+          <div style={{ marginRight: 'auto', display: 'flex', gap: 10 }}>
+            {terminated ? (
+              <Button variant="secondary" onClick={undoTerminate} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกพ้นสภาพ</Button>
+            ) : (
+              <Button variant="secondary" onClick={terminate} style={{ background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>พ้นสภาพ</Button>
+            )}
+            {isAdmin && <Button variant="ghost" onClick={del} style={{ color: 'var(--kpc-danger)' }} title="เฉพาะ Admin">ลบพนักงาน</Button>}
+          </div>
           <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
           <Button variant="primary" onClick={save}>บันทึก</Button>
         </>
