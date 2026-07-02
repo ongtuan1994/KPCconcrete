@@ -94,7 +94,7 @@ export interface SalesOrder {
 /* ───────── การซื้อ / การจ่าย (Purchasing / Payments) ───────── */
 
 /** Payment method for outgoing payments (purchases / payroll). */
-export type PayMethodOut = 'เงินสด' | 'โอน' | 'เช็ค'
+export type PayMethodOut = 'เงินสดย่อย' | 'โอน' | 'เช็ค'
 
 /** One line on a purchase order (ใบสั่งซื้อ). */
 export interface PurchaseOrderItem {
@@ -200,6 +200,24 @@ export interface AdvancePayment {
   createdAt: string
 }
 
+/** One leave record (บันทึกวันลา) for an employee — a date range and the number
+    of leave days it consumes (0.5 = ครึ่งวัน). */
+export interface LeaveRecord {
+  id: string
+  employeeId: string
+  employeeName: string
+  from: string        /* ISO date */
+  to: string          /* ISO date (= from for a single day) */
+  days: number        /* จำนวนวันลา */
+  /** ครึ่งวัน — 'morning' = ครึ่งเช้า (ลาเช้า), 'afternoon' = ครึ่งบ่าย (ลาบ่าย).
+      ใช้ค่าเดียวกับ attendance.leave เพื่อเช็คต่อในบันทึกลงเวลางาน. ตั้งเมื่อ days = 0.5. */
+  half?: 'morning' | 'afternoon'
+  leaveType?: string  /* ลากิจ / ลาป่วย / ลาพักร้อน */
+  note?: string
+  createdBy?: string
+  createdAt: string
+}
+
 /** Standing salary structure per employee (ปรับโครงสร้างเงินเดือน) — the base
     figures used to pre-fill payroll vouchers. Keyed by Employee.id. */
 export interface SalaryStructure {
@@ -217,6 +235,8 @@ export interface SalaryStructure {
   /* ร่วมค่าเที่ยวรถโม่ไหม — default = false (ไม่ร่วม). ฝ่ายจัดส่งทุกคน +
      ผู้จัดการที่ร่วม = true, คนอื่น = false. */
   truckTripEligible?: boolean
+  /* สิทธิ์วันลา (วัน/ปี) — ปรับได้จากหน้าปรับโครงสร้าง. */
+  leaveDays?: number
   lastAdjustedAt?: string /* ISO timestamp ของการปรับเงินเดือนครั้งล่าสุด */
 }
 
@@ -680,6 +700,8 @@ export interface CreatedDocs {
   salaryStructures: Record<string, SalaryStructure>
   /** Advance withdrawals (เบิกล่วงหน้า) — newest first. */
   advances: AdvancePayment[]
+  /** Leave records (บันทึกวันลา) — newest first. */
+  leaveRecords: LeaveRecord[]
   /** History of salary-structure adjustments — newest first. */
   salaryStructureAdjustments: SalaryStructureAdjustment[]
   /** Mixer-truck trip log keyed by DeliveryTicket.dtNo (บันทึกเที่ยวรถโม่). */
@@ -703,7 +725,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [] }
 
 function read(): CreatedDocs {
   try {
@@ -750,6 +772,7 @@ function read(): CreatedDocs {
       }),
       salaryStructures: v.salaryStructures ?? {},
       advances: v.advances ?? [],
+      leaveRecords: v.leaveRecords ?? [],
       salaryStructureAdjustments: v.salaryStructureAdjustments ?? [],
       truckTrips: v.truckTrips ?? {},
       generalReports: v.generalReports ?? [],
@@ -962,6 +985,12 @@ export function addSalaryStructureAdjustment(adj: SalaryStructureAdjustment) {
 /* Advance withdrawals (เบิกล่วงหน้า). */
 export function addAdvance(a: AdvancePayment) {
   commit({ ...state, advances: [stamp(a), ...state.advances] })
+}
+export function addLeaveRecord(r: LeaveRecord) {
+  commit({ ...state, leaveRecords: [stamp(r), ...state.leaveRecords] })
+}
+export function removeLeaveRecord(id: string) {
+  commit({ ...state, leaveRecords: state.leaveRecords.filter((r) => r.id !== id) })
 }
 export function removeAdvance(advNo: string) {
   commit({ ...state, advances: state.advances.filter((a) => a.advNo !== advNo) })

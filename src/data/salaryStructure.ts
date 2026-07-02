@@ -57,7 +57,7 @@ export function salaryStructureFor(id: string, overrides: Record<string, SalaryS
   const base = overrides[id] ?? SALARY_STRUCTURE_SEED[id]
   // otEligible / commissionEligible default to true (รับ) — older records and
   // seed entries without the flags keep getting OT + commission.
-  const defaults = { baseSalary: 0, dailyWage: 0, experiencePay: 0, socialSecurity: 0, otRatePerMinute: DEFAULT_OT_RATE, otEligible: true, commissionEligible: true, truckTripEligible: false }
+  const defaults = { baseSalary: 0, dailyWage: 0, experiencePay: 0, socialSecurity: 0, otRatePerMinute: DEFAULT_OT_RATE, otEligible: true, commissionEligible: true, truckTripEligible: false, leaveDays: 0 }
   return base ? { ...defaults, ...base } : defaults
 }
 

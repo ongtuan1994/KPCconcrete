@@ -151,7 +151,7 @@ export function Employees() {
         </div>
       ),
     },
-    { key: 'role', header: 'ตำแหน่ง', cell: (r) => r.role },
+    /* ตำแหน่ง ซ่อนจากตาราง (ยังเก็บข้อมูล + แก้ไข/ส่งออก/ค้นหาได้) */
     {
       key: 'dept',
       header: 'ฝ่าย',
@@ -177,26 +177,7 @@ export function Employees() {
         ? <span className="mono">{r.phone}</span>
         : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
     },
-    {
-      key: 'bank',
-      header: 'บัญชีธนาคาร',
-      cell: (r) => (r.bankName || r.bankAccount)
-        ? (
-          <div className="stack" style={{ gap: 2 }}>
-            {r.bankName && <span style={{ fontSize: 13 }}>{r.bankName}</span>}
-            {r.bankAccount && <span className="mono" style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{r.bankAccount}</span>}
-          </div>
-        )
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
-    },
-    {
-      key: 'start',
-      header: 'วันเริ่มงาน',
-      cell: (r) => r.startDate
-        ? <span className="mono">{r.startDate}</span>
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
-      className: 'date',
-    },
+    /* บัญชีธนาคาร + วันเริ่มงาน ซ่อนจากตาราง (ยังเก็บข้อมูล + แก้ไข/ส่งออกได้) */
     {
       key: 'years',
       header: 'อายุงาน',

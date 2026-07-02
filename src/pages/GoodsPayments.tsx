@@ -15,7 +15,7 @@ import {
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-const METHOD_TONE: Record<PayMethodOut, Tone> = { เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
+const METHOD_TONE: Record<string, Tone> = { เงินสดย่อย: 'success', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 
 /** Optional pre-fill values, e.g. when paying from a purchase order. */
 export interface GoodsPaymentInitial {
@@ -356,7 +356,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
         <Field label="วิธีจ่าย" required>
           <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethodOut)}>
             <option value="โอน">โอน</option>
-            <option value="เงินสด">เงินสด</option>
+            <option value="เงินสดย่อย">เงินสดย่อย</option>
             <option value="เช็ค">เช็ค</option>
           </Select>
         </Field>

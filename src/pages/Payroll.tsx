@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
@@ -23,7 +23,7 @@ import {
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-const METHOD_TONE: Record<PayMethodOut, Tone> = { เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
+const METHOD_TONE: Record<string, Tone> = { เงินสดย่อย: 'success', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
 
@@ -97,7 +97,10 @@ function sumAdvances(advances: AdvancePayment[], empId: string, payMonth: string
 }
 
 export function Payroll() {
-  const [view, setView] = useState<'payroll' | 'advances'>('payroll')
+  const loc = useLocation()
+  /* /advances opens the เบิกล่วงหน้า view; /payroll the จ่ายเงินเดือน view. */
+  const [view, setView] = useState<'payroll' | 'advances'>(loc.pathname === '/advances' ? 'advances' : 'payroll')
+  useEffect(() => { setView(loc.pathname === '/advances' ? 'advances' : 'payroll') }, [loc.pathname])
   const [query, setQuery] = useState('')
   /* Pay-period (งวดเดือน) filter — '' = all periods. Reset on view switch. */
   const [monthFilter, setMonthFilter] = useState('')
@@ -303,8 +306,8 @@ export function Payroll() {
       />
 
       <div className="pills" style={{ marginBottom: 20 }}>
-        <Pill active={view === 'payroll'} onClick={() => { setView('payroll'); setQuery('') }}>บันทึกจ่ายเงินเดือน {all.length}</Pill>
-        <Pill active={view === 'advances'} onClick={() => { setView('advances'); setQuery('') }}>เบิกล่วงหน้า {advAll.length}</Pill>
+        <Pill active={view === 'payroll'} onClick={() => { navigate('/payroll'); setQuery('') }}>บันทึกจ่ายเงินเดือน {all.length}</Pill>
+        <Pill active={view === 'advances'} onClick={() => { navigate('/advances'); setQuery('') }}>เบิกล่วงหน้า {advAll.length}</Pill>
       </div>
 
       {view === 'payroll' ? (
@@ -669,7 +672,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
         <Field label="วิธีจ่าย" required>
           <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethodOut)}>
             <option value="โอน">โอน</option>
-            <option value="เงินสด">เงินสด</option>
+            <option value="เงินสดย่อย">เงินสดย่อย</option>
             <option value="เช็ค">เช็ค</option>
           </Select>
         </Field>
@@ -689,7 +692,7 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
   const [payMonth, setPayMonth] = useState(thisMonth())
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
   const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<PayMethodOut>('เงินสด')
+  const [method, setMethod] = useState<PayMethodOut>('เงินสดย่อย')
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
 
@@ -722,7 +725,7 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
     /* Default งวดที่หัก to the latest period that already has an advance, else this month. */
     const latestAdv = [...new Set(created.advances.map((a) => a.payMonth))].sort().reverse()[0]
     setDate(todayIso()); setPayMonth(latestAdv ?? thisMonth()); setEmployeeId(firstId)
-    amountPrefill(firstId); setMethod('เงินสด'); setNote(''); setErr('')
+    amountPrefill(firstId); setMethod('เงินสดย่อย'); setNote(''); setErr('')
   }, [open])
 
   const emp = employees.find((e) => e.id === employeeId)
@@ -776,7 +779,7 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
         </Field>
         <Field label="วิธีจ่าย" required>
           <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethodOut)}>
-            <option value="เงินสด">เงินสด</option>
+            <option value="เงินสดย่อย">เงินสดย่อย</option>
             <option value="โอน">โอน</option>
             <option value="เช็ค">เช็ค</option>
           </Select>

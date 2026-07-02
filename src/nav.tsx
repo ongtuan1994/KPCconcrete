@@ -55,6 +55,8 @@ export const NAV: NavGroup[] = [
       {
         to: '/payroll', label: 'เบิกและจ่ายเงินเดือน', en: 'Advance / Payroll', icon: <IconUsers />,
         children: [
+          { to: '/leave-records', label: 'บันทึกวันลา', en: 'Leave Records', icon: <IconCalendar /> },
+          { to: '/advances', label: 'เบิกล่วงหน้า', en: 'Advances', icon: <IconWallet /> },
           { to: '/attendance', label: 'บันทึกลงเวลางาน', en: 'Time Attendance', icon: <IconClock /> },
           { to: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', en: 'Mixer Truck Trips', icon: <IconTruck /> },
           { to: '/commission', label: 'บันทึกค่าคอมมิชชั่น', en: 'Sales Commission', icon: <IconWallet /> },

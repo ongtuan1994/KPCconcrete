@@ -7,7 +7,8 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { EMPLOYEES, DEPARTMENT_LABEL, yearsOfService, type Employee } from '../data/employees'
-import { useCreatedDocs, setSalaryStructure, addSalaryStructureAdjustment, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
+import { useCreatedDocs, setSalaryStructure, addSalaryStructureAdjustment, removeEmployee, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
+import { useCurrentUser } from '../data/auth'
 import { salaryStructureFor, hasSalaryStructure, computeOtRate } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
 
@@ -23,7 +24,11 @@ export function SalaryStructure() {
   const [showBulk, setShowBulk] = useState(false)
   const created = useCreatedDocs()
 
-  const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
+  const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
+  const employees = useMemo(
+    () => [...created.employeesAdded, ...EMPLOYEES].filter((e) => !hiddenEmp.has(e.id)),
+    [created.employeesAdded, hiddenEmp],
+  )
 
   const rows = useMemo<Row[]>(
     () =>
@@ -48,9 +53,10 @@ export function SalaryStructure() {
   }, 0)
 
   const exportExcel = () => {
-    const head = ['รหัส', 'ชื่อ-สกุล', 'ฝ่าย', 'เงินรายวัน', 'เงินเดือน', 'ประสบการณ์', 'ปกส.', 'อัตรา OT (บาท/นาที)', 'รับเงิน OT', 'รับคอมมิชชั่น', 'ค่าเที่ยวรถโม่']
+    const head = ['รหัส', 'ชื่อ-สกุล', 'ฝ่าย', 'เงินรายวัน', 'เงินเดือน', 'ประสบการณ์', 'ปกส.', 'วันลา (วัน/ปี)', 'อัตรา OT (บาท/นาที)', 'รับเงิน OT', 'รับคอมมิชชั่น', 'ค่าเที่ยวรถโม่']
     const body = rows.map(({ emp, s }) => [
       emp.id, emp.name, DEPARTMENT_LABEL[emp.department].th, s.dailyWage, s.baseSalary, s.experiencePay, s.socialSecurity,
+      s.leaveDays ?? 0,
       s.otEligible === false ? '-' : computeOtRate(s),
       s.otEligible !== false ? 'ร่วม' : 'ไม่ร่วม', s.commissionEligible !== false ? 'ร่วม' : 'ไม่ร่วม',
       s.truckTripEligible === true ? 'ร่วม' : 'ไม่ร่วม',
@@ -85,6 +91,7 @@ export function SalaryStructure() {
     { key: 'base', header: 'เงินเดือน', align: 'right', cell: (r) => money(r.s.baseSalary) },
     { key: 'exp', header: 'ประสบการณ์', align: 'right', cell: (r) => money(r.s.experiencePay) },
     { key: 'sso', header: 'ปกส.', align: 'right', cell: (r) => money(r.s.socialSecurity) },
+    { key: 'leave', header: 'วันลา', align: 'right', cell: (r) => (r.s.leaveDays ? <span className="mono">{r.s.leaveDays} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>วัน</span></span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'ot', header: 'อัตรา OT', align: 'right', cell: (r) => (r.s.otEligible === false
       ? <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
       : <span className="mono">{computeOtRate(r.s)} <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>บาท/นาที</span></span>) },
@@ -149,6 +156,7 @@ export function SalaryStructure() {
 }
 
 function StructureEditForm({ employee, current, onClose }: { employee: Employee | null; current: SalaryStructure | null; onClose: () => void }) {
+  const isAdmin = useCurrentUser()?.role === 'Admin'
   const [dailyWage, setDailyWage] = useState('')
   const [baseSalary, setBaseSalary] = useState('')
   const [experiencePay, setExperiencePay] = useState('')
@@ -156,6 +164,7 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
   const [otEligible, setOtEligible] = useState(true)
   const [commissionEligible, setCommissionEligible] = useState(true)
   const [truckTripEligible, setTruckTripEligible] = useState(false)
+  const [leaveDays, setLeaveDays] = useState('')
 
   useEffect(() => {
     if (!employee || !current) return
@@ -166,6 +175,7 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
     setOtEligible(current.otEligible !== false)
     setCommissionEligible(current.commissionEligible !== false)
     setTruckTripEligible(current.truckTripEligible === true)
+    setLeaveDays(current.leaveDays ? String(current.leaveDays) : '')
   }, [employee, current])
 
   if (!employee) return null
@@ -184,6 +194,7 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
       otEligible,
       commissionEligible,
       truckTripEligible,
+      leaveDays: Number(leaveDays) || 0,
       lastAdjustedAt: new Date().toISOString(),
     }
     const isLabor = employee.department === 'labor' || next.dailyWage > 0 || (current?.dailyWage ?? 0) > 0
@@ -195,13 +206,19 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
     onClose()
   }
 
+  const del = () => {
+    if (!confirm(`ลบพนักงาน ${employee.name} (${employee.id}) ออกจากรายชื่อถาวร?\n\nการลบนี้ไม่สามารถกู้คืนได้`)) return
+    removeEmployee(employee.id)
+    onClose()
+  }
+
   return (
     <Modal
       open={!!employee}
       title={`ปรับโครงสร้าง · ${employee.id}`}
       onClose={onClose}
       maxWidth={520}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
+      footer={<>{isAdmin && <Button variant="ghost" onClick={del} style={{ marginRight: 'auto', color: 'var(--kpc-danger)' }} title="เฉพาะ Admin">ลบพนักงาน</Button>}<Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
     >
       <div className="stack" style={{ gap: 4, marginBottom: 14 }}>
         <span style={{ fontSize: 16, fontWeight: 600 }}>{employee.name}{employee.nickname ? ` (${employee.nickname})` : ''}</span>
@@ -220,6 +237,9 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
         </Field>
         <Field label="ค่าประกันสังคม ปกส. (บาท)">
           <Input type="number" step="0.01" min={0} placeholder="เช่น 750" value={socialSecurity} onChange={(e) => setSocialSecurity(e.target.value)} />
+        </Field>
+        <Field label="สิทธิ์วันลา (วัน/ปี)" hint="จำนวนวันลาที่พนักงานได้รับ">
+          <Input type="number" step="0.5" min={0} placeholder="เช่น 6" value={leaveDays} onChange={(e) => setLeaveDays(e.target.value)} />
         </Field>
         <Field label="อัตราค่าแรงโอที (บาท/นาที)" hint="คำนวณอัตโนมัติ: เงินรายวัน ÷ 480 × 1.5 (เงินรายวันใช้ค่าที่กรอก หรือ เงินเดือน ÷ 30) · ทศนิยม 2 ตำแหน่งแบบไม่ปัดขึ้น">
           <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontFamily: 'var(--kpc-font-mono)', fontWeight: 600 }}>

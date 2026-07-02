@@ -33,6 +33,7 @@ import { Pricing } from './pages/Pricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
+import { LeaveRecords } from './pages/LeaveRecords'
 import { Attendance } from './pages/Attendance'
 import { SalaryStructure } from './pages/SalaryStructure'
 
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
+        <Route path="/advances" element={<Payroll />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
         <Route path="/foundry-deliveries" element={<FoundryDeliveries />} />
         <Route path="/truck-trips" element={<TruckTrips />} />
@@ -107,6 +109,7 @@ export default function App() {
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/leave-records" element={<LeaveRecords />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/salary-structure" element={<SalaryStructure />} />
         <Route path="/settings" element={<Settings />} />
