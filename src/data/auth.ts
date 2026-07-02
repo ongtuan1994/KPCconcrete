@@ -186,6 +186,11 @@ export interface ActivityEntry {
 
 const KEY = 'kpc.auth.v1'
 
+/** Bump when a permission migration must be force-applied to existing stored
+    matrices (localStorage overrides code defaults, so new defaults alone don't
+    reach browsers that already saved a matrix). */
+const PERMS_VERSION = 2
+
 interface AuthState {
   users: User[]
   perms: PermMatrix
@@ -195,9 +200,11 @@ interface AuthState {
   activity: ActivityEntry[]
   /** Id of the open ActivityEntry for the live session (so logout can close it). */
   currentSessionId: string | null
+  /** Version of the last-applied permission migration (see PERMS_VERSION). */
+  permsVersion?: number
 }
 
-const empty: AuthState = { users: SEED_USERS, perms: DEFAULT_PERMS, session: null, activity: [], currentSessionId: null }
+const empty: AuthState = { users: SEED_USERS, perms: DEFAULT_PERMS, session: null, activity: [], currentSessionId: null, permsVersion: PERMS_VERSION }
 
 /** Merge a stored permission matrix onto the defaults so newly-added resources
     (or roles) always have a level even if the stored copy predates them. */
@@ -217,13 +224,26 @@ function read(): AuthState {
     const raw = localStorage.getItem(KEY)
     if (!raw) return empty
     const v = JSON.parse(raw) as Partial<AuthState>
-    return {
+    const perms = mergePerms(v.perms)
+    const storedVersion = v.permsVersion ?? 0
+    /* v2 (2026-07): the Accountant role edits the payroll-entry pages —
+       บันทึกลงเวลางาน / เที่ยวรถโม่ / ค่าคอมมิชชั่น. A stale stored matrix keeps
+       the old "view", so force these cells once (does not re-run after v2). */
+    if (storedVersion < 2 && perms.Accountant) {
+      for (const k of ['attendance', 'truck-trips', 'commission']) perms.Accountant[k] = 'edit'
+    }
+    const next: AuthState = {
       users: v.users?.length ? v.users : SEED_USERS,
-      perms: mergePerms(v.perms),
+      perms,
       session: v.session ?? null,
       activity: v.activity ?? [],
       currentSessionId: v.currentSessionId ?? null,
+      permsVersion: PERMS_VERSION,
     }
+    if (storedVersion < PERMS_VERSION) {
+      try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* quota */ }
+    }
+    return next
   } catch {
     return empty
   }
