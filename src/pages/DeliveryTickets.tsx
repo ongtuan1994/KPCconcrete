@@ -8,7 +8,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { INVOICES, baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
-import { useCreatedDocs, removeTicket, markSalesOrderProduced, CAN_DELETE } from '../data/createdDocs'
+import { useCreatedDocs, removeTicket, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
 import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
 import { DocModal } from '../components/documents/DocModal'
@@ -40,14 +40,19 @@ export function DeliveryTickets() {
      create form pre-filled with the ordered item. Clear the router state so a
      refresh / back-nav doesn't re-trigger it. */
   useEffect(() => {
-    const st = location.state as { issueFromSalesOrder?: DeliveryTicketInitial; salesOrderNo?: string } | null
+    const st = location.state as { issueFromSalesOrder?: DeliveryTicketInitial; salesOrderNo?: string; focusDtNo?: string } | null
     if (st?.issueFromSalesOrder) {
       setPrefill(st.issueFromSalesOrder)
       setPrefillSalesOrderNo(st.salesOrderNo ?? null)
       setShowForm(true)
       navigate(location.pathname, { replace: true, state: null })
+    } else if (st?.focusDtNo) {
+      /* Navigated here from a sales order's ใบจ่ายคอนกรีต link — focus that ticket. */
+      const dt = [...created.tickets, ...DELIVERY_TICKETS].find((t) => t.dtNo === st.focusDtNo)
+      if (dt) { setMonth(dt.month); setFilter('all'); setQuery(dt.dtNo) }
+      navigate(location.pathname, { replace: true, state: null })
     }
-  }, [location, navigate])
+  }, [location, navigate, created.tickets])
 
   const newSet = useMemo(() => new Set(created.tickets.map((t) => t.dtNo)), [created.tickets])
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
@@ -252,8 +257,24 @@ export function DeliveryTickets() {
         createdTickets={created.tickets}
         initial={prefill}
         onSaved={(t) => {
-          /* Issued from a sales order → flip that order to 'ผลิต'. */
-          if (prefillSalesOrderNo) markSalesOrderProduced(prefillSalesOrderNo)
+          if (prefillSalesOrderNo) {
+            /* Issued from a sales order → flip it to 'ผลิต' and link the ticket. */
+            markSalesOrderProduced(prefillSalesOrderNo)
+            updateTicket(t.dtNo, { soNo: prefillSalesOrderNo })
+          } else if (t.type === 'ขายลูกค้า') {
+            /* Standalone customer ticket → auto-create a matching sales order
+               (already produced) and link it both ways. */
+            const soNo = nextSoNo(created.salesOrders)
+            const now = new Date()
+            const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+            addSalesOrder({
+              id: soNo, soNo, orderDate: iso, useDate: iso, customer: t.customer,
+              items: [{ code: t.prod, name: prodShort(t.prod), qty: t.m3, unit: 'คิว' }],
+              status: 'ผลิต', note: `สร้างอัตโนมัติจากใบจ่ายคอนกรีต ${t.dtNo}`,
+              createdAt: now.toISOString(),
+            })
+            updateTicket(t.dtNo, { soNo })
+          }
           setShowForm(false)
           setPrefill(null)
           setPrefillSalesOrderNo(null)

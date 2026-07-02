@@ -58,6 +58,21 @@ export function SalesOrders() {
 
   const all = created.salesOrders
 
+  /* soNo → linked delivery-ticket number (via the ticket's soNo, or the older
+     "อ้างอิงใบสั่งขาย SOxxxxx" note reference). */
+  const dtBySo = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of created.tickets) {
+      let so = t.soNo
+      if (!so && t.note) {
+        const m = t.note.match(/อ้างอิงใบสั่งขาย\s+(SO\d+)/)
+        if (m) so = m[1]
+      }
+      if (so && !map.has(so)) map.set(so, t.dtNo)
+    }
+    return map
+  }, [created.tickets])
+
   const rows = useMemo(
     () =>
       all.filter((so) => {
@@ -73,10 +88,10 @@ export function SalesOrders() {
   const withAttachment = all.filter((so) => so.attachment).length
 
   const exportExcel = () => {
-    const head = ['เลขที่ใบสั่งขาย', 'วันที่สั่ง', 'วันที่ลูกค้าใช้', 'ลูกค้า', 'รายการสินค้า', 'ปริมาณรวม', 'สถานะ', 'มีไฟล์แนบ', 'หมายเหตุ']
+    const head = ['เลขที่ใบสั่งขาย', 'วันที่สั่ง', 'วันที่ลูกค้าใช้', 'ลูกค้า', 'รายการสินค้า', 'ปริมาณรวม', 'สถานะ', 'เลขที่ใบจ่ายคอนกรีต', 'มีไฟล์แนบ', 'หมายเหตุ']
     const body = rows.map((so) => [
       so.soNo, fmtDate(so.orderDate), fmtDate(so.useDate), so.customer,
-      itemsSummary(so), orderVolume(so), so.status, so.attachment ? 'มี' : '', so.note ?? '',
+      itemsSummary(so), orderVolume(so), so.status, dtBySo.get(so.soNo) ?? '', so.attachment ? 'มี' : '', so.note ?? '',
     ])
     downloadCsv('sales-orders', [head, ...body])
   }
@@ -101,6 +116,16 @@ export function SalesOrders() {
       header: 'สถานะ',
       align: 'center',
       cell: (r) => <Badge tone={STATUS_TONE[r.status]} pip={false} square>{r.status}</Badge>,
+    },
+    {
+      key: 'dt',
+      header: 'เลขที่ใบจ่ายคอนกรีต',
+      cell: (r) => {
+        const dt = dtBySo.get(r.soNo)
+        return dt
+          ? <button type="button" className="mono" onClick={() => navigate('/delivery-tickets', { state: { focusDtNo: dt } })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--kpc-primary)', textDecoration: 'underline', font: 'inherit' }}>{dt}</button>
+          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      },
     },
     {
       key: 'att',

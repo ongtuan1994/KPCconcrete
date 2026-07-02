@@ -512,6 +512,8 @@ export interface DeliveryTicket {
   invoice: string; billing: string; pay: PayMethod; note: string
   vehicle?: string
   driver?: string
+  /** Linked sales order (ใบสั่งขาย) — set when issued from / auto-created for one. */
+  soNo?: string
   /** Staff who issued the ticket (snapshot from ISSUERS at creation time). */
   issuer?: string
   /** Name of the person on the customer side who received the delivery. Optional. */

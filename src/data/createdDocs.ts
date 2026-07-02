@@ -811,6 +811,19 @@ export function addReceipt(rc: Receipt) {
 export function addTicket(t: DeliveryTicket) {
   commit({ ...state, tickets: [stamp(t), ...state.tickets] })
 }
+/** Patch a user-created ticket in place (e.g. to link its sales order). */
+export function updateTicket(dtNo: string, patch: Partial<DeliveryTicket>) {
+  commit({ ...state, tickets: state.tickets.map((t) => (t.dtNo === dtNo ? { ...t, ...patch } : t)) })
+}
+/** Next running sales-order number (SO00001, …). */
+export function nextSoNo(existing: SalesOrder[]): string {
+  let max = 0
+  for (const s of existing) {
+    const n = parseInt(s.soNo.replace(/^SO/, ''), 10)
+    if (!Number.isNaN(n) && n > max) max = n
+  }
+  return `SO${String(max + 1).padStart(5, '0')}`
+}
 
 /* Removal — works on both user-created docs (removed from list) and seed docs (hidden). */
 export function removeInvoice(no: string) {
