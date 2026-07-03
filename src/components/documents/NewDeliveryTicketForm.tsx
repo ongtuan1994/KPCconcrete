@@ -269,6 +269,7 @@ export function NewDeliveryTicketForm({
           <Select value={pay} onChange={(e) => setPay(e.target.value as PayMethod)} disabled={type !== 'ขายลูกค้า'}>
             <option value="เงินสด">เงินสด</option>
             <option value="โอน">โอน</option>
+            <option value="เช็ค">เช็ค</option>
             <option value="เครดิต">เครดิต</option>
             <option value="">—</option>
           </Select>

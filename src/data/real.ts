@@ -437,7 +437,7 @@ export const CUSTOMER_MASTER: Customer[] = [
 ]
 export const CUSTOMER_MAP: Record<string, Customer> = Object.fromEntries(CUSTOMER_MASTER.map(c => [c.name, c]))
 
-export type PayMethod = 'เครดิต' | 'เงินสด' | 'โอน' | ''
+export type PayMethod = 'เครดิต' | 'เงินสด' | 'โอน' | 'เช็ค' | ''
 
 export interface Vehicle { id: string; maxM3: number; driver: string; plate: string }
 export const VEHICLES: Vehicle[] = [

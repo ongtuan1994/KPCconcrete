@@ -10,6 +10,15 @@ export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
 export const monthLabel = (m: number) => MONTHS.find((x) => x.num === m)?.label ?? ''
 export const monthShort = (m: number) => MONTHS.find((x) => x.num === m)?.short ?? ''
 
+/** Buddhist year (พ.ศ.) of a ticket from its dd/mm/yy date; 2569 when unparseable.
+    2-digit yy → 25xx; 4-digit Gregorian (< 2200) → +543; else taken as-is. */
+export function ticketYear(t: { date: string }): number {
+  const m = t.date.match(/\d{1,2}[/.\-]\d{1,2}[/.\-](\d{2,4})/)
+  if (!m) return 2569
+  const y = Number(m[1])
+  return m[1].length <= 2 ? 2500 + y : y < 2200 ? y + 543 : y
+}
+
 /* ---------- formatting ---------- */
 export const baht = (n: number) =>
   '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -281,7 +290,7 @@ export function monthTotals(month: number) {
     m3Sold: sales.reduce((s, t) => s + t.m3, 0),
     tickets: tix.length,
     credit: tix.filter((t) => t.pay === 'เครดิต').reduce((s, t) => s + t.amount, 0),
-    cash: tix.filter((t) => t.pay === 'เงินสด' || t.pay === 'โอน').reduce((s, t) => s + t.amount, 0),
+    cash: tix.filter((t) => t.pay === 'เงินสด' || t.pay === 'โอน' || t.pay === 'เช็ค').reduce((s, t) => s + t.amount, 0),
     invoices: invs.length,
     overdueCount: invs.filter((i) => i.status === 'overdue').length,
   }

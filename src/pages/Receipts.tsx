@@ -15,7 +15,7 @@ import { RECEIPTS, baht, LATEST_MONTH, monthLabel, type Receipt } from '../data/
 import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning' }
+const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning', เช็ค: 'warning' }
 
 export function Receipts() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)

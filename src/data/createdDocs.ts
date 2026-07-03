@@ -821,6 +821,15 @@ export function addReceipt(rc: Receipt) {
 export function addTicket(t: DeliveryTicket) {
   commit({ ...state, tickets: [stamp(t), ...state.tickets] })
 }
+/** Bulk-add imported tickets, skipping any whose dtNo already exists among the
+    user-created tickets (seed dtNos are excluded by the caller). Returns count added. */
+export function addTickets(tickets: DeliveryTicket[]): number {
+  const seen = new Set(state.tickets.map((t) => t.dtNo))
+  const fresh = tickets.filter((t) => { if (seen.has(t.dtNo)) return false; seen.add(t.dtNo); return true })
+  if (fresh.length === 0) return 0
+  commit({ ...state, tickets: [...fresh.map((t) => stamp(t)), ...state.tickets] })
+  return fresh.length
+}
 /** Patch a user-created ticket in place (e.g. to link its sales order). */
 export function updateTicket(dtNo: string, patch: Partial<DeliveryTicket>) {
   commit({ ...state, tickets: state.tickets.map((t) => (t.dtNo === dtNo ? { ...t, ...patch } : t)) })
