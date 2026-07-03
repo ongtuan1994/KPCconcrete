@@ -34,6 +34,9 @@ export interface Product {
   site?: ProductSite; kind?: FoundryKind; pickup?: ProductPickup
   /** Foundry items whose price depends on การรับของ — same product, two prices. */
   pickupPrices?: { 'รับเอง': number; 'จัดส่ง': number }
+  /** เลขที่สูตรการผลิต override — the MIX_DESIGNS code this product's สูตรการผลิต links to.
+      Unset ⇒ the formula is matched by the product's own code (see mixFormulaNo). */
+  formulaCode?: string
   price: number
 }
 export const PRODUCTS: Product[] = [
@@ -2467,7 +2470,10 @@ export const DELIVERY_TICKETS: DeliveryTicket[] = [
 }
 
 /** `cost` = estimated unit cost (บาท/หน่วย) for valuing stock variances; editable. */
-export interface StockMaterial { code: string; name: string; en: string; unit: string; balance: number; reorder: number; cost?: number }
+/** Work site the raw material belongs to — แพล้นปูน (plant) or โรงหล่อ (foundry).
+    Omitted = plant (all concrete raw materials are plant). */
+export type StockSite = 'plant' | 'foundry'
+export interface StockMaterial { code: string; name: string; en: string; unit: string; balance: number; reorder: number; cost?: number; site?: StockSite }
 export const STOCK_MATERIALS: StockMaterial[] = [
   { code: "SAN", name: "ทรายหยาบ", en: "River sand", unit: "ตัน", balance: 189.36, reorder: 200, cost: 400 },
   { code: "AGG", name: "หิน 3/4\"", en: "Aggregate 3/4\"", unit: "ตัน", balance: -149.75, reorder: 200, cost: 500 },
@@ -2476,4 +2482,8 @@ export const STOCK_MATERIALS: StockMaterial[] = [
   { code: "ADM-D", name: "น้ำยา Plastomix-704 (หน่วง)", en: "Retarder admixture", unit: "ลิตร", balance: 832.36, reorder: 300, cost: 45 },
   { code: "ADM-F", name: "น้ำยา PCE-1 Gold 500 SF (เร่ง)", en: "Accelerator admixture", unit: "ลิตร", balance: 923.4, reorder: 300, cost: 60 },
   { code: "ADM-W", name: "น้ำยา SikaPlastocrete N (กันซึม)", en: "Waterproof admixture", unit: "ลิตร", balance: 200.0, reorder: 150, cost: 80 },
+  /* ───────── โรงหล่อ (Foundry) raw materials — reinforcement for precast ───────── */
+  { code: "WM", name: "ตะแกรงเหล็กไวร์เมช", en: "Steel wire mesh", unit: "ผืน", balance: 10, reorder: 5, site: 'foundry' },
+  { code: "TIE", name: "เหล็กปลอก", en: "Tie steel (stirrup)", unit: "ตัว", balance: 10, reorder: 5, site: 'foundry' },
+  { code: "PCW", name: "ลวดอัดแรง", en: "PC wire (prestressing)", unit: "เส้น", balance: 10, reorder: 5, site: 'foundry' },
 ]

@@ -63,3 +63,24 @@ export const MIX_DESIGNS: MixDesign[] = [
 ]
 
 export const MIX_BY_CODE: Record<string, MixDesign> = Object.fromEntries(MIX_DESIGNS.map((m) => [m.code, m]))
+
+/** R2/P2 codes = ปูนดอกบัว ; otherwise ปูน SCG (ปอร์ตแลนด์). */
+const isDokbuaCode = (code: string) => /^KPC[RP]2/.test(code)
+
+/** เลขที่สูตรการผลิต (Concrete Formula) for a list of mix designs: CF0-xxx = SCG
+    (ปอร์ตแลนด์), CF2-xxx = ดอกบัว. Numbered per brand in list order, so pass the
+    seed list first (then any added formulas) to keep existing numbers stable. */
+export function buildMixFormulaNos(list: MixDesign[]): Map<string, string> {
+  const seq = { scg: 0, dokbua: 0 }
+  const map = new Map<string, string>()
+  for (const m of list) {
+    const db = isDokbuaCode(m.code)
+    const n = db ? (seq.dokbua += 1) : (seq.scg += 1)
+    map.set(m.code, `CF${db ? '2' : '0'}-${String(n).padStart(3, '0')}`)
+  }
+  return map
+}
+/** Static numbering over the seed master sheet (order = MIX_DESIGNS file order). */
+export const MIX_FORMULA_NO: Map<string, string> = buildMixFormulaNos(MIX_DESIGNS)
+/** Formula number for a product code, or undefined if it has no mix design. */
+export const mixFormulaNo = (code: string): string | undefined => MIX_FORMULA_NO.get(code)

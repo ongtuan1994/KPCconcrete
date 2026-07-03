@@ -67,7 +67,8 @@ export const NAV: NavGroup[] = [
   {
     section: 'จัดการคลัง · Inventory',
     items: [
-      { to: '/stock', label: 'คลังวัตถุดิบ', en: 'Raw Material Stock', icon: <IconStock /> },
+      { to: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', en: 'Plant Raw Material Stock', icon: <IconStock /> },
+      { to: '/foundry-materials', label: 'คลังวัตถุดิบโรงหล่อ', en: 'Foundry Raw Material Stock', icon: <IconStock /> },
       { to: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', en: 'Foundry Product Stock', icon: <IconStock /> },
     ],
   },
@@ -81,6 +82,7 @@ export const NAV: NavGroup[] = [
         to: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', en: 'Price List / Transport', icon: <IconTag />,
         children: [
           { to: '/mix-design', label: 'Mix Design', en: 'Mix Design', icon: <IconTag /> },
+          { to: '/foundry-formula', label: 'สูตรผลิตโรงหล่อ', en: 'Foundry Formula', icon: <IconTag /> },
           { to: '/transport-pricing', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
         ],
       },

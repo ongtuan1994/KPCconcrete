@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, Field, Input, type Tone } from '../components/ui'
+import { Button, Badge, Pill, Field, Input, Select, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
-import { PRODUCTS, type Product, type ProductSite, type FoundryKind } from '../data/real'
+import { PRODUCTS, PRODUCT_MAP, type Product, type ProductSite, type FoundryKind } from '../data/real'
+import { MIX_DESIGNS, mixFormulaNo } from '../data/mixDesign'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
-import { addPriceAdjustment, addGeneralReport, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
+import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, isAddedProduct, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 /** Today as DD/MM/พ.ศ. for report labels. */
@@ -93,22 +94,53 @@ function cementBrand(code: string): Brand | null {
   return null
 }
 
+/* Build a plant product code from its parts, matching the seed encoding:
+   KPC + R (SCG) / R2 (ดอกบัว) + zone marker (OS00 / OV21 / OV31 / OV41) + 3-digit ksc.
+   Lean uses ksc 000. cementBrand() + deliveryZone() read these back consistently. */
+function genPlantCode(brand: BrandId, zone: ZoneId, category: 'concrete' | 'lean', strength: string): string {
+  const zoneMarker = zone === 'OS' ? 'OS00' : zone
+  const str = category === 'lean' ? '000' : String(Number(strength) || 0).padStart(3, '0')
+  return `KPC${brand === 'SCG' ? 'R' : 'R2'}${zoneMarker}${str}`
+}
+function genPlantName(brand: BrandId, category: 'concrete' | 'lean', strength: string): string {
+  const bt = brand === 'SCG' ? '(ปูน SCG)' : '(ปูน ดอกบัว)'
+  return category === 'lean'
+    ? `คอนกรีต Lean ${bt}`
+    : `คอนกรีตกำลังอัด ${Number(strength) || 0} กก./ตร.ซม. ${bt}`
+}
+
 function ProductPricing() {
   const [site, setSite] = useState<'all' | ProductSite>('all')
   const [type, setType] = useState<'all' | string>('all')
   const [zone, setZone] = useState<'all' | ZoneId>('all')
   const [brand, setBrand] = useState<'all' | BrandId>('all')
   const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<Product | null>(null)
   const created = useCreatedDocs()
   const navigate = useNavigate()
 
   /* Current effective price overrides = latest adjustment snapshot. */
   const currentOverrides: Record<string, number> = created.priceAdjustments[0]?.prices ?? {}
 
-  /* Merge overrides on top of the seed products list. */
-  const products = useMemo(
-    () => PRODUCTS.map((p) => currentOverrides[p.code] !== undefined ? { ...p, price: currentOverrides[p.code] } : p),
-    [currentOverrides],
+  /* Merge, in order: user-added products first, then seed → per-product edits
+     (productEdits) → the latest price-adjustment override (which always wins). */
+  const products = useMemo(() => {
+    const base = [...created.productsAdded, ...PRODUCTS]
+    return base.map((p) => {
+      const withEdit = created.productEdits[p.code] ? { ...p, ...created.productEdits[p.code] } : p
+      return currentOverrides[p.code] !== undefined ? { ...withEdit, price: currentOverrides[p.code] } : withEdit
+    })
+  }, [created.productsAdded, created.productEdits, currentOverrides])
+
+  /* Every code in use — for the เพิ่มสินค้า uniqueness check. */
+  const existingCodes = useMemo(() => new Set(products.map((p) => p.code)), [products])
+
+  /* สูตรการผลิต options for the edit form (all mix designs, grouped by cement brand). */
+  const formulaOptions = useMemo(
+    () => MIX_DESIGNS.map((m) => ({ code: m.code, no: mixFormulaNo(m.code) ?? '', name: cleanName(PRODUCT_MAP[m.code]?.name ?? m.code) }))
+      .sort((a, b) => a.no.localeCompare(b.no)),
+    [],
   )
 
   const rows = products.filter((p) => {
@@ -144,6 +176,25 @@ function ProductPricing() {
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
+    {
+      key: 'formula', header: 'สูตรการผลิต', align: 'center', className: 'docno',
+      cell: (r) => {
+        /* Explicit formulaCode override wins; otherwise the formula is matched by the product's own code. */
+        const fCode = r.formulaCode || r.code
+        const f = mixFormulaNo(fCode)
+        if (!f) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        const href = `/mix-design?code=${encodeURIComponent(fCode)}`
+        return (
+          <a
+            href={href}
+            onClick={(e) => { e.preventDefault(); navigate(href) }}
+            className="mono"
+            style={{ color: 'var(--kpc-primary, #0E0EE6)', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}
+            title="ดูสูตรส่วนผสมในหน้า Mix Design"
+          >{f}</a>
+        )
+      },
+    },
     { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{cleanName(r.name)}</span> },
     {
       key: 'brand',
@@ -197,6 +248,12 @@ function ProductPricing() {
         )
         : (r.price ? baht(r.price) : <span style={{ color: 'var(--kpc-text-faint)' }}>ภายใน</span>),
     },
+    {
+      key: 'edit', header: '', align: 'center',
+      cell: (r) => (
+        <Button size="sm" variant="secondary" onClick={() => setEditing(r)}>แก้ไข</Button>
+      ),
+    },
   ]
 
   /** Build a price-list report from the rows currently shown (respects the SITE /
@@ -247,9 +304,9 @@ function ProductPricing() {
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
+              const head = ['รหัสสินค้า', 'สูตรการผลิต', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
               const body = rows.map((p) => [
-                p.code, cleanName(p.name),
+                p.code, mixFormulaNo(p.code) ?? '', cleanName(p.name),
                 cementBrand(p.code)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
@@ -258,7 +315,8 @@ function ProductPricing() {
               downloadCsv('pricing', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
-            <Button variant="primary" onClick={() => setOpen(true)}>ปรับราคา</Button>
+            <Button variant="secondary" onClick={() => setOpen(true)}>ปรับราคา</Button>
+            <Button variant="primary" onClick={() => setAdding(true)}>เพิ่มสินค้า</Button>
           </>
         }
       />
@@ -332,6 +390,16 @@ function ProductPricing() {
       </div>
 
       <PriceAdjustModal open={open} products={products} onClose={() => setOpen(false)} />
+      <ProductFormModal open={adding} mode="add" existingCodes={existingCodes} formulaOptions={formulaOptions} onClose={() => setAdding(false)} />
+      <ProductFormModal
+        key={editing?.code ?? 'edit'}
+        open={!!editing}
+        mode="edit"
+        initial={editing ?? undefined}
+        existingCodes={existingCodes}
+        formulaOptions={formulaOptions}
+        onClose={() => setEditing(null)}
+      />
     </>
   )
 }
@@ -585,6 +653,304 @@ function PriceAdjustModal({
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น ปูนซีเมนต์ขึ้นราคา Q3" />
         </Field>
       </div>
+    </Modal>
+  )
+}
+
+/** Foundry kind labels for the เพิ่ม/แก้ไขสินค้า form. */
+const FOUNDRY_KIND_OPTS: { id: FoundryKind; label: string; unit: string }[] = [
+  { id: 'plank', label: 'แผ่นพื้น', unit: 'แผ่น' },
+  { id: 'ipole', label: 'เสาไอ', unit: 'ต้น' },
+  { id: 'wallpanel', label: 'แผ่นผนัง', unit: 'แผ่น' },
+]
+
+/** เพิ่ม / แก้ไขสินค้า. Add mode forces a SITE choice (แพล้นปูน / โรงหล่อ) first, then
+    shows the fields for that site; plant products can also link a สูตรการผลิต. */
+function ProductFormModal({
+  open,
+  mode,
+  initial,
+  existingCodes,
+  formulaOptions,
+  onClose,
+}: {
+  open: boolean
+  mode: 'add' | 'edit'
+  initial?: Product
+  existingCodes: Set<string>
+  formulaOptions: { code: string; no: string; name: string }[]
+  onClose: () => void
+}) {
+  const [site, setSite] = useState<ProductSite | null>(null)
+  const [brand, setBrand] = useState<BrandId>('SCG')
+  const [category, setCategory] = useState<'concrete' | 'lean'>('concrete')
+  const [zone, setZone] = useState<ZoneId>('OS')
+  const [kind, setKind] = useState<FoundryKind>('plank')
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [unit, setUnit] = useState('คิว')
+  const [strength, setStrength] = useState('')
+  const [price, setPrice] = useState('')
+  const [priceSelf, setPriceSelf] = useState('')
+  const [priceDeliver, setPriceDeliver] = useState('')
+  const [pickup, setPickup] = useState<'รับเอง' | 'จัดส่ง'>('รับเอง')
+  const [formulaCode, setFormulaCode] = useState('')
+  const [codeDirty, setCodeDirty] = useState(false)
+  const [nameDirty, setNameDirty] = useState(false)
+  const [err, setErr] = useState('')
+
+  const readOnlyStructure = mode === 'edit' /* code/site/brand/zone are fixed once created */
+
+  /* Reset the form whenever it opens (edit → prefill from the row, add → blank). */
+  useEffect(() => {
+    if (!open) return
+    setErr('')
+    if (mode === 'edit' && initial) {
+      setSite(productSite(initial))
+      setBrand(cementBrand(initial.code)?.id ?? 'SCG')
+      setCategory(initial.category === 'lean' ? 'lean' : 'concrete')
+      setZone(deliveryZone(initial.code)?.id ?? 'OS')
+      setKind(initial.kind ?? 'plank')
+      setCode(initial.code)
+      setName(initial.name)
+      setUnit(initial.unit)
+      setStrength(initial.strengthKsc ? String(initial.strengthKsc) : '')
+      setPrice(initial.price ? String(initial.price) : '')
+      setPriceSelf(initial.pickupPrices ? String(initial.pickupPrices['รับเอง']) : '')
+      setPriceDeliver(initial.pickupPrices ? String(initial.pickupPrices['จัดส่ง']) : '')
+      setPickup(initial.pickup ?? 'รับเอง')
+      setFormulaCode(initial.formulaCode ?? '')
+      setCodeDirty(true); setNameDirty(true)
+    } else {
+      setSite(null)
+      setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank')
+      setCode(''); setName(''); setUnit('คิว'); setStrength(''); setPrice('')
+      setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง'); setFormulaCode('')
+      setCodeDirty(false); setNameDirty(false)
+    }
+  }, [open, mode, initial])
+
+  /* Auto-fill code + name from the plant drivers while adding, until the user
+     types their own value in either field. */
+  useEffect(() => {
+    if (mode !== 'add' || site !== 'plant') return
+    setCode((c) => (codeDirty ? c : genPlantCode(brand, zone, category, strength)))
+    setName((n) => (nameDirty ? n : genPlantName(brand, category, strength)))
+  }, [mode, site, brand, zone, category, strength, codeDirty, nameDirty])
+
+  const chooseSite = (s: ProductSite) => {
+    setSite(s)
+    setUnit(s === 'plant' ? 'คิว' : kind === 'ipole' ? 'ต้น' : 'แผ่น')
+  }
+  const changeKind = (k: FoundryKind) => {
+    setKind(k)
+    /* Snap the unit to the kind's default unless the user set a custom one. */
+    setUnit((u) => (u === '' || u === 'แผ่น' || u === 'ต้น' ? (k === 'ipole' ? 'ต้น' : 'แผ่น') : u))
+  }
+
+  const submit = () => {
+    setErr('')
+    if (!site) return setErr('กรุณาเลือก SITE ก่อน (แพล้นปูน หรือ โรงหล่อ)')
+    const c = code.trim()
+    const nm = name.trim()
+    if (!c) return setErr('กรุณากรอกรหัสสินค้า')
+    if (!nm) return setErr('กรุณากรอกชื่อรายการสินค้า')
+    if (mode === 'add' && existingCodes.has(c)) return setErr(`รหัสสินค้า ${c} มีอยู่แล้ว`)
+    const u = unit.trim()
+
+    if (site === 'plant') {
+      if (category === 'concrete') {
+        const s = Number(strength)
+        if (!Number.isFinite(s) || s <= 0) return setErr('กรุณากรอกกำลังอัด (ksc) ให้ถูกต้อง')
+      }
+      const pr = Number(price)
+      if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
+      const strengthKsc = category === 'lean' ? 0 : Number(strength)
+      /* Store a formula link only when it differs from the auto match on the code. */
+      const fc = formulaCode && formulaCode !== c ? formulaCode : ''
+      if (mode === 'add') {
+        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, ...(fc ? { formulaCode: fc } : {}) })
+      } else {
+        updateProduct(initial!.code, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc })
+      }
+    } else if (kind === 'ipole') {
+      const ps = Number(priceSelf), pd = Number(priceDeliver)
+      if (!Number.isFinite(ps) || ps <= 0 || !Number.isFinite(pd) || pd <= 0) return setErr('กรุณากรอกราคารับเอง / จัดส่งให้ถูกต้อง')
+      if (mode === 'add') {
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'ต้น', category: 'precast', site: 'foundry', kind, pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
+      } else {
+        updateProduct(initial!.code, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
+      }
+    } else {
+      const pr = Number(price)
+      if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
+      const isWall = kind === 'wallpanel'
+      if (mode === 'add') {
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind, price: pr, ...(isWall ? { pickup } : {}) })
+      } else {
+        updateProduct(initial!.code, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}) })
+      }
+    }
+    onClose()
+  }
+
+  const canDelete = mode === 'edit' && !!initial && isAddedProduct(initial.code)
+  const del = () => {
+    if (initial && confirm(`ลบสินค้า ${initial.code} — ${cleanName(initial.name)} ?`)) {
+      removeProduct(initial.code)
+      onClose()
+    }
+  }
+
+  const scgFormulas = formulaOptions.filter((f) => f.no.startsWith('CF0'))
+  const dokbuaFormulas = formulaOptions.filter((f) => f.no.startsWith('CF2'))
+
+  const title = mode === 'edit'
+    ? `แก้ไขสินค้า ${initial?.code ?? ''}`
+    : site
+      ? `เพิ่มสินค้า · ${site === 'plant' ? 'แพล้นปูน' : 'โรงหล่อ'}`
+      : 'เพิ่มสินค้า — เลือก SITE'
+
+  return (
+    <Modal
+      open={open}
+      title={title}
+      onClose={onClose}
+      maxWidth={640}
+      footer={
+        <>
+          {canDelete && <Button variant="secondary" onClick={del} style={{ color: 'var(--kpc-danger, #dc2626)', marginRight: 'auto' }}>ลบสินค้า</Button>}
+          <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
+          <Button variant="primary" onClick={submit} disabled={mode === 'add' && !site}>{mode === 'add' ? 'เพิ่มสินค้า' : 'บันทึก'}</Button>
+        </>
+      }
+    >
+      {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+
+      {/* Step 1 (add only): force a SITE choice before showing any detail fields. */}
+      {mode === 'add' && !site ? (
+        <div className="stack" style={{ gap: 12 }}>
+          <p style={{ fontSize: 13, color: 'var(--kpc-text-muted)', margin: 0 }}>เลือกกลุ่มสินค้า (SITE) ที่ต้องการเพิ่ม</p>
+          <div className="grid g-2" style={{ gap: 12 }}>
+            {SITES.map((s) => (
+              <button key={s.id} className="card" onClick={() => chooseSite(s.id)}
+                style={{ padding: '22px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 15, fontWeight: 700, border: '1px solid var(--kpc-border)' }}>
+                {s.label}
+                <div style={{ fontSize: 12, fontWeight: 400, color: 'var(--kpc-text-muted)', marginTop: 4 }}>
+                  {s.id === 'plant' ? 'คอนกรีตผสมเสร็จ / Lean' : 'แผ่นพื้น / เสาไอ / แผ่นผนัง'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="stack" style={{ gap: 12 }}>
+          {mode === 'add' && (
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Badge tone="info" pip={false} square>SITE: {site === 'plant' ? 'แพล้นปูน' : 'โรงหล่อ'}</Badge>
+              <Button size="sm" variant="secondary" onClick={() => setSite(null)}>เปลี่ยน SITE</Button>
+            </div>
+          )}
+
+          {site === 'plant' ? (
+            <>
+              <div className="grid g-2" style={{ gap: 12 }}>
+                <Field label="ยี่ห้อปูนซีเมนต์" required>
+                  <Select value={brand} disabled={readOnlyStructure} onChange={(e) => setBrand(e.target.value as BrandId)}>
+                    {BRANDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="ประเภท" required>
+                  <Select value={category} disabled={readOnlyStructure} onChange={(e) => setCategory(e.target.value as 'concrete' | 'lean')}>
+                    <option value="concrete">คอนกรีตผสมเสร็จ</option>
+                    <option value="lean">Lean</option>
+                  </Select>
+                </Field>
+                <Field label="ระยะส่ง" required>
+                  <Select value={zone} disabled={readOnlyStructure} onChange={(e) => setZone(e.target.value as ZoneId)}>
+                    {ZONES.map((z) => <option key={z.id} value={z.id}>{z.label} ({z.range})</option>)}
+                  </Select>
+                </Field>
+                {category === 'concrete' && (
+                  <Field label="กำลังอัด (ksc)" required>
+                    <Input type="number" min={0} value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="เช่น 240" />
+                  </Field>
+                )}
+              </div>
+              <div className="grid g-2" style={{ gap: 12 }}>
+                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจากตัวเลือกด้านบน — แก้ไขได้' : undefined}>
+                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
+                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} />
+                </Field>
+                <Field label="หน่วย" required>
+                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="คิว" />
+                </Field>
+              </div>
+              <Field label="รายการสินค้า" required>
+                <Input value={name} onChange={(e) => { setName(e.target.value); setNameDirty(true) }} placeholder="เช่น คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)" />
+              </Field>
+              <div className="grid g-2" style={{ gap: 12 }}>
+                <Field label="ราคา/หน่วย (รวม VAT)" required>
+                  <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 2400" />
+                </Field>
+                <Field label="สูตรการผลิต" hint="ผูกกับเลขที่สูตร (Mix Design) — เว้นว่าง = จับคู่อัตโนมัติจากรหัส">
+                  <Select value={formulaCode} onChange={(e) => setFormulaCode(e.target.value)}>
+                    <option value="">— ไม่ระบุ (จับคู่อัตโนมัติ) —</option>
+                    <optgroup label="ปูน SCG">
+                      {scgFormulas.map((f) => <option key={f.code} value={f.code}>{f.no} · {f.name}</option>)}
+                    </optgroup>
+                    <optgroup label="ปูนดอกบัว">
+                      {dokbuaFormulas.map((f) => <option key={f.code} value={f.code}>{f.no} · {f.name}</option>)}
+                    </optgroup>
+                  </Select>
+                </Field>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid g-2" style={{ gap: 12 }}>
+                <Field label="ประเภทสินค้า" required>
+                  <Select value={kind} disabled={readOnlyStructure} onChange={(e) => changeKind(e.target.value as FoundryKind)}>
+                    {FOUNDRY_KIND_OPTS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="หน่วย" required>
+                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="แผ่น / ต้น" />
+                </Field>
+                <Field label="รหัสสินค้า" required>
+                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
+                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} placeholder="เช่น KPCFDPL200" />
+                </Field>
+                {kind === 'wallpanel' && (
+                  <Field label="การรับของ" required>
+                    <Select value={pickup} onChange={(e) => setPickup(e.target.value as 'รับเอง' | 'จัดส่ง')}>
+                      <option value="รับเอง">รับเอง</option>
+                      <option value="จัดส่ง">จัดส่ง</option>
+                    </Select>
+                  </Field>
+                )}
+              </div>
+              <Field label="รายการสินค้า" required>
+                <Input value={name} onChange={(e) => { setName(e.target.value); setNameDirty(true) }} placeholder="เช่น แผ่นพื้น 0.05x0.35x2.00 ม." />
+              </Field>
+              {kind === 'ipole' ? (
+                <div className="grid g-2" style={{ gap: 12 }}>
+                  <Field label="ราคา · รับเอง (รวม VAT)" required>
+                    <Input type="number" min={0} value={priceSelf} onChange={(e) => setPriceSelf(e.target.value)} placeholder="เช่น 325" />
+                  </Field>
+                  <Field label="ราคา · จัดส่ง (รวม VAT)" required>
+                    <Input type="number" min={0} value={priceDeliver} onChange={(e) => setPriceDeliver(e.target.value)} placeholder="เช่น 400" />
+                  </Field>
+                </div>
+              ) : (
+                <Field label="ราคา/หน่วย (รวม VAT)" required>
+                  <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 154" />
+                </Field>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </Modal>
   )
 }

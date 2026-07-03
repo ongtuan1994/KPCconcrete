@@ -7,7 +7,9 @@
 
 import { useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import type { DeliveryTicket, Customer } from './real'
+import type { DeliveryTicket, Customer, Product } from './real'
+import type { MixDesign } from './mixDesign'
+import type { FoundryFormula } from './foundryFormula'
 import type { Employee } from './employees'
 import type { Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
@@ -31,6 +33,11 @@ export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'cre
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
 export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'nationality' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
+
+/** Editable subset of Product fields merged on top of PRODUCTS (and productsAdded).
+    Keyed by product code. Covers everything the เพิ่ม/แก้ไขสินค้า form can change
+    except the code/site/category, which are fixed by the code itself. */
+export type ProductEdit = Partial<Pick<Product, 'name' | 'unit' | 'price' | 'pickup' | 'pickupPrices' | 'strengthKsc' | 'formulaCode'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */
@@ -581,6 +588,7 @@ export interface PayrollReport extends GeneralReportBase {
 }
 /** One mix-design row in a saved report (kg/m³ + admixture ลิตร/m³). */
 export interface MixDesignReportRow {
+  formulaNo?: string  /* เลขที่สูตร — CF0-xxx / CF2-xxx (optional for reports saved before it existed) */
   code: string
   name: string
   brand: string       /* 'SCG' | 'ดอกบัว' */
@@ -699,6 +707,16 @@ export interface CreatedDocs {
   customersAdded: Customer[]
   /** New suppliers added through quick-add forms (e.g. inside the ใบสั่งซื้อ / ใบสำคัญจ่าย forms). */
   suppliersAdded: Creditor[]
+  /** New products added through the เพิ่มสินค้า form on the ราคาสินค้า page — newest first. */
+  productsAdded: Product[]
+  /** Per-product edits (keyed by Product.code) merged on top of PRODUCTS + productsAdded. */
+  productEdits: Record<string, ProductEdit>
+  /** New concrete mix designs added on the Mix Design page — newest first. */
+  mixDesignsAdded: MixDesign[]
+  /** Per-formula edits (keyed by MixDesign.code) merged on top of the seed MIX_DESIGNS. */
+  mixDesignEdits: Record<string, Partial<MixDesign>>
+  /** Foundry production formulas (สูตรผลิตโรงหล่อ), keyed by product code — newest first. */
+  foundryFormulas: FoundryFormula[]
   /** History of transport-rate adjustments — newest first. */
   transportAdjustments: TransportRateAdjustment[]
   /** History of product-price adjustments — newest first. */
@@ -750,7 +768,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -766,6 +784,11 @@ function read(): CreatedDocs {
       customerEdits: v.customerEdits ?? {},
       customersAdded: v.customersAdded ?? [],
       suppliersAdded: v.suppliersAdded ?? [],
+      productsAdded: v.productsAdded ?? [],
+      productEdits: v.productEdits ?? {},
+      mixDesignsAdded: v.mixDesignsAdded ?? [],
+      mixDesignEdits: v.mixDesignEdits ?? {},
+      foundryFormulas: v.foundryFormulas ?? [],
       /* Drop legacy entries (pre-multi-row format) that lack the `fees` array. */
       transportAdjustments: (v.transportAdjustments ?? []).filter((a) => Array.isArray((a as TransportRateAdjustment).fees)),
       priceAdjustments: (v.priceAdjustments ?? []).filter((a) => a && typeof (a as PriceAdjustment).prices === 'object'),
@@ -1096,6 +1119,76 @@ export function nextSupplierId(existing: Creditor[]): string {
     if (!Number.isNaN(n) && n > max) max = n
   }
   return `S${String(max + 1).padStart(4, '0')}`
+}
+
+/* ───────── Products (สินค้า · ราคาสินค้า) ───────── */
+/** Push a brand-new product to the head of the user-added list. */
+export function addProduct(p: Product) {
+  commit({ ...state, productsAdded: [p, ...state.productsAdded] })
+}
+/** Merge an edit onto a product (by code). Empty-string / undefined values clear
+    that key so display falls back to the base product (seed or added). */
+export function updateProduct(code: string, edit: ProductEdit) {
+  const merged: ProductEdit = { ...(state.productEdits[code] ?? {}), ...edit }
+  for (const k of Object.keys(merged) as (keyof ProductEdit)[]) {
+    const v = merged[k]
+    if (v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v))) delete merged[k]
+  }
+  const next = { ...state.productEdits }
+  if (Object.keys(merged).length === 0) delete next[code]
+  else next[code] = merged
+  commit({ ...state, productEdits: next })
+}
+/** Delete a user-added product and drop any edit overlay on it. Seed products
+    (defined in code) are not removable here. */
+export function removeProduct(code: string) {
+  const nextEdits = { ...state.productEdits }
+  delete nextEdits[code]
+  commit({ ...state, productsAdded: state.productsAdded.filter((p) => p.code !== code), productEdits: nextEdits })
+}
+/** True when a product code belongs to a user-added product (vs a seed product). */
+export function isAddedProduct(code: string): boolean {
+  return state.productsAdded.some((p) => p.code === code)
+}
+
+/* ───────── Mix designs (สูตรส่วนผสมคอนกรีต · Mix Design) ───────── */
+/** Push a brand-new mix design to the head of the user-added list. */
+export function addMixDesign(m: MixDesign) {
+  commit({ ...state, mixDesignsAdded: [m, ...state.mixDesignsAdded] })
+}
+/** Update a mix design (by code). Added formulas are replaced in place; seed
+    formulas get an overlay merged on top of MIX_DESIGNS at display time. */
+export function updateMixDesign(code: string, patch: Partial<MixDesign>) {
+  if (state.mixDesignsAdded.some((m) => m.code === code)) {
+    commit({ ...state, mixDesignsAdded: state.mixDesignsAdded.map((m) => (m.code === code ? { ...m, ...patch, code } : m)) })
+  } else {
+    const merged = { ...(state.mixDesignEdits[code] ?? {}), ...patch }
+    commit({ ...state, mixDesignEdits: { ...state.mixDesignEdits, [code]: merged } })
+  }
+}
+/** Delete a user-added mix design and drop any edit overlay on that code. */
+export function removeMixDesign(code: string) {
+  const nextEdits = { ...state.mixDesignEdits }
+  delete nextEdits[code]
+  commit({ ...state, mixDesignsAdded: state.mixDesignsAdded.filter((m) => m.code !== code), mixDesignEdits: nextEdits })
+}
+/** True when a mix-design code is user-added (vs a seed formula). */
+export function isAddedMixDesign(code: string): boolean {
+  return state.mixDesignsAdded.some((m) => m.code === code)
+}
+
+/* ───────── Foundry formulas (สูตรผลิตโรงหล่อ) ───────── */
+/** Add a foundry production formula (one per product code) to the head of the list. */
+export function addFoundryFormula(f: FoundryFormula) {
+  commit({ ...state, foundryFormulas: [f, ...state.foundryFormulas.filter((x) => x.code !== f.code)] })
+}
+/** Update a foundry formula in place (matched by code). */
+export function updateFoundryFormula(code: string, patch: Partial<FoundryFormula>) {
+  commit({ ...state, foundryFormulas: state.foundryFormulas.map((f) => (f.code === code ? { ...f, ...patch, code } : f)) })
+}
+/** Delete a foundry formula by product code. */
+export function removeFoundryFormula(code: string) {
+  commit({ ...state, foundryFormulas: state.foundryFormulas.filter((f) => f.code !== code) })
 }
 
 /** Merge an edit onto a customer (by id). Undefined values clear prior edits. */

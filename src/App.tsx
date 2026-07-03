@@ -29,6 +29,7 @@ import { Stock } from './pages/Stock'
 import { FoundryStock } from './pages/FoundryStock'
 import { StockReconcileHistory } from './pages/StockReconcileHistory'
 import { MixDesign } from './pages/MixDesign'
+import { FoundryFormula } from './pages/FoundryFormula'
 import { Pricing } from './pages/Pricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
@@ -103,12 +104,14 @@ export default function App() {
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to={landing} replace />} />
         <Route path="/stock" element={<Stock />} />
+        <Route path="/foundry-materials" element={<Stock scope="foundry" />} />
         <Route path="/foundry-stock" element={<FoundryStock />} />
         <Route path="/stock-reconcile" element={<StockReconcileHistory />} />
         <Route path="/foundry-stock-reconcile" element={<StockReconcileHistory scope="foundry" />} />
         <Route path="/pricing" element={<Pricing />} />
         {/* ราคาค่าขนส่ง now lives inside /pricing; this route is the รถขนส่งปูน fleet page. */}
         <Route path="/mix-design" element={<MixDesign />} />
+        <Route path="/foundry-formula" element={<FoundryFormula />} />
         <Route path="/transport-pricing" element={<TruckFleet />} />
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />

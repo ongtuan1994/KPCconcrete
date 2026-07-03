@@ -86,7 +86,12 @@ function status(m: StockMaterial): { th: string; en: string; tone: Tone } {
   return { th: 'พอเพียง', en: 'In stock', tone: 'success' }
 }
 
-export function Stock() {
+export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {}) {
+  const isFoundry = scope === 'foundry'
+  /* The material universe for this page — plant (concrete) or foundry (reinforcement). */
+  const universe = useMemo(() => STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === scope), [scope])
+  const scopeCodes = useMemo(() => new Set(universe.map((m) => m.code)), [universe])
+
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [from, setFrom] = useState(firstOfMonthIso())
@@ -100,40 +105,41 @@ export function Stock() {
      balance reflects the end of the selected period); empty `to` = all-time. */
   const upTo = (iso: string) => !to || iso <= to
 
-  /* Sum received quantity per material code, then add it onto the seed balance. */
+  /* Sum received quantity per material code (this scope only), added onto the seed balance. */
   const receivedByCode = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const r of created.stockReceipts) if (upTo(r.date)) m[r.code] = (m[r.code] ?? 0) + r.qty
+    for (const r of created.stockReceipts) if (scopeCodes.has(r.code) && upTo(r.date)) m[r.code] = (m[r.code] ?? 0) + r.qty
     return m
-  }, [created.stockReceipts, to])
+  }, [created.stockReceipts, to, scopeCodes])
 
   /* Approved reconciliations adjust the balance by their per-line diff. */
   const adjustByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const rc of created.stockReconciles) {
       if (rc.status !== 'approved' || (rc.scope ?? 'material') !== 'material' || !upTo(rc.date)) continue
-      for (const l of rc.lines) if (l.diff) m[l.code] = (m[l.code] ?? 0) + l.diff
+      for (const l of rc.lines) if (l.diff && scopeCodes.has(l.code)) m[l.code] = (m[l.code] ?? 0) + l.diff
     }
     return m
-  }, [created.stockReconciles, to])
+  }, [created.stockReconciles, to, scopeCodes])
 
-  /* Auto-issue: user-created delivery tickets consume raw materials (seed
-     tickets are excluded — the seed balance already reflects past use). */
+  /* Auto-issue: user-created delivery tickets consume plant raw materials (seed
+     tickets excluded). Foundry reinforcement is not auto-issued by concrete tickets. */
   const issuedByCode = useMemo(() => {
     const m: Record<string, number> = {}
+    if (isFoundry) return m
     for (const t of created.tickets) {
       if (!upTo(ticketIso(t.date))) continue
       for (const c of ticketConsumption(t)) m[c.code] = (m[c.code] ?? 0) + c.qty
     }
     return m
-  }, [created.tickets, to])
+  }, [created.tickets, to, isFoundry])
 
   const materials = useMemo(
-    () => STOCK_MATERIALS.map((m) => ({
+    () => universe.map((m) => ({
       ...m,
       balance: Math.round((m.balance + (receivedByCode[m.code] ?? 0) + (adjustByCode[m.code] ?? 0) - (issuedByCode[m.code] ?? 0)) * 100) / 100,
     })),
-    [receivedByCode, adjustByCode, issuedByCode],
+    [universe, receivedByCode, adjustByCode, issuedByCode],
   )
 
   const rows = useMemo(
@@ -154,18 +160,21 @@ export function Stock() {
   const movements: Movement[] = useMemo(() => {
     const out: Movement[] = []
     for (const r of created.stockReceipts) {
+      if (!scopeCodes.has(r.code)) continue
       out.push({ key: `in_${r.id}`, date: fmtDate(r.date), iso: r.date, sortAt: r.createdAt ?? r.date, kind: 'in', material: r.material, unit: r.unit, qty: r.qty, ref: r.voucherNo ?? '', detail: r.note, by: r.createdBy, at: r.createdAt, receiptId: r.id })
     }
-    for (const t of created.tickets) {
-      for (const c of ticketConsumption(t)) {
-        const mat = MAT_BY_CODE[c.code]
-        out.push({ key: `out_${t.dtNo}_${c.code}`, date: t.date, iso: ticketIso(t.date), sortAt: t.createdAt ?? t.date, kind: 'out', material: mat?.name ?? c.code, unit: mat?.unit ?? 'ตัน', qty: c.qty, ref: t.dtNo, detail: `${t.customer} · ${prodShort(t.prod)}`, by: t.createdBy, at: t.createdAt })
+    if (!isFoundry) {
+      for (const t of created.tickets) {
+        for (const c of ticketConsumption(t)) {
+          const mat = MAT_BY_CODE[c.code]
+          out.push({ key: `out_${t.dtNo}_${c.code}`, date: t.date, iso: ticketIso(t.date), sortAt: t.createdAt ?? t.date, kind: 'out', material: mat?.name ?? c.code, unit: mat?.unit ?? 'ตัน', qty: c.qty, ref: t.dtNo, detail: `${t.customer} · ${prodShort(t.prod)}`, by: t.createdBy, at: t.createdAt })
+        }
       }
     }
     return out
       .filter((mv) => (!from || mv.iso >= from) && (!to || mv.iso <= to))
       .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
-  }, [created.stockReceipts, created.tickets, from, to])
+  }, [created.stockReceipts, created.tickets, from, to, scopeCodes, isFoundry])
 
   const moveColumns: Column<Movement>[] = [
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
@@ -187,15 +196,17 @@ export function Stock() {
   const periodLabel = from || to
     ? `${from ? `ตั้งแต่ ${fmtDate(from)}` : ''}${from && to ? ' ' : ''}${to ? `ถึง ${fmtDate(to)}` : ''}`.trim()
     : 'ยอดปัจจุบัน (ทั้งหมด)'
+  const stockLabel = isFoundry ? 'คลังวัตถุดิบโรงหล่อ' : 'คลังวัตถุดิบแพล้นปูน'
   const createReport = () => {
     const inRange = (iso: string) => (!from || iso >= from) && (!to || iso <= to)
     const recv: Record<string, number> = {}, iss: Record<string, number> = {}
-    for (const r of created.stockReceipts) if (inRange(r.date)) recv[r.code] = (recv[r.code] ?? 0) + r.qty
-    for (const t of created.tickets) if (inRange(ticketIso(t.date))) for (const c of ticketConsumption(t)) iss[c.code] = (iss[c.code] ?? 0) + c.qty
+    for (const r of created.stockReceipts) if (scopeCodes.has(r.code) && inRange(r.date)) recv[r.code] = (recv[r.code] ?? 0) + r.qty
+    if (!isFoundry) for (const t of created.tickets) if (inRange(ticketIso(t.date))) for (const c of ticketConsumption(t)) iss[c.code] = (iss[c.code] ?? 0) + c.qty
     const report: StockReport = {
       id: `gr_${Date.now()}`,
       kind: 'stock',
-      title: `คลังวัตถุดิบ · ${periodLabel}`,
+      heading: `รายงาน${stockLabel}`,
+      title: `${stockLabel} · ${periodLabel}`,
       fromLabel: from ? fmtDate(from) : '—',
       toLabel: to ? fmtDate(to) : 'ปัจจุบัน',
       scopeLabel: periodLabel,
@@ -252,18 +263,18 @@ export function Stock() {
   return (
     <>
       <PageHeader
-        title="คลังวัตถุดิบ"
-        sub="Raw Material Stock · คงเหลือ ณ มิถุนายน 2569"
+        title={stockLabel}
+        sub={isFoundry ? 'Foundry Raw Material Stock · วัสดุเสริมแรงงานหล่อ' : 'Raw Material Stock · คงเหลือ ณ มิถุนายน 2569'}
         actions={
           <>
             <Button variant="secondary" onClick={() => {
               const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'หน่วย', 'จุดสั่งซื้อ', 'สถานะ']
               const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.reorder, status(r).th])
-              downloadCsv('stock', [head, ...body])
+              downloadCsv(isFoundry ? 'foundry-materials' : 'stock', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
-            <Button variant="secondary" onClick={() => navigate('/stock-reconcile')}>ประวัติการกระทบยอด</Button>
-            <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>
+            {!isFoundry && <Button variant="secondary" onClick={() => navigate('/stock-reconcile')}>ประวัติการกระทบยอด</Button>}
+            {!isFoundry && <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>}
             <Button variant="primary" onClick={() => setShowReceive(true)}>
               <IconPlus /> รับเข้าวัตถุดิบ
             </Button>
@@ -309,20 +320,22 @@ export function Stock() {
         )}
       </div>
       <p className="page-sub" style={{ marginTop: 10, fontSize: 12 }}>
-        * จ่ายออกอัตโนมัติเมื่อออกใบจ่ายคอนกรีต ตาม<strong>สูตร Mix Design</strong>ของสินค้านั้น (ปูน/ทราย/หิน + น้ำยา) — สินค้าที่ยังไม่มีสูตรจะใช้ค่าประมาณการ (ปูน {MIX_PER_M3.cement} · ทราย {MIX_PER_M3.SAN} · หิน {MIX_PER_M3.AGG} ตัน/คิว)
+        {isFoundry
+          ? '* รับเข้าวัตถุดิบด้วยการบันทึกด้วยตนเอง — ตะแกรงไวร์เมช / เหล็กปลอก / ลวดอัดแรง ใช้ตามสูตรผลิตโรงหล่อของแต่ละสินค้า'
+          : <>* จ่ายออกอัตโนมัติเมื่อออกใบจ่ายคอนกรีต ตาม<strong>สูตร Mix Design</strong>ของสินค้านั้น (ปูน/ทราย/หิน + น้ำยา) — สินค้าที่ยังไม่มีสูตรจะใช้ค่าประมาณการ (ปูน {MIX_PER_M3.cement} · ทราย {MIX_PER_M3.SAN} · หิน {MIX_PER_M3.AGG} ตัน/คิว)</>}
       </p>
 
-      <ReceiveStockModal open={showReceive} onClose={() => setShowReceive(false)} receivedByCode={receivedByCode} />
-      <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} />
+      <ReceiveStockModal open={showReceive} onClose={() => setShowReceive(false)} receivedByCode={receivedByCode} materials={universe} />
+      {!isFoundry && <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} />}
     </>
   )
 }
 
 type RcvLine = { code: string; qty: string }
-const emptyLine = (): RcvLine => ({ code: STOCK_MATERIALS[0]?.code ?? '', qty: '' })
 
-function ReceiveStockModal({ open, onClose, receivedByCode }: { open: boolean; onClose: () => void; receivedByCode: Record<string, number> }) {
+function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open: boolean; onClose: () => void; receivedByCode: Record<string, number>; materials: StockMaterial[] }) {
   const created = useCreatedDocs()
+  const emptyLine = (): RcvLine => ({ code: materials[0]?.code ?? '', qty: '' })
   const [lines, setLines] = useState<RcvLine[]>([emptyLine()])
   const [date, setDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
@@ -333,14 +346,14 @@ function ReceiveStockModal({ open, onClose, receivedByCode }: { open: boolean; o
   useEffect(() => {
     if (!open) return
     setLines([emptyLine()]); setDate(todayIso()); setSupplier(''); setVoucherNo(''); setNote(''); setErr('')
-  }, [open])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLine = (i: number, patch: Partial<RcvLine>) =>
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   const addLine = () => setLines((prev) => [...prev, emptyLine()])
   const removeLine = (i: number) => setLines((prev) => (prev.length <= 1 ? [emptyLine()] : prev.filter((_, idx) => idx !== i)))
 
-  const matOf = (code: string) => STOCK_MATERIALS.find((m) => m.code === code)
+  const matOf = (code: string) => materials.find((m) => m.code === code)
   const currentOf = (code: string) => {
     const m = matOf(code)
     return m ? Math.round((m.balance + (receivedByCode[code] ?? 0)) * 100) / 100 : 0
@@ -413,7 +426,7 @@ function ReceiveStockModal({ open, onClose, receivedByCode }: { open: boolean; o
               <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
                   <Select value={l.code} onChange={(e) => setLine(i, { code: e.target.value })}>
-                    {STOCK_MATERIALS.map((mm) => <option key={mm.code} value={mm.code}>{mm.name} ({mm.unit})</option>)}
+                    {materials.map((mm) => <option key={mm.code} value={mm.code}>{mm.name} ({mm.unit})</option>)}
                   </Select>
                 </div>
                 <Input style={{ width: 96, textAlign: 'right' }} type="number" step="0.01" min={0} placeholder="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />

@@ -46,6 +46,7 @@ export function MixDesignReportDoc({ report }: { report: MixDesignReport }) {
         <thead>
           <tr>
             <th className="n" style={{ ...th, width: '4%' }}>ลำดับ</th>
+            <th style={{ ...th, width: '10%' }}>เลขที่สูตร</th>
             <th style={{ ...th, width: '14%' }}>รหัสสินค้า</th>
             <th style={th}>รายการ</th>
             <th className="c" style={{ ...th, width: '9%' }}>ปูน</th>
@@ -61,6 +62,7 @@ export function MixDesignReportDoc({ report }: { report: MixDesignReport }) {
           {report.rows.map((r, i) => (
             <tr key={r.code}>
               <td className="n mono">{i + 1}</td>
+              <td className="mono">{r.formulaNo ?? '—'}</td>
               <td className="mono">{r.code}</td>
               <td>{r.name}</td>
               <td className="c">{r.brand}</td>

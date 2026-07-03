@@ -77,7 +77,7 @@ export const RESOURCES: Resource[] = [
   { key: 'truck-trips', route: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'commission', route: '/commission', label: 'บันทึกค่าคอมมิชชั่น', section: 'การซื้อ / การจ่าย · Purchasing' },
 
-  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'จัดการคลัง · Inventory' },
+  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
@@ -96,6 +96,10 @@ export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
 /* Legacy direct วางบิล route shares the ใบกำกับภาษี / วางบิล gate. */
 ROUTE_RESOURCE['/billing'] = 'invoices'
+/* สูตรผลิตโรงหล่อ shares the Mix Design gate (both under ราคาสินค้า / ฐานข้อมูล). */
+ROUTE_RESOURCE['/foundry-formula'] = 'mix-design'
+/* คลังวัตถุดิบโรงหล่อ shares the คลังวัตถุดิบ gate. */
+ROUTE_RESOURCE['/foundry-materials'] = 'stock'
 
 /** Hard per-resource role allowlist — overrides the permission matrix. When a
     resource key is listed here, ONLY these roles may view it, no matter what the
