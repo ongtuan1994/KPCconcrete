@@ -4,7 +4,7 @@ import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Settings } from './pages/Settings'
 import { AuditReport } from './pages/AuditReport'
-import { ROUTE_RESOURCE, useCurrentUser, usePerms } from './data/auth'
+import { ROUTE_RESOURCE, roleAllowsResource, landingRouteFor, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
 import { Commission } from './pages/Commission'
@@ -46,7 +46,8 @@ function Guard({ children }: { children: ReactElement }) {
   const key = ROUTE_RESOURCE[loc.pathname]
   if (key && user) {
     const lvl = perms[user.role]?.[key] ?? 'none'
-    if (lvl === 'none') return <NoAccess />
+    /* Perm-matrix level OR a hard role allowlist for sensitive pages. */
+    if (lvl === 'none' || !roleAllowsResource(user.role, key)) return <NoAccess />
   }
   return children
 }
@@ -64,15 +65,18 @@ function NoAccess() {
 
 export default function App() {
   const user = useCurrentUser()
+  const perms = usePerms()
   if (!user) return <Login />
+  /* Redirect roots/unknowns to the first page this role may actually open. */
+  const landing = landingRouteFor(user.role, perms)
 
   return (
     <Layout>
       <Guard>
       <Routes>
-        <Route path="/" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/" element={<Navigate to={landing} replace />} />
         {/* Legacy /overview links now land on the monthly report. */}
-        <Route path="/overview" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/overview" element={<Navigate to={landing} replace />} />
         <Route path="/sales-orders" element={<SalesOrders />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />
@@ -97,7 +101,7 @@ export default function App() {
         <Route path="/my-work" element={<MyWork />} />
         <Route path="/audit-report" element={<AuditReport />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
-        <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/yearly-report" element={<Navigate to={landing} replace />} />
         <Route path="/stock" element={<Stock />} />
         <Route path="/foundry-stock" element={<FoundryStock />} />
         <Route path="/stock-reconcile" element={<StockReconcileHistory />} />
@@ -113,7 +117,7 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/salary-structure" element={<SalaryStructure />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="*" element={<Navigate to={landing} replace />} />
       </Routes>
       </Guard>
     </Layout>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, Field, Input, Select, type Tone } from '../components/ui'
+import { Modal } from '../components/Modal'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -14,10 +15,23 @@ import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
 import { PRODUCT_MAP } from '../data/real'
-import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
+import { useCreatedDocs, removeInvoice, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+function todayIso(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+function fmtThaiDate(iso: string): string {
+  if (!iso) return '—'
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return iso
+  return `${d}/${m}/${Number(y) + 543}`
+}
 
 /** SITE of an invoice — โรงหล่อ if any line is a foundry product, else แพล้นปูน. */
 function invoiceSite(inv: Invoice): 'foundry' | 'plant' {
@@ -39,6 +53,7 @@ export function Invoices() {
   const [fdRefs, setFdRefs] = useState<string | undefined>(undefined)
   const [downloading, setDownloading] = useState<Invoice | null>(null)
   const [receiptForInvoice, setReceiptForInvoice] = useState<Invoice | null>(null)
+  const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [zipQueue, setZipQueue] = useState<Invoice[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
@@ -212,14 +227,21 @@ export function Invoices() {
         onClose={() => setActive(null)}
         extraActions={
           active ? (
-            <Button variant="tonal" onClick={() => { const inv = active; setActive(null); setReceiptForInvoice(inv) }}>
-              ออกใบเสร็จรับเงิน
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setPayingInvoice(inv) }}>
+                ผ่อนชำระ
+              </Button>
+              <Button variant="tonal" onClick={() => { const inv = active; setActive(null); setReceiptForInvoice(inv) }}>
+                ออกใบเสร็จรับเงิน
+              </Button>
+            </>
           ) : undefined
         }
       >
         {active && <TaxInvoiceDoc inv={active} />}
       </DocModal>
+
+      <InstallmentModal invoice={payingInvoice} payments={created.invoicePayments} onClose={() => setPayingInvoice(null)} />
 
       <NewInvoiceForm
         open={showForm}
@@ -248,5 +270,125 @@ export function Invoices() {
         />
       )}
     </>
+  )
+}
+
+function SummaryStat({ label, value, tone, strong }: { label: string; value: string; tone?: 'ok' | 'warn'; strong?: boolean }) {
+  const color = tone === 'warn' ? 'var(--kpc-danger)' : tone === 'ok' ? '#15803d' : 'var(--kpc-text-strong)'
+  return (
+    <div className="card" style={{ padding: '10px 12px', background: 'var(--kpc-surface-alt)', borderRadius: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }}>{label}</div>
+      <div className="mono" style={{ fontSize: strong ? 18 : 15, fontWeight: strong ? 800 : 700, color }}>{value}</div>
+    </div>
+  )
+}
+
+/** ผ่อนชำระ — record installment payments against an invoice; the system tracks
+    ชำระแล้ว and computes the live ยอดคงค้าง (invoice.total − Σ payments). */
+function InstallmentModal({ invoice, payments, onClose }: { invoice: Invoice | null; payments: InvoicePayment[]; onClose: () => void }) {
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(todayIso())
+  const [method, setMethod] = useState('เงินสด')
+  const [note, setNote] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!invoice) return
+    setAmount(''); setDate(todayIso()); setMethod('เงินสด'); setNote(''); setErr('')
+  }, [invoice])
+
+  const invPayments = useMemo(
+    () => (invoice ? payments.filter((p) => p.invoiceNo === invoice.no).sort((a, b) => a.date.localeCompare(b.date)) : []),
+    [payments, invoice],
+  )
+  if (!invoice) return null
+
+  const isPaid = invoice.status === 'paid'
+  const paid = invPayments.reduce((s, p) => s + p.amount, 0)
+  const paidDisplay = isPaid ? invoice.total : paid
+  const outstanding = isPaid ? 0 : Math.max(0, r2(invoice.total - paid))
+  const amt = Number(amount) || 0
+  const afterOutstanding = Math.max(0, r2(outstanding - amt))
+
+  const save = () => {
+    setErr('')
+    if (!amt || amt <= 0) return setErr('กรุณาระบุจำนวนเงินที่ชำระ (มากกว่า 0)')
+    if (amt > outstanding + 0.001) return setErr(`จำนวนเกินยอดคงค้าง (${baht(outstanding)})`)
+    if (!date) return setErr('กรุณาระบุวันที่ชำระ')
+    addInvoicePayment({ id: `ip_${Date.now()}`, invoiceNo: invoice.no, amount: r2(amt), date, method, note: note.trim() || undefined })
+    setAmount(''); setNote(''); setErr('')
+  }
+
+  return (
+    <Modal
+      open={!!invoice}
+      title={`ผ่อนชำระ · ใบกำกับ ${invoice.no}`}
+      onClose={onClose}
+      maxWidth={560}
+      footer={<><Button variant="secondary" onClick={onClose}>ปิด</Button><Button variant="primary" onClick={save} disabled={outstanding <= 0}>บันทึกการชำระ</Button></>}
+    >
+      <div style={{ fontSize: 13, color: 'var(--kpc-text-muted)', marginBottom: 12 }}>ลูกค้า: <strong style={{ color: 'var(--kpc-text-strong)' }}>{invoice.customer}</strong></div>
+
+      <div className="grid g-3" style={{ gap: 10, marginBottom: 16 }}>
+        <SummaryStat label="ยอดรวมทั้งสิ้น" value={baht(invoice.total)} />
+        <SummaryStat label="ชำระแล้ว" value={baht(paidDisplay)} tone="ok" />
+        <SummaryStat label="ยอดคงค้าง" value={baht(outstanding)} tone={outstanding > 0 ? 'warn' : 'ok'} strong />
+      </div>
+
+      {outstanding <= 0 ? (
+        <div style={{ padding: 12, borderRadius: 8, background: 'rgba(34,197,94,0.12)', color: '#15803d', fontSize: 13, fontWeight: 600 }}>✓ ชำระครบแล้ว ไม่มียอดคงค้าง</div>
+      ) : (
+        <>
+          {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+          <div className="grid g-2" style={{ gap: 12 }}>
+            <Field label="จำนวนเงินที่ชำระ" required hint={`ยอดคงค้าง ${baht(outstanding)}`}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input type="number" step="0.01" min={0} placeholder="เช่น 5000" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1 }} />
+                <Button variant="tonal" size="sm" onClick={() => setAmount(String(outstanding))}>ทั้งหมด</Button>
+              </div>
+            </Field>
+            <Field label="วันที่ชำระ" required hint="ค่าเริ่มต้น = วันนี้">
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+            <Field label="วิธีชำระ">
+              <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+                <option value="เงินสด">เงินสด</option>
+                <option value="โอน">โอน</option>
+                <option value="เช็ค">เช็ค</option>
+              </Select>
+            </Field>
+            <Field label="หมายเหตุ">
+              <Input placeholder="เช่น งวดที่ 1" value={note} onChange={(e) => setNote(e.target.value)} />
+            </Field>
+          </div>
+          <div style={{ marginTop: 12, fontSize: 13, textAlign: 'right', color: 'var(--kpc-text-muted)' }}>
+            ยอดคงค้างหลังชำระ: <strong className="mono" style={{ color: afterOutstanding > 0 ? 'var(--kpc-danger)' : '#15803d', fontSize: 15 }}>{baht(afterOutstanding)}</strong>
+          </div>
+        </>
+      )}
+
+      {invPayments.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 8 }}>ประวัติการชำระ ({invPayments.length} ครั้ง)</div>
+          <table className="table" style={{ width: '100%', fontSize: 13 }}>
+            <thead><tr><th style={{ textAlign: 'left' }}>วันที่</th><th style={{ textAlign: 'left' }}>วิธี</th><th style={{ textAlign: 'right' }}>จำนวนเงิน</th><th style={{ textAlign: 'left' }}>ผู้บันทึก</th><th /></tr></thead>
+            <tbody>
+              {invPayments.map((p) => (
+                <tr key={p.id}>
+                  <td className="mono">{fmtThaiDate(p.date)}</td>
+                  <td>{p.method ?? '—'}{p.note ? ` · ${p.note}` : ''}</td>
+                  <td style={{ textAlign: 'right' }} className="mono">{baht(p.amount)}</td>
+                  <td style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{p.createdBy ?? '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <Button variant="ghost" size="sm" onClick={() => { if (confirm('ลบรายการชำระนี้?')) removeInvoicePayment(p.id) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr><td colSpan={2} style={{ fontWeight: 600 }}>รวมชำระแล้ว</td><td style={{ textAlign: 'right', fontWeight: 600 }} className="mono">{baht(paid)}</td><td colSpan={2} /></tr></tfoot>
+          </table>
+        </div>
+      )}
+    </Modal>
   )
 }

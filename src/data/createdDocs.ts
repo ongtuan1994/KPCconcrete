@@ -97,6 +97,19 @@ export interface SalesOrder {
   createdAt: string  /* ISO timestamp of when the order was saved */
 }
 
+/** A partial (installment) payment recorded against a tax invoice (ผ่อนชำระ).
+    ยอดคงค้าง = invoice.total − Σ(payments for that invoice). */
+export interface InvoicePayment {
+  id: string
+  invoiceNo: string   /* Invoice.no this payment settles */
+  amount: number      /* baht paid this installment */
+  date: string        /* ISO yyyy-mm-dd */
+  method?: string     /* เงินสด / โอน / เช็ค */
+  note?: string
+  createdBy?: string
+  createdAt?: string
+}
+
 /* ───────── การซื้อ / การจ่าย (Purchasing / Payments) ───────── */
 
 /** Payment method for outgoing payments (purchases / payroll). */
@@ -732,10 +745,12 @@ export interface CreatedDocs {
   stockReconciles: StockReconcile[]
   /** Historical tax rows imported from Excel/CSV (รายงานภาษีซื้อ/ขาย ย้อนหลัง). */
   taxImports: ImportedTaxRow[]
+  /** Installment payments recorded against tax invoices (ผ่อนชำระใบกำกับ). */
+  invoicePayments: InvoicePayment[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -797,6 +812,7 @@ function read(): CreatedDocs {
       /* Backfill year on rows imported before the year dimension existed (the
          original seed/imports were พ.ศ. 2569). */
       taxImports: (v.taxImports ?? []).map((r) => ({ ...r, year: r.year ?? 2569 })),
+      invoicePayments: v.invoicePayments ?? [],
     }
   } catch {
     return empty
@@ -815,6 +831,14 @@ function commit(next: CreatedDocs) {
 
 export function addInvoice(inv: Invoice) {
   commit({ ...state, invoices: [stamp(inv), ...state.invoices] })
+}
+
+/* Installment payments against invoices (ผ่อนชำระใบกำกับ). */
+export function addInvoicePayment(p: Omit<InvoicePayment, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, invoicePayments: [stamp(p as InvoicePayment), ...state.invoicePayments] })
+}
+export function removeInvoicePayment(id: string) {
+  commit({ ...state, invoicePayments: state.invoicePayments.filter((p) => p.id !== id) })
 }
 export function addBillingNote(bn: BillingNote) {
   commit({ ...state, billingNotes: [stamp(bn), ...state.billingNotes] })

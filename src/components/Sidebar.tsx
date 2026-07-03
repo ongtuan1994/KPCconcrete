@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { NAV, type NavItem, type NavGroup } from '../nav'
 import { Logo } from './icons'
-import { ROUTE_RESOURCE, useCurrentUser, usePerms } from '../data/auth'
+import { ROUTE_RESOURCE, roleAllowsResource, useCurrentUser, usePerms } from '../data/auth'
 
 export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const user = useCurrentUser()
@@ -13,6 +13,7 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
   const canSee = (to: string) => {
     const key = ROUTE_RESOURCE[to]
     if (!key || !user) return !key ? true : false
+    if (!roleAllowsResource(user.role, key)) return false
     const lvl = perms[user.role]?.[key] ?? 'none'
     return lvl === 'view' || lvl === 'edit'
   }

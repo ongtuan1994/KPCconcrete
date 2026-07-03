@@ -95,6 +95,30 @@ export const RESOURCES: Resource[] = [
 export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
 
+/** Hard per-resource role allowlist — overrides the permission matrix. When a
+    resource key is listed here, ONLY these roles may view it, no matter what the
+    configurable perms say. Used for sensitive pages. */
+export const RESOURCE_ROLE_ALLOW: Record<string, Role[]> = {
+  'monthly-report': ['Admin', 'Board', 'Auditor'],
+  'salary-structure': ['Admin', 'Board', 'Auditor'],
+}
+/** false only when `key` is role-locked and `role` isn't in its allowlist. */
+export function roleAllowsResource(role: Role, key: string): boolean {
+  const allow = RESOURCE_ROLE_ALLOW[key]
+  return !allow || allow.includes(role)
+}
+
+/** Default landing route for a role: the first resource (in sidebar order) it may
+    actually view — so a role locked out of the monthly report doesn't land on the
+    "no access" page. Falls back to the personal ungated page. */
+export function landingRouteFor(role: Role, perms: PermMatrix): string {
+  for (const r of RESOURCES) {
+    const lvl = perms[role]?.[r.key] ?? 'none'
+    if (lvl !== 'none' && roleAllowsResource(role, r.key)) return r.route
+  }
+  return '/my-work'
+}
+
 export type PermMatrix = Record<Role, Record<string, Level>>
 
 /* Shorthands for building the default matrix below. */
