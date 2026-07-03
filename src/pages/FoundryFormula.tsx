@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Badge, Pill, SearchInput, Button, Field, Input, Select, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -11,7 +12,7 @@ import {
   type FoundryFormula, type FoundryMaterialKey,
 } from '../data/foundryFormula'
 import { cleanProductName as cleanName } from '../data/selectors'
-import { useCreatedDocs, addFoundryFormula, updateFoundryFormula, removeFoundryFormula } from '../data/createdDocs'
+import { useCreatedDocs, addFoundryFormula, updateFoundryFormula, removeFoundryFormula, addGeneralReport, type FoundryFormulaReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type KindFilter = 'all' | FoundryKind
@@ -31,6 +32,7 @@ export function FoundryFormula() {
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<FoundryFormula | null>(null)
   const created = useCreatedDocs()
+  const navigate = useNavigate()
 
   /* All foundry products (seed + user-added, edits applied) — for names/kinds and the picker. */
   const foundryProducts = useMemo(() => {
@@ -84,6 +86,33 @@ export function FoundryFormula() {
 
   const scopeLabel = kind === 'all' ? 'ทุกประเภท' : KIND[kind].th
 
+  const createReport = () => {
+    if (rows.length === 0) { alert('ไม่มีสูตรให้สร้างรายงาน'); return }
+    const report: FoundryFormulaReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'foundry-formula',
+      title: `สูตรผลิตโรงหล่อ (${scopeLabel})`,
+      fromLabel: scopeLabel,
+      toLabel: `${rows.length} สูตร`,
+      scopeLabel,
+      rows: rows.map((f) => {
+        const p = productByCode.get(f.code)
+        const d = p ? parseDims(p.name) : null
+        const k = kindOf(f.code)
+        return {
+          formulaNo: formulaNo(f.code), code: f.code, name: nameOf(f.code),
+          kind: k ? KIND[k].th : '', dims: d ? `${d.a}×${d.b}×${d.c}` : undefined,
+          wireMesh: f.wireMesh, tieSteel: f.tieSteel, pcWire: f.pcWire, concrete: f.concrete,
+        }
+      }),
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -105,6 +134,7 @@ export function FoundryFormula() {
               })
               downloadCsv('foundry-formula', [head, ...body])
             }}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             <Button variant="primary" onClick={() => setAdding(true)} disabled={addableProducts.length === 0}>เพิ่มสูตร</Button>
           </>
         }

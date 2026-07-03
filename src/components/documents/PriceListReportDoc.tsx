@@ -25,7 +25,7 @@ export function PriceListReportDoc({ report }: { report: PriceListReport }) {
   /* Show the การรับของ column only when at least one row actually has it. */
   const hasPickup = report.groups.some((g) => g.rows.some((r) => r.pickup))
   return (
-    <div className="trip-report-sheet">
+    <div className="trip-report-sheet price-list-report">
       {/* Themed header with logo */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16,
@@ -59,7 +59,8 @@ export function PriceListReportDoc({ report }: { report: PriceListReport }) {
             <thead>
               <tr>
                 <th className="n" style={{ ...thStyle, width: '5%' }}>ลำดับ</th>
-                <th style={{ ...thStyle, width: '15%' }}>รหัสสินค้า</th>
+                <th style={{ ...thStyle, width: '11%' }}>สูตรการผลิต</th>
+                <th style={{ ...thStyle, width: '14%' }}>รหัสสินค้า</th>
                 <th style={thStyle}>รายการ</th>
                 <th className="c" style={{ ...thStyle, width: '11%' }}>ปูนซีเมนต์</th>
                 <th className="c" style={{ ...thStyle, width: '15%' }}>ระยะส่ง</th>
@@ -72,6 +73,7 @@ export function PriceListReportDoc({ report }: { report: PriceListReport }) {
               {g.rows.map((r, i) => (
                 <tr key={r.code}>
                   <td className="n mono">{i + 1}</td>
+                  <td className="mono">{r.formulaNo || <span style={{ color: faint }}>—</span>}</td>
                   <td className="mono">{r.code}</td>
                   <td>{r.name}</td>
                   <td className="c">{r.brand || <span style={{ color: faint }}>—</span>}</td>

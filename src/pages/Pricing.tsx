@@ -6,6 +6,7 @@ import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, PRODUCT_MAP, type Product, type ProductSite, type FoundryKind } from '../data/real'
 import { MIX_DESIGNS, mixFormulaNo } from '../data/mixDesign'
+import { buildFoundryFormulaNos } from '../data/foundryFormula'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
 import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, isAddedProduct, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -136,6 +137,20 @@ function ProductPricing() {
   /* Every code in use — for the เพิ่มสินค้า uniqueness check. */
   const existingCodes = useMemo(() => new Set(products.map((p) => p.code)), [products])
 
+  /* Foundry production-formula numbers (FFxx-xxx) — numbered per kind, oldest first. */
+  const productByCode = useMemo(() => new Map(products.map((p) => [p.code, p])), [products])
+  const foundryFormulaNos = useMemo(
+    () => buildFoundryFormulaNos(created.foundryFormulas.slice().reverse().map((f) => ({ code: f.code, kind: productByCode.get(f.code)?.kind }))),
+    [created.foundryFormulas, productByCode],
+  )
+  /** สูตรการผลิต for a product: foundry → FFxx-xxx (links to /foundry-formula),
+      otherwise the concrete formula CFx-xxx (links to /mix-design). */
+  const formulaInfo = (p: Product): { no: string; href: string } => {
+    if (productSite(p) === 'foundry') return { no: foundryFormulaNos.get(p.code) ?? '', href: '/foundry-formula' }
+    const fCode = p.formulaCode || p.code
+    return { no: mixFormulaNo(fCode) ?? '', href: `/mix-design?code=${encodeURIComponent(fCode)}` }
+  }
+
   /* สูตรการผลิต options for the edit form (all mix designs, grouped by cement brand). */
   const formulaOptions = useMemo(
     () => MIX_DESIGNS.map((m) => ({ code: m.code, no: mixFormulaNo(m.code) ?? '', name: cleanName(PRODUCT_MAP[m.code]?.name ?? m.code) }))
@@ -179,19 +194,17 @@ function ProductPricing() {
     {
       key: 'formula', header: 'สูตรการผลิต', align: 'center', className: 'docno',
       cell: (r) => {
-        /* Explicit formulaCode override wins; otherwise the formula is matched by the product's own code. */
-        const fCode = r.formulaCode || r.code
-        const f = mixFormulaNo(fCode)
-        if (!f) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
-        const href = `/mix-design?code=${encodeURIComponent(fCode)}`
+        /* Foundry → FF (โรงหล่อ); plant → CF, honouring any formulaCode override. */
+        const { no, href } = formulaInfo(r)
+        if (!no) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
         return (
           <a
             href={href}
             onClick={(e) => { e.preventDefault(); navigate(href) }}
             className="mono"
             style={{ color: 'var(--kpc-primary, #0E0EE6)', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}
-            title="ดูสูตรส่วนผสมในหน้า Mix Design"
-          >{f}</a>
+            title={productSite(r) === 'foundry' ? 'ดูสูตรผลิตโรงหล่อ' : 'ดูสูตรส่วนผสมในหน้า Mix Design'}
+          >{no}</a>
         )
       },
     },
@@ -266,6 +279,7 @@ function ProductPricing() {
       const arr = groupsMap.get(label) ?? []
       const z = deliveryZone(p.code)
       arr.push({
+        formulaNo: formulaInfo(p).no || undefined,
         code: p.code,
         name: cleanName(p.name),
         brand: cementBrand(p.code)?.label,
@@ -306,7 +320,7 @@ function ProductPricing() {
             <Button variant="secondary" onClick={() => {
               const head = ['รหัสสินค้า', 'สูตรการผลิต', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
               const body = rows.map((p) => [
-                p.code, mixFormulaNo(p.code) ?? '', cleanName(p.name),
+                p.code, formulaInfo(p).no, cleanName(p.name),
                 cementBrand(p.code)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',

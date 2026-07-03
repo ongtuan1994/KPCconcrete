@@ -520,6 +520,7 @@ export interface AttendanceReport extends GeneralReportBase {
 }
 /** One product row in a saved price-list report. */
 export interface PriceListReportRow {
+  formulaNo?: string /* สูตรการผลิต — CFx-xxx (แพล้นปูน) / FFxx-xxx (โรงหล่อ); optional for older reports */
   code: string
   name: string
   brand?: string     /* ปูนซีเมนต์ — ดอกบัว / SCG (concrete items only) */
@@ -605,6 +606,24 @@ export interface MixDesignReport extends GeneralReportBase {
   scopeLabel: string
   rows: MixDesignReportRow[]
 }
+/** One row in a saved foundry-formula report (reinforcement per 1 piece). */
+export interface FoundryFormulaReportRow {
+  formulaNo: string   /* FFGS/FFIP/FFCW-xxx */
+  code: string
+  name: string
+  kind: string        /* Thai kind label — แผ่นพื้น / เสาไอ / แผ่นผนัง */
+  dims?: string       /* ขนาด ก×หนา×ยาว (ม.) */
+  wireMesh?: number   /* ตะแกรงเหล็กไวร์เมช (ผืน) */
+  tieSteel?: number   /* เหล็กปลอก (ตัว) */
+  pcWire?: number     /* ลวดอัดแรง (เส้น) */
+  concrete?: number   /* คอนกรีต (ลบ.ม.) */
+}
+/** Foundry production-formula report (รายงานสูตรผลิตโรงหล่อ). */
+export interface FoundryFormulaReport extends GeneralReportBase {
+  kind: 'foundry-formula'
+  scopeLabel: string
+  rows: FoundryFormulaReportRow[]
+}
 /** One material row in a saved stock report. */
 export interface StockReportRow {
   code: string
@@ -681,7 +700,7 @@ export interface EmployeeReport extends GeneralReportBase {
   rows: EmployeeReportRow[]
   totals: { count: number; active: number; terminated: number }
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | StockReport | LedgerReport | EmployeeReport
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport
 
 const KEY = 'kpc.createdDocs.v1'
 

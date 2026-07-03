@@ -424,14 +424,18 @@
 .trip-report-sheet table.trr-detail th, .trip-report-sheet table.trr-detail td { padding: 2px 5px; }
 
 @media print {
-  .trip-report-sheet { font-size: 10px; padding: 10mm; }
+  /* DEFAULT for every report: uniform four-side paper margins on EVERY page.
+     The margins live on the @page box (not the sheet's own padding, which only
+     pads the first/last page of a multi-page table). Specific reports below
+     override `page`/size where they need different margins or landscape. */
+  @page report { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet { font-size: 10px; padding: 0; page: report; }
   .trip-report-sheet table.trr-table { font-size: 9px; }
   .trip-report-sheet table.trr-detail { font-size: 8.5px; }
   .trip-report-sheet table.trr-table thead { display: table-header-group; }
   .trip-report-sheet table.trr-table tr { break-inside: avoid; }
 
-  /* Truck-trip report: uniform paper margins on every page (the sheet's own
-     padding only pads the first/last page of a multi-page table). */
+  /* Truck-trip report: slightly tighter 12mm margin to fit the wide table. */
   @page truckReport { size: A4 portrait; margin: 12mm; }
   .trip-report-sheet.truck-report { page: truckReport; padding: 0 !important; }
 }
@@ -511,3 +515,5 @@
     page-break-before: always;
   }
 }
+
+/* Price-list report (รายงานราคาสินค้า) uses the default @page margins above. */

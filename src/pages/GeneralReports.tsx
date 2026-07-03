@@ -10,6 +10,7 @@ import { PriceListReportDoc } from '../components/documents/PriceListReportDoc'
 import { TransportPriceReportDoc } from '../components/documents/TransportPriceReportDoc'
 import { PayrollReportDoc } from '../components/documents/PayrollReportDoc'
 import { MixDesignReportDoc } from '../components/documents/MixDesignReportDoc'
+import { FoundryFormulaReportDoc } from '../components/documents/FoundryFormulaReportDoc'
 import { StockReportDoc } from '../components/documents/StockReportDoc'
 import { LedgerReportDoc } from '../components/documents/LedgerReportDoc'
 import { EmployeeReportDoc } from '../components/documents/EmployeeReportDoc'
@@ -26,6 +27,7 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'transport-pricing': 'ราคาค่าขนส่ง',
   'payroll': 'จ่ายเงินเดือน',
   'mix-design': 'Mix Design',
+  'foundry-formula': 'สูตรผลิตโรงหล่อ',
   'stock': 'คลังวัตถุดิบ',
   'ledger': 'ลูกหนี้ / เจ้าหนี้',
   'employees': 'รายชื่อพนักงาน',
@@ -49,7 +51,7 @@ const reportSummary = (r: GeneralReport) =>
           ? `${r.fees.length} ระดับการขนส่งไม่เต็มเที่ยว`
           : r.kind === 'payroll'
             ? `${r.rows.length} คน · ${r.payMonthLabel}`
-            : r.kind === 'mix-design'
+            : r.kind === 'mix-design' || r.kind === 'foundry-formula'
               ? `${r.rows.length} สูตร`
               : r.kind === 'stock'
                 ? `${r.rows.length} รายการ · ${r.scopeLabel}`
@@ -135,6 +137,8 @@ export function GeneralReports() {
                   ? <PayrollReportDoc report={active} />
                   : active.kind === 'mix-design'
                     ? <MixDesignReportDoc report={active} />
+                    : active.kind === 'foundry-formula'
+                    ? <FoundryFormulaReportDoc report={active} />
                     : active.kind === 'stock'
                       ? <StockReportDoc report={active} />
                       : active.kind === 'ledger'
