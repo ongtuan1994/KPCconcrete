@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
@@ -37,13 +37,29 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${Number(y) + 543}`
 }
 
+/** Pre-fill values when issuing a foundry delivery from a sales order. */
+interface FoundryDeliveryInitial { customer: string; items: { code: string; qty: number }[]; note?: string }
+
 export function FoundryDeliveries() {
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
   const created = useCreatedDocs()
+  const location = useLocation()
   const navigate = useNavigate()
   const all = created.foundryDeliveries
+
+  /* Opened from a สินค้าโรงหล่อ sales order ("ออกใบส่งสินค้าโรงหล่อ") → open the
+     create form pre-filled with the customer + ordered items. */
+  useEffect(() => {
+    const st = location.state as { issueFromSalesOrder?: FoundryDeliveryInitial } | null
+    if (st?.issueFromSalesOrder) {
+      setPrefill(st.issueFromSalesOrder)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const rows = useMemo(
     () =>
@@ -119,9 +135,10 @@ export function FoundryDeliveries() {
 
       <NewFoundryDeliveryForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setPrefill(null) }}
         existing={all}
-        onSaved={(f) => { setShowForm(false); setQuery(f.fdNo); setActive(f) }}
+        initial={prefill}
+        onSaved={(f) => { setShowForm(false); setPrefill(null); setQuery(f.fdNo); setActive(f) }}
       />
 
       <DocModal
@@ -141,7 +158,7 @@ export function FoundryDeliveries() {
 type ItemDraft = { code: string; qty: string; pickup: 'รับเอง' | 'จัดส่ง' }
 const emptyItem = (): ItemDraft => ({ code: FOUNDRY_PRODUCTS[0]?.code ?? '', qty: '', pickup: 'รับเอง' })
 
-function NewFoundryDeliveryForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: FoundryDelivery[]; onSaved: (f: FoundryDelivery) => void }) {
+function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: { open: boolean; onClose: () => void; existing: FoundryDelivery[]; initial?: FoundryDeliveryInitial | null; onSaved: (f: FoundryDelivery) => void }) {
   const [fdNo, setFdNo] = useState('')
   const [date, setDate] = useState(todayIso())
   const [customer, setCustomer] = useState('')
@@ -152,8 +169,16 @@ function NewFoundryDeliveryForm({ open, onClose, existing, onSaved }: { open: bo
 
   useEffect(() => {
     if (!open) return
-    setFdNo(''); setDate(todayIso()); setCustomer(''); setVehicle(''); setItems([emptyItem()]); setNote(''); setErr('')
-  }, [open])
+    setFdNo(''); setDate(todayIso()); setVehicle(''); setErr('')
+    if (initial) {
+      setCustomer(initial.customer)
+      const known = initial.items.filter((it) => PROD_BY_CODE[it.code])
+      setItems(known.length ? known.map((it) => ({ code: it.code, qty: String(it.qty), pickup: 'รับเอง' as const })) : [emptyItem()])
+      setNote(initial.note ?? '')
+    } else {
+      setCustomer(''); setItems([emptyItem()]); setNote('')
+    }
+  }, [open, initial])
 
   const setItem = (i: number, patch: Partial<ItemDraft>) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))

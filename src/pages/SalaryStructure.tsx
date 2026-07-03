@@ -4,11 +4,13 @@ import { Button, SearchInput, Field, Input, Select } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
+import { DocModal } from '../components/documents/DocModal'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
+import { COMPANY } from '../data/real'
 import { EMPLOYEES, DEPARTMENT_LABEL, yearsOfService, type Employee } from '../data/employees'
 import { useCreatedDocs, setSalaryStructure, addSalaryStructureAdjustment, removeEmployee, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
-import { useCurrentUser } from '../data/auth'
+import { useCurrentUser, currentUserName } from '../data/auth'
 import { salaryStructureFor, hasSalaryStructure, computeOtRate } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
 
@@ -22,7 +24,11 @@ export function SalaryStructure() {
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showBulk, setShowBulk] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   const created = useCreatedDocs()
+  /* รายงานโครงสร้างเงินเดือน — เฉพาะ Admin / Board เท่านั้นที่เห็นและกดได้. */
+  const role = useCurrentUser()?.role
+  const canReport = role === 'Admin' || role === 'Board'
 
   const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
   const employees = useMemo(
@@ -109,6 +115,7 @@ export function SalaryStructure() {
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
+            {canReport && <Button variant="secondary" onClick={() => setShowReport(true)}>สร้างรายงาน</Button>}
             <Button variant="primary" onClick={() => setShowBulk(true)}><IconPlus /> ปรับโครงสร้างเงินเดือน</Button>
           </>
         }
@@ -151,6 +158,10 @@ export function SalaryStructure() {
       />
 
       <AdjustForm open={showBulk} employees={employees} onClose={() => setShowBulk(false)} />
+
+      <DocModal open={showReport && canReport} title="รายงานโครงสร้างเงินเดือน" onClose={() => setShowReport(false)} maxWidth={900}>
+        <SalaryStructureReportDoc rows={rows} adjustments={created.salaryStructureAdjustments} />
+      </DocModal>
     </>
   )
 }
@@ -442,12 +453,106 @@ function Stat({ k, v }: { k: string; v: string }) {
   )
 }
 
+/** Printable report — the per-employee salary-structure summary table followed
+    by the full adjustment history (with ผู้แก้ไข). Shown in a DocModal. */
+function SalaryStructureReportDoc({ rows, adjustments }: { rows: Row[]; adjustments: SalaryStructureAdjustment[] }) {
+  const now = fmtThaiDateTime(new Date().toISOString())
+  const by = currentUserName()
+  const th = { background: '#e9e9e9', color: '#111', borderColor: '#b8b8b8' }
+  return (
+    <div className="doc-sheet" style={{ maxWidth: 'none' }}>
+      <div className="doc-top">
+        <div className="co">
+          <img src="/logo.jpg" className="doc-logo" alt="KPC กิจไพศาลคอนกรีต" />
+          <div>
+            <div className="co-name">{COMPANY.name}</div>
+            <div className="co-line">({COMPANY.branch}) {COMPANY.address}</div>
+            <div className="co-line">โทร. {COMPANY.tel}</div>
+          </div>
+        </div>
+        <div className="doc-type">
+          <div className="tt">รายงานโครงสร้างเงินเดือน</div>
+          <div className="copy">พนักงาน {rows.length} คน</div>
+          <div className="copy">สร้างเมื่อ {now} · โดย {by}</div>
+        </div>
+      </div>
+
+      <table className="doc-lines" style={{ fontSize: 11, marginTop: 18 }}>
+        <thead>
+          <tr>
+            <th style={th}>รหัส</th>
+            <th style={th}>ชื่อ-สกุล</th>
+            <th style={th}>ฝ่าย</th>
+            <th className="num" style={th}>เงินรายวัน</th>
+            <th className="num" style={th}>เงินเดือน</th>
+            <th className="num" style={th}>ประสบการณ์</th>
+            <th className="num" style={th}>ปกส.</th>
+            <th className="num" style={th}>วันลา</th>
+            <th className="num" style={th}>อัตรา OT</th>
+            <th className="ctr" style={th}>OT</th>
+            <th className="ctr" style={th}>คอม</th>
+            <th className="ctr" style={th}>เที่ยว</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ emp, s }) => (
+            <tr key={emp.id}>
+              <td className="mono">{emp.id}</td>
+              <td>{emp.name}{emp.nickname ? ` (${emp.nickname})` : ''}</td>
+              <td>{DEPARTMENT_LABEL[emp.department].th}</td>
+              <td className="num mono">{s.dailyWage ? baht(s.dailyWage) : '-'}</td>
+              <td className="num mono">{s.baseSalary ? baht(s.baseSalary) : '-'}</td>
+              <td className="num mono">{s.experiencePay ? baht(s.experiencePay) : '-'}</td>
+              <td className="num mono">{s.socialSecurity ? baht(s.socialSecurity) : '-'}</td>
+              <td className="num mono">{s.leaveDays ?? 0}</td>
+              <td className="num mono">{s.otEligible === false ? '-' : computeOtRate(s).toFixed(2)}</td>
+              <td className="ctr">{s.otEligible !== false ? '✓' : '–'}</td>
+              <td className="ctr">{s.commissionEligible !== false ? '✓' : '–'}</td>
+              <td className="ctr">{s.truckTripEligible === true ? '✓' : '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 24, fontSize: 15, fontWeight: 700, color: 'var(--kpc-primary-ink)' }}>
+        ประวัติการปรับโครงสร้าง <span style={{ fontSize: 12, fontWeight: 400, color: '#888' }}>({adjustments.length} ครั้ง)</span>
+      </div>
+      {adjustments.length === 0 ? (
+        <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>— ยังไม่มีประวัติการปรับ —</div>
+      ) : (
+        <table className="doc-lines" style={{ fontSize: 11, marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, width: '18%' }}>วันที่/เวลา</th>
+              <th style={th}>พนักงาน</th>
+              <th style={th}>รายการที่ปรับ</th>
+              <th style={{ ...th, width: '14%' }}>ผู้แก้ไข</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adjustments.map((a, i) => (
+              <tr key={a.at + a.employeeId + i}>
+                <td className="mono">{fmtThaiDateTime(a.at)}</td>
+                <td>{a.employeeName}</td>
+                <td>{a.changes.map((c) => `${c.label}: ${baht(c.from)} → ${baht(c.to)}`).join(' · ')}</td>
+                <td>{a.by ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 function StructureHistoryCard({ adj }: { adj: SalaryStructureAdjustment }) {
   return (
     <div className="card" style={{ padding: 14 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>{adj.employeeName}</span>
-        <span className="mono" style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{fmtThaiDateTime(adj.at)}</span>
+        <span className="mono" style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
+          {fmtThaiDateTime(adj.at)}{adj.by ? <> · โดย <strong style={{ color: 'var(--kpc-text-strong)' }}>{adj.by}</strong></> : ''}
+        </span>
       </div>
       <div className="row wrap" style={{ gap: 10 }}>
         {adj.changes.map((c, i) => {

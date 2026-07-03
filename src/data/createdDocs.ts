@@ -84,6 +84,10 @@ export interface SalesOrder {
   orderDate: string  /* ISO yyyy-mm-dd — defaults to today */
   useDate: string    /* ISO yyyy-mm-dd — date the customer wants to use it */
   customer: string
+  /** Which SITE the ordered products come from: 'plant' = สินค้าแพล้นปูน (คอนกรีต,
+      issued as ใบจ่ายคอนกรีต), 'foundry' = สินค้าโรงหล่อ (issued as ใบส่งสินค้าโรงหล่อ).
+      Optional for orders saved before the field existed (treated as 'plant'). */
+  site?: 'plant' | 'foundry'
   items: SalesOrderItem[]
   status: SalesOrderStatus
   note?: string
