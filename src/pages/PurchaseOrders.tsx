@@ -7,6 +7,7 @@ import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
+import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { baht } from '../data/selectors'
 import { CREDITOR_MASTER } from '../data/creditors'
 import {
@@ -140,9 +141,11 @@ export function PurchaseOrders() {
 interface DraftItem { desc: string; qty: string; unit: string; price: string }
 
 function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: PurchaseOrder[]; onSaved: (po: PurchaseOrder) => void }) {
+  const created = useCreatedDocs()
   const [orderDate, setOrderDate] = useState(todayIso())
   const [dueDate, setDueDate] = useState('')
   const [supplier, setSupplier] = useState('')
+  const [showAddSupplier, setShowAddSupplier] = useState(false)
   const [items, setItems] = useState<DraftItem[]>([{ desc: '', qty: '', unit: 'หน่วย', price: '' }])
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
@@ -199,8 +202,12 @@ function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: bool
           <Input type="date" value={dueDate} min={orderDate || undefined} onChange={(e) => setDueDate(e.target.value)} />
         </Field>
         <Field label="ซัพพลายเออร์" required style={{ gridColumn: '1 / -1' }}>
-          <Input list="kpc-supplier-list" placeholder="พิมพ์หรือเลือกซัพพลายเออร์" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <Input list="kpc-supplier-list" placeholder="พิมพ์หรือเลือกซัพพลายเออร์" value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ flex: 1 }} />
+            <Button variant="tonal" size="sm" onClick={() => setShowAddSupplier(true)} title="เพิ่มซัพพลายเออร์ใหม่">+ เพิ่มซัพพลายเออร์</Button>
+          </div>
           <datalist id="kpc-supplier-list">
+            {created.suppliersAdded.map((s) => <option key={s.id} value={s.name} />)}
             {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
           </datalist>
         </Field>
@@ -231,6 +238,13 @@ function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: bool
       <Field label="หมายเหตุ">
         <Input placeholder="เงื่อนไข / รายละเอียดเพิ่มเติม" value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
+
+      <NewSupplierForm
+        open={showAddSupplier}
+        onClose={() => setShowAddSupplier(false)}
+        initialName={supplier}
+        onCreated={(c) => { setSupplier(c.name); setShowAddSupplier(false) }}
+      />
     </Modal>
   )
 }

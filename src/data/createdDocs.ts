@@ -9,6 +9,8 @@ import { useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
 import type { DeliveryTicket, Customer } from './real'
 import type { Employee } from './employees'
+import type { Creditor } from './creditors'
+import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
 
 /** Audit stamp applied to every newly saved record: who saved it and when.
@@ -678,6 +680,8 @@ export interface CreatedDocs {
   customerEdits: Record<string, CustomerEdit>
   /** New customers added through quick-add forms (e.g. inside NewDeliveryTicketForm). */
   customersAdded: Customer[]
+  /** New suppliers added through quick-add forms (e.g. inside the ใบสั่งซื้อ / ใบสำคัญจ่าย forms). */
+  suppliersAdded: Creditor[]
   /** History of transport-rate adjustments — newest first. */
   transportAdjustments: TransportRateAdjustment[]
   /** History of product-price adjustments — newest first. */
@@ -722,10 +726,12 @@ export interface CreatedDocs {
   foundryReceipts: StockReceipt[]
   /** Stock reconciliations (กระทบยอดคงคลัง) — newest first. */
   stockReconciles: StockReconcile[]
+  /** Historical tax rows imported from Excel/CSV (รายงานภาษีซื้อ/ขาย ย้อนหลัง). */
+  taxImports: ImportedTaxRow[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [] }
 
 function read(): CreatedDocs {
   try {
@@ -740,6 +746,7 @@ function read(): CreatedDocs {
       hidden: { ...emptyHidden, ...(v.hidden ?? {}) },
       customerEdits: v.customerEdits ?? {},
       customersAdded: v.customersAdded ?? [],
+      suppliersAdded: v.suppliersAdded ?? [],
       /* Drop legacy entries (pre-multi-row format) that lack the `fees` array. */
       transportAdjustments: (v.transportAdjustments ?? []).filter((a) => Array.isArray((a as TransportRateAdjustment).fees)),
       priceAdjustments: (v.priceAdjustments ?? []).filter((a) => a && typeof (a as PriceAdjustment).prices === 'object'),
@@ -783,6 +790,9 @@ function read(): CreatedDocs {
       stockReceipts: v.stockReceipts ?? [],
       foundryReceipts: v.foundryReceipts ?? [],
       stockReconciles: v.stockReconciles ?? [],
+      /* Backfill year on rows imported before the year dimension existed (the
+         original seed/imports were พ.ศ. 2569). */
+      taxImports: (v.taxImports ?? []).map((r) => ({ ...r, year: r.year ?? 2569 })),
     }
   } catch {
     return empty
@@ -1013,8 +1023,42 @@ export function restoreAllHidden() {
   commit({ ...state, hidden: emptyHidden })
 }
 
+/* ───────── Imported historical tax rows (นำเข้ารายงานภาษี ย้อนหลัง) ───────── */
+/** Identity of an imported tax row for duplicate detection: same side, date,
+    doc no., name, value and VAT ⇒ treated as the same record. */
+export const taxImportKey = (r: ImportedTaxRow) => `${r.kind}|${r.date}|${r.docNo}|${r.name}|${r.value}|${r.vat}`
+/** Append imported tax rows, skipping any that duplicate rows already imported
+    (matched by kind/date/doc/name/value/vat). Returns the number actually added. */
+export function addTaxImports(rows: ImportedTaxRow[]): number {
+  const seen = new Set(state.taxImports.map(taxImportKey))
+  const fresh = rows.filter((r) => { const k = taxImportKey(r); if (seen.has(k)) return false; seen.add(k); return true })
+  if (fresh.length === 0) return 0
+  commit({ ...state, taxImports: [...state.taxImports, ...fresh] })
+  return fresh.length
+}
+/** Drop imported tax rows for one report side (sale / purchase). When `year`
+    is given, only that year's rows are removed; otherwise all years. */
+export function clearTaxImports(kind: 'sale' | 'purchase', year?: number) {
+  commit({ ...state, taxImports: state.taxImports.filter((r) => !(r.kind === kind && (year === undefined || r.year === year))) })
+}
+
 export function addCustomer(c: Customer) {
   commit({ ...state, customersAdded: [stamp(c), ...state.customersAdded] })
+}
+
+/** Push a brand-new supplier (ซัพพลายเออร์) to the head of the user-added list.
+    Creditor carries no audit fields, so no stamp is applied. */
+export function addSupplier(c: Creditor) {
+  commit({ ...state, suppliersAdded: [c, ...state.suppliersAdded] })
+}
+/** Next running supplier id (S0001, …) across the master + user-added list. */
+export function nextSupplierId(existing: Creditor[]): string {
+  let max = 0
+  for (const c of existing) {
+    const n = parseInt(c.id.replace(/^S/, ''), 10)
+    if (!Number.isNaN(n) && n > max) max = n
+  }
+  return `S${String(max + 1).padStart(4, '0')}`
 }
 
 /** Merge an edit onto a customer (by id). Undefined values clear prior edits. */

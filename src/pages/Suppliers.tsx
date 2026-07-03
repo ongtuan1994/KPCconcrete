@@ -5,6 +5,7 @@ import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
+import { useCreatedDocs } from '../data/createdDocs'
 import { baht } from '../data/selectors'
 import { downloadCsv } from '../utils/csv'
 
@@ -22,7 +23,9 @@ export function Suppliers() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
-  const list = CREDITOR_MASTER
+  const created = useCreatedDocs()
+  /* User-added suppliers (quick-added from the PO / payment forms) shown on top. */
+  const list = useMemo(() => [...created.suppliersAdded, ...CREDITOR_MASTER], [created.suppliersAdded])
 
   const rows = useMemo(
     () =>
