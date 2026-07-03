@@ -9,6 +9,7 @@ import { Modal } from '../components/Modal'
 import { baht } from '../data/selectors'
 import { COMPANY } from '../data/real'
 import { TAX_SALE, TAX_PURCHASE, type TaxMonthData, type TaxRow, type ImportedTaxRow } from '../data/taxReports'
+import { SEED_TAX_IMPORTS } from '../data/taxSeed'
 import { useCreatedDocs, addTaxImports, clearTaxImports, taxImportKey, type GoodsPayment } from '../data/createdDocs'
 import { parseSpreadsheet } from '../utils/spreadsheet'
 import { downloadCsv } from '../utils/csv'
@@ -308,8 +309,20 @@ export function TaxReports() {
   const [showImport, setShowImport] = useState(false)
   const created = useCreatedDocs()
 
-  const saleImports = useMemo(() => created.taxImports.filter((r) => r.kind === 'sale'), [created.taxImports])
-  const purchaseImports = useMemo(() => created.taxImports.filter((r) => r.kind === 'purchase'), [created.taxImports])
+  /* Baked-in seed (2565–2569 company data) + runtime imports, deduped — seed
+     shows on every machine; a user's own uploads add/refresh on top. */
+  const allImports = useMemo(() => {
+    const seen = new Set<string>()
+    const out: ImportedTaxRow[] = []
+    for (const r of [...SEED_TAX_IMPORTS, ...created.taxImports]) {
+      const k = taxImportKey(r)
+      if (seen.has(k)) continue
+      seen.add(k); out.push(r)
+    }
+    return out
+  }, [created.taxImports])
+  const saleImports = useMemo(() => allImports.filter((r) => r.kind === 'sale'), [allImports])
+  const purchaseImports = useMemo(() => allImports.filter((r) => r.kind === 'purchase'), [allImports])
 
   /* Tax years (พ.ศ.) available for the current report side: the seed year plus
      any imported years (and, for ภาษีซื้อ, the years of ใบสำคัญจ่าย ที่ลง VAT). */
@@ -333,9 +346,11 @@ export function TaxReports() {
   }, [kind, year, saleImports, purchaseImports, created.goodsPayments])
 
   const available = useMemo(() => data.map((d) => d.month), [data])
+  /* Banner counts only the user's runtime uploads (seed is the baseline, not
+     shown as "imported"), so the clear-imports action stays meaningful. */
   const importedCount = useMemo(
-    () => (kind === 'sale' ? saleImports : purchaseImports).filter((r) => r.year === year).length,
-    [kind, year, saleImports, purchaseImports],
+    () => created.taxImports.filter((r) => r.kind === kind && r.year === year).length,
+    [created.taxImports, kind, year],
   )
 
   /* ภาษีซื้อ filed late: imported rows in the selected filing period whose invoice
@@ -385,6 +400,16 @@ export function TaxReports() {
     downloadCsv(`tax-${kind}-${year}-${THAI_MONTHS_SHORT[month - 1]}`, [head, ...body])
   }
 
+  /* Dev-only: dump the runtime imports so they can be baked into taxSeed.json. */
+  const exportSeed = () => {
+    const blob = new Blob([JSON.stringify(created.taxImports)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'tax-imports-seed.json'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1500)
+  }
+
   const columns: Column<TaxRow>[] = [
     { key: 'seq', header: 'ลำดับ', align: 'center', cell: (r) => <span className="mono" style={{ fontSize: 12 }}>{r.seq}</span> },
     { key: 'date', header: 'วันที่', cell: (r) => fmtTaxDate(r.date), className: 'date' },
@@ -420,6 +445,9 @@ export function TaxReports() {
         sub={`Tax Reports · ${title} · ${THAI_MONTHS_FULL[month - 1]} ${year}`}
         actions={
           <>
+            {import.meta.env.DEV && (
+              <Button variant="secondary" onClick={exportSeed} disabled={created.taxImports.length === 0}>ส่งออก seed (dev)</Button>
+            )}
             <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => setShowPrint(true)} disabled={rows.length === 0}>พิมพ์รายงาน</Button>
