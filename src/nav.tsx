@@ -73,6 +73,7 @@ export const NAV: NavGroup[] = [
   },
   {
     section: 'ฐานข้อมูล · Database',
+    collapsible: true,
     items: [
       { to: '/customer-master', label: 'ทะเบียนลูกค้า', en: 'Customer Master', icon: <IconUsers /> },
       { to: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', en: 'Supplier', icon: <IconTruck /> },

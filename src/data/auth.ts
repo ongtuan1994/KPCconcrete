@@ -94,13 +94,20 @@ export const RESOURCES: Resource[] = [
 /** route → resource key, for guarding the router. */
 export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
+/* Legacy direct วางบิล route shares the ใบกำกับภาษี / วางบิล gate. */
+ROUTE_RESOURCE['/billing'] = 'invoices'
 
 /** Hard per-resource role allowlist — overrides the permission matrix. When a
     resource key is listed here, ONLY these roles may view it, no matter what the
     configurable perms say. Used for sensitive pages. */
+const ALL_BUT_MANAGER: Role[] = ['Admin', 'Board', 'Auditor', 'Accountant']
 export const RESOURCE_ROLE_ALLOW: Record<string, Role[]> = {
   'monthly-report': ['Admin', 'Board', 'Auditor'],
   'salary-structure': ['Admin', 'Board', 'Auditor'],
+  /* Manager cannot access these sales documents. */
+  'delivery-tickets': ALL_BUT_MANAGER,
+  'foundry-deliveries': ALL_BUT_MANAGER,
+  'invoices': ALL_BUT_MANAGER,
 }
 /** false only when `key` is role-locked and `role` isn't in its allowlist. */
 export function roleAllowsResource(role: Role, key: string): boolean {
