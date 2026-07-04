@@ -22,14 +22,21 @@ const STATUS_LABEL: Record<StockReconcileStatus, { th: string; tone: Tone }> = {
 }
 const statusOf = (r: StockReconcile): StockReconcileStatus => r.status ?? 'draft'
 
-export function StockReconcileHistory({ scope = 'material' }: { scope?: 'material' | 'foundry' }) {
+const SCOPE_CFG: Record<'material' | 'foundry' | 'foundry-material', { back: string; backLabel: string; title: string }> = {
+  material: { back: '/stock', backLabel: '← กลับไปคลังวัตถุดิบแพล้นปูน', title: 'ประวัติการกระทบยอดคงคลัง' },
+  foundry: { back: '/foundry-stock', backLabel: '← กลับไปสต๊อกสินค้าโรงหล่อ', title: 'ประวัติการกระทบยอดสต๊อกโรงหล่อ' },
+  'foundry-material': { back: '/foundry-materials', backLabel: '← กลับไปคลังวัตถุดิบโรงหล่อ', title: 'ประวัติการกระทบยอดคลังวัตถุดิบโรงหล่อ' },
+}
+
+export function StockReconcileHistory({ scope = 'material' }: { scope?: 'material' | 'foundry' | 'foundry-material' }) {
   const created = useCreatedDocs()
   const navigate = useNavigate()
   const user = useCurrentUser()
   const isBoard = user?.role === 'Board'
   const [activeId, setActiveId] = useState<string | null>(null)
-  const backTo = scope === 'foundry' ? '/foundry-stock' : '/stock'
-  const backLabel = scope === 'foundry' ? '← กลับไปสต๊อกสินค้าโรงหล่อ' : '← กลับไปคลังวัตถุดิบ'
+  const cfg = SCOPE_CFG[scope]
+  const backTo = cfg.back
+  const backLabel = cfg.backLabel
   const rows = created.stockReconciles.filter((r) => (r.scope ?? 'material') === scope)
   /* Live record so the modal reflects status changes after request/approve. */
   const active = activeId ? rows.find((r) => r.id === activeId) ?? null : null
@@ -55,7 +62,7 @@ export function StockReconcileHistory({ scope = 'material' }: { scope?: 'materia
   return (
     <>
       <PageHeader
-        title={scope === 'foundry' ? 'ประวัติการกระทบยอดสต๊อกโรงหล่อ' : 'ประวัติการกระทบยอดคงคลัง'}
+        title={cfg.title}
         sub={`Stock Reconciliation History · ${rows.length} ครั้ง`}
         actions={<Button variant="secondary" onClick={() => navigate(backTo)}>{backLabel}</Button>}
       />

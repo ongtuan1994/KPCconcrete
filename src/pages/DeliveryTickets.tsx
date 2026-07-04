@@ -10,6 +10,7 @@ import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { SEED_IMPORTED_TICKETS } from '../data/ticketSeed'
 import { INVOICES, baht, qm, prodShort, LATEST_MONTH, ticketYear } from '../data/selectors'
 import { useCreatedDocs, removeTicket, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
+import { useCurrentUser } from '../data/auth'
 import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { ImportDeliveryTicketsModal } from '../components/documents/ImportDeliveryTicketsModal'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
@@ -41,6 +42,7 @@ export function DeliveryTickets() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [invoiceRefs, setInvoiceRefs] = useState<string | null>(null)
   const created = useCreatedDocs()
+  const isAdmin = useCurrentUser()?.role === 'Admin'
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -255,7 +257,7 @@ export function DeliveryTickets() {
             {import.meta.env.DEV && (
               <Button variant="secondary" onClick={exportSeed} disabled={created.tickets.length === 0}>ส่งออก seed (dev)</Button>
             )}
-            <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>
+            {isAdmin && <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>}
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => setShowForm(true)}>
               <IconPlus /> บันทึกใบจ่ายคอนกรีต

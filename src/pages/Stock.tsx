@@ -88,6 +88,9 @@ function status(m: StockMaterial): { th: string; en: string; tone: Tone } {
 
 export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {}) {
   const isFoundry = scope === 'foundry'
+  /* Reconcile scope for this stock — kept separate so plant, foundry-material and
+     foundry-product reconcile histories don't mix. */
+  const rcScope: 'material' | 'foundry-material' = isFoundry ? 'foundry-material' : 'material'
   /* The material universe for this page — plant (concrete) or foundry (reinforcement). */
   const universe = useMemo(() => STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === scope), [scope])
   const scopeCodes = useMemo(() => new Set(universe.map((m) => m.code)), [universe])
@@ -112,15 +115,15 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
     return m
   }, [created.stockReceipts, to, scopeCodes])
 
-  /* Approved reconciliations adjust the balance by their per-line diff. */
+  /* Approved reconciliations (this stock's scope) adjust the balance by their per-line diff. */
   const adjustByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const rc of created.stockReconciles) {
-      if (rc.status !== 'approved' || (rc.scope ?? 'material') !== 'material' || !upTo(rc.date)) continue
+      if (rc.status !== 'approved' || (rc.scope ?? 'material') !== rcScope || !upTo(rc.date)) continue
       for (const l of rc.lines) if (l.diff && scopeCodes.has(l.code)) m[l.code] = (m[l.code] ?? 0) + l.diff
     }
     return m
-  }, [created.stockReconciles, to, scopeCodes])
+  }, [created.stockReconciles, to, scopeCodes, rcScope])
 
   /* Auto-issue: user-created delivery tickets consume plant raw materials (seed
      tickets excluded). Foundry reinforcement is not auto-issued by concrete tickets. */
@@ -273,8 +276,8 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
               downloadCsv(isFoundry ? 'foundry-materials' : 'stock', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
-            {!isFoundry && <Button variant="secondary" onClick={() => navigate('/stock-reconcile')}>ประวัติการกระทบยอด</Button>}
-            {!isFoundry && <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>}
+            <Button variant="secondary" onClick={() => navigate(isFoundry ? '/foundry-materials-reconcile' : '/stock-reconcile')}>ประวัติการกระทบยอด</Button>
+            <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>
             <Button variant="primary" onClick={() => setShowReceive(true)}>
               <IconPlus /> รับเข้าวัตถุดิบ
             </Button>
@@ -326,7 +329,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       </p>
 
       <ReceiveStockModal open={showReceive} onClose={() => setShowReceive(false)} receivedByCode={receivedByCode} materials={universe} />
-      {!isFoundry && <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} />}
+      <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} scope={rcScope} />
     </>
   )
 }
@@ -446,7 +449,7 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
 const tdSt: CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--kpc-border-soft, #f1f5f9)' }
 const thSt: CSSProperties = { padding: '8px', borderBottom: '1px solid var(--kpc-border)', color: 'var(--kpc-text-muted)', fontSize: 11.5, fontWeight: 600 }
 
-function ReconcileModal({ open, onClose, materials }: { open: boolean; onClose: () => void; materials: StockMaterial[] }) {
+function ReconcileModal({ open, onClose, materials, scope }: { open: boolean; onClose: () => void; materials: StockMaterial[]; scope: 'material' | 'foundry-material' }) {
   const [date, setDate] = useState(todayIso())
   const [counted, setCounted] = useState<Record<string, string>>({})
   const [costs, setCosts] = useState<Record<string, string>>({})
@@ -488,7 +491,7 @@ function ReconcileModal({ open, onClose, materials }: { open: boolean; onClose: 
       }
     })
     addStockReconcile({
-      id: `rc_${Date.now()}`, scope: 'material', date, lines,
+      id: `rc_${Date.now()}`, scope, date, lines,
       totalDiffValue: Math.round(totals.net * 100) / 100,
       lossValue: Math.round(totals.loss * 100) / 100,
       note: overall.trim() || undefined,
@@ -560,7 +563,7 @@ function ReconcileModal({ open, onClose, materials }: { open: boolean; onClose: 
         <div>มูลค่าส่วนต่างสุทธิ: <strong className="mono">{totals.net > 0 ? '+' : ''}{baht(Math.round(totals.net * 100) / 100)}</strong></div>
         <div>ต้นทุนเสียหายรวม: <strong className="mono" style={{ color: '#b91c1c' }}>{baht(Math.round(totals.loss * 100) / 100)}</strong></div>
       </div>
-      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--kpc-text-muted)' }}>* บันทึกเพื่อตรวจสอบเท่านั้น — ระบบจะไม่ปรับยอดคงคลังตามจำนวนที่นับจริง</div>
+      <div style={{ marginTop: 6, fontSize: 12, color: 'var(--kpc-text-muted)' }}>* บันทึกเพื่อขออนุมัติ — ระบบจะปรับยอดคงคลังตามจำนวนที่นับจริงเมื่อผู้บริหาร (Board) อนุมัติ</div>
     </Modal>
   )
 }

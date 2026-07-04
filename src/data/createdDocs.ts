@@ -410,8 +410,9 @@ export type StockReconcileStatus = 'draft' | 'pending' | 'approved'
     applied to the on-hand balance only once a Board user approves it. */
 export interface StockReconcile {
   id: string
-  /** Which stock this reconciles — raw materials (default) or foundry products. */
-  scope?: 'material' | 'foundry'
+  /** Which stock this reconciles — plant raw materials (default), foundry
+      products, or foundry raw materials. */
+  scope?: 'material' | 'foundry' | 'foundry-material'
   date: string        /* ISO yyyy-mm-dd */
   lines: StockReconcileLine[]
   totalDiffValue: number  /* Σ diffValue (net, signed) */

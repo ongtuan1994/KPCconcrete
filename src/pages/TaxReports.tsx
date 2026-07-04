@@ -11,6 +11,7 @@ import { COMPANY } from '../data/real'
 import { TAX_SALE, TAX_PURCHASE, type TaxMonthData, type TaxRow, type ImportedTaxRow } from '../data/taxReports'
 import { SEED_TAX_IMPORTS } from '../data/taxSeed'
 import { useCreatedDocs, addTaxImports, clearTaxImports, taxImportKey, type GoodsPayment } from '../data/createdDocs'
+import { useCurrentUser } from '../data/auth'
 import { parseSpreadsheet } from '../utils/spreadsheet'
 import { downloadCsv } from '../utils/csv'
 
@@ -308,6 +309,7 @@ export function TaxReports() {
   const [showPrint, setShowPrint] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const created = useCreatedDocs()
+  const isAdmin = useCurrentUser()?.role === 'Admin'
 
   /* Baked-in seed (2565–2569 company data) + runtime imports, deduped — seed
      shows on every machine; a user's own uploads add/refresh on top. */
@@ -448,7 +450,7 @@ export function TaxReports() {
             {import.meta.env.DEV && (
               <Button variant="secondary" onClick={exportSeed} disabled={created.taxImports.length === 0}>ส่งออก seed (dev)</Button>
             )}
-            <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>
+            {isAdmin && <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>}
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => setShowPrint(true)} disabled={rows.length === 0}>พิมพ์รายงาน</Button>
           </>
