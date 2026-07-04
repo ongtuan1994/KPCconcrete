@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Select, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
-import { IconPlus, IconChevron } from '../components/icons'
+import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { SEED_IMPORTED_TICKETS } from '../data/ticketSeed'
-import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, LATEST_MONTH, ticketYear, type Invoice } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, LATEST_MONTH, monthName, ticketYear, type Invoice } from '../data/selectors'
 import { useCreatedDocs, removeTicket, removeInvoice, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
 import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
 import { useCurrentUser } from '../data/auth'
@@ -24,13 +24,11 @@ type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
 const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 
-const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
-/** A tax/delivery period the dropdown can select — a specific เดือน of a พ.ศ. year. */
-type Period = { y: number; m: number }
-const periodLabel = (p: Period) => `${THAI_MONTHS_FULL[p.m - 1]} ${p.y}`
-
 export function DeliveryTickets() {
-  const [period, setPeriod] = useState<Period | 'all'>({ y: 2569, m: LATEST_MONTH })
+  /* Year (พ.ศ.) + month filter — keeps imported historical tickets (2564–2568)
+     separate from the live 2569 data (default view). */
+  const [year, setYear] = useState(2569)
+  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -64,7 +62,7 @@ export function DeliveryTickets() {
     } else if (st?.focusDtNo) {
       /* Navigated here from a sales order's ใบจ่ายคอนกรีต link — focus that ticket. */
       const dt = [...created.tickets, ...DELIVERY_TICKETS].find((t) => t.dtNo === st.focusDtNo)
-      if (dt) { setPeriod({ y: ticketYear(dt), m: dt.month }); setFilter('all'); setQuery(dt.dtNo) }
+      if (dt) { setYear(ticketYear(dt)); setMonth(dt.month); setFilter('all'); setQuery(dt.dtNo) }
       navigate(location.pathname, { replace: true, state: null })
     }
   }, [location, navigate, created.tickets])
@@ -114,20 +112,18 @@ export function DeliveryTickets() {
   }, [created.tickets, hiddenSet])
   /* Selectable periods (เดือน + ปี พ.ศ.) built from the tickets that actually
      exist — so importing historical data adds its periods to the dropdown. */
-  const periods = useMemo(() => {
-    const map = new Map<string, Period>()
-    for (const t of allTickets) { const y = ticketYear(t); map.set(`${y}-${t.month}`, { y, m: t.month }) }
-    return [...map.values()].sort((a, b) => a.y - b.y || a.m - b.m)
-  }, [allTickets])
-  /* Snap the selection to a valid period if the current one no longer exists. */
+  /* Distinct ticket years (พ.ศ.), newest first — for the year picker. */
+  const years = useMemo(
+    () => [...new Set(allTickets.map((t) => ticketYear(t)))].sort((a, b) => b - a),
+    [allTickets],
+  )
+  /* Snap the year to a valid one if the current selection no longer exists. */
   useEffect(() => {
-    if (period !== 'all' && !periods.some((p) => p.y === period.y && p.m === period.m)) {
-      setPeriod(periods[periods.length - 1] ?? 'all')
-    }
-  }, [periods, period])
+    if (years.length && !years.includes(year)) setYear(years[0])
+  }, [years, year])
   const monthRows = useMemo(
-    () => (period === 'all' ? allTickets : allTickets.filter((t) => t.month === period.m && ticketYear(t) === period.y)),
-    [period, allTickets],
+    () => allTickets.filter((t) => ticketYear(t) === year && (month === 'all' || t.month === month)),
+    [year, month, allTickets],
   )
   const rows = useMemo(
     () =>
@@ -193,7 +189,7 @@ export function DeliveryTickets() {
       r.dtNo, r.date, r.type, r.customer, prodShort(r.prod), r.m3, r.price, r.amount,
       r.vehicle ?? '', r.pay ?? '', ticketInvoiceNo(r),
     ])
-    const slug = `delivery-tickets-${period === 'all' ? 'all' : `${period.y}-${period.m}`}`
+    const slug = `delivery-tickets-${year}-${month === 'all' ? 'all' : month}`
     downloadCsv(slug, [head, ...body])
   }
 
@@ -276,7 +272,7 @@ export function DeliveryTickets() {
     <>
       <PageHeader
         title="ใบจ่ายคอนกรีต"
-        sub={`Delivery Tickets · ${period === 'all' ? 'ทุกช่วงเวลา' : periodLabel(period)}`}
+        sub={`Delivery Tickets · ${month === 'all' ? 'ทุกเดือน' : monthName(month)} ${year}`}
         actions={
           <>
             {import.meta.env.DEV && (
@@ -298,22 +294,16 @@ export function DeliveryTickets() {
       </div>
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div className="row wrap" style={{ gap: 10 }}>
-          <div className="select-wrap" style={{ width: 180 }}>
-            <select
-              className="select"
-              value={period === 'all' ? 'all' : `${period.y}-${period.m}`}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v === 'all') setPeriod('all')
-                else { const [y, m] = v.split('-').map(Number); setPeriod({ y, m }) }
-              }}
-            >
-              <option value="all">ทุกช่วงเวลา</option>
-              {periods.map((p) => (
-                <option key={`${p.y}-${p.m}`} value={`${p.y}-${p.m}`}>{periodLabel(p)}</option>
-              ))}
-            </select>
-            <span className="chev"><IconChevron /></span>
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
           </div>
           <div className="pills">
             <Pill active={filter === 'all'} onClick={() => setFilter('all')}>ทั้งหมด {monthRows.length}</Pill>
@@ -373,7 +363,7 @@ export function DeliveryTickets() {
           setPrefill(null)
           setPrefillSalesOrderNo(null)
           setEditing(null)
-          setPeriod({ y: ticketYear(t), m: t.month })
+          setYear(ticketYear(t)); setMonth(t.month)
           setFilter('all')
           setQuery(t.dtNo)
         }}
@@ -392,9 +382,16 @@ export function DeliveryTickets() {
                 <Button variant="secondary" size="sm" onClick={() => cancelInvoice(ticketInvoiceNo(active))} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
               </span>
             ) : (
-              <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
-                ออกใบกำกับภาษี
-              </Button>
+              <>
+                {/* Edit is allowed only before an invoice is issued, and only for
+                    user-created tickets (seed tickets have no store record to patch). */}
+                {newSet.has(active.dtNo) && (
+                  <Button variant="secondary" onClick={() => { const t = active; setActive(null); setEditing(t); setShowForm(true) }}>แก้ไข</Button>
+                )}
+                <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
+                  ออกใบกำกับภาษี
+                </Button>
+              </>
             )
           ) : undefined
         }
@@ -425,7 +422,7 @@ export function DeliveryTickets() {
       <ImportDeliveryTicketsModal
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImported={(t) => { setShowImport(false); setPeriod({ y: ticketYear(t), m: t.month }); setFilter('all'); setQuery('') }}
+        onImported={(t) => { setShowImport(false); setYear(ticketYear(t)); setMonth(t.month); setFilter('all'); setQuery('') }}
       />
     </>
   )

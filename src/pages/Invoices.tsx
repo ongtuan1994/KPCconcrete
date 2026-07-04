@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, Field, Input, Select, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Field, Input, Select, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
@@ -13,7 +13,7 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
 import { PRODUCT_MAP } from '../data/real'
 import { useCreatedDocs, removeInvoice, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -46,6 +46,9 @@ const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {
 
 export function Invoices() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* Year filter (พ.ศ.) — defaults to the live 2569 data so the imported historical
+     invoices (2564–2568) stay separate until the user selects their year. */
+  const [year, setYear] = useState<number>(2569)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
@@ -77,7 +80,14 @@ export function Invoices() {
     () => [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES].filter((i) => !hiddenSet.has(i.no)),
     [created.invoices, hiddenSet],
   )
-  const monthRows = useMemo(() => (month === 'all' ? allInvoices : allInvoices.filter((i) => i.month === month)), [month, allInvoices])
+  /* Distinct invoice years (พ.ศ.), newest first — for the year picker. */
+  const years = useMemo(
+    () => [...new Set(allInvoices.map((i) => ticketYear(i)))].sort((a, b) => b - a),
+    [allInvoices],
+  )
+  /* Filter by year first (keeps the historical import separate), then month. */
+  const yearRows = useMemo(() => allInvoices.filter((i) => ticketYear(i) === year), [allInvoices, year])
+  const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((i) => i.month === month)), [month, yearRows])
   const rows = useMemo(
     () =>
       monthRows.filter((inv) => {
@@ -189,7 +199,17 @@ export function Invoices() {
 
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div className="row wrap" style={{ gap: 10 }}>
-          <MonthSelect value={month} onChange={setMonth} />
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
           <div className="pills">
             <Pill active={filter === 'all'} onClick={() => setFilter('all')}>ทั้งหมด {monthRows.length}</Pill>
             <Pill active={filter === 'pending'} onClick={() => setFilter('pending')}>รอชำระ {cnt('pending')}</Pill>

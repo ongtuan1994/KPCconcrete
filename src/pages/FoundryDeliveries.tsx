@@ -10,7 +10,7 @@ import { DocModal } from '../components/documents/DocModal'
 import { FoundryDeliveryDoc } from '../components/documents/FoundryDeliveryDoc'
 import { IconPlus } from '../components/icons'
 import { PRODUCTS, CUSTOMER_MASTER } from '../data/real'
-import { cleanProductName as cleanName } from '../data/selectors'
+import { cleanProductName as cleanName, monthName } from '../data/selectors'
 import {
   useCreatedDocs, addFoundryDelivery, removeFoundryDelivery, CAN_DELETE,
   type FoundryDelivery, type FoundryDeliveryItem,
@@ -36,12 +36,17 @@ function fmtDate(iso: string): string {
   if (!y || !m || !d) return iso
   return `${d}/${m}/${Number(y) + 543}`
 }
+/** พ.ศ. year / month from a foundry-delivery ISO date "YYYY-MM-DD". */
+const feYear = (f: { date: string }) => Number(f.date.slice(0, 4)) + 543
+const feMonth = (f: { date: string }) => Number(f.date.slice(5, 7))
 
 /** Pre-fill values when issuing a foundry delivery from a sales order. */
 interface FoundryDeliveryInitial { customer: string; items: { code: string; qty: number }[]; note?: string }
 
 export function FoundryDeliveries() {
   const [query, setQuery] = useState('')
+  const [year, setYear] = useState(2569)
+  const [month, setMonth] = useState<number | 'all'>('all')
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
@@ -61,17 +66,29 @@ export function FoundryDeliveries() {
     }
   }, [location, navigate])
 
+  /* Years present (พ.ศ.), newest first — current year always offered. */
+  const years = useMemo(() => {
+    const s = new Set(all.map(feYear))
+    s.add(2569)
+    return [...s].sort((a, b) => b - a)
+  }, [all])
+  useEffect(() => { if (!years.includes(year)) setYear(years[0]) }, [years, year])
+  /* Year + month scope (before the text search) — drives the KPIs too. */
+  const scoped = useMemo(
+    () => all.filter((f) => feYear(f) === year && (month === 'all' || feMonth(f) === month)),
+    [all, year, month],
+  )
   const rows = useMemo(
     () =>
-      all.filter((f) => {
+      scoped.filter((f) => {
         if (!query) return true
         const hay = `${f.fdNo} ${f.customer} ${f.vehicle} ${f.items.map((i) => i.name).join(' ')}`.toLowerCase()
         return hay.includes(query.toLowerCase())
       }),
-    [all, query],
+    [scoped, query],
   )
 
-  const totalItems = all.reduce((s, f) => s + f.items.reduce((a, it) => a + it.qty, 0), 0)
+  const totalItems = scoped.reduce((s, f) => s + f.items.reduce((a, it) => a + it.qty, 0), 0)
 
   const exportExcel = () => {
     const head = ['เลขที่ส่งสินค้า', 'วันที่', 'ลูกค้า', 'ทะเบียนรถ', 'รายการสินค้า', 'รวมจำนวน', 'หมายเหตุ']
@@ -104,7 +121,7 @@ export function FoundryDeliveries() {
     <>
       <PageHeader
         title="ใบส่งสินค้าโรงหล่อ"
-        sub={`Foundry Delivery Notes · ${all.length} ใบ`}
+        sub={`Foundry Delivery Notes · ${month === 'all' ? 'ทุกเดือน' : monthName(month)} ${year}`}
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
@@ -114,12 +131,25 @@ export function FoundryDeliveries() {
       />
 
       <div className="grid g-3" style={{ marginBottom: 24 }}>
-        <KpiCard label="ใบส่งสินค้า · Notes" value={all.length.toString()} note="ใบ" />
+        <KpiCard label="ใบส่งสินค้า · Notes" value={scoped.length.toString()} note="ใบ" />
         <KpiCard label="รวมจำนวนสินค้า · Items" value={totalItems.toLocaleString()} note="ชิ้น/แผ่น/ต้น" invert />
-        <KpiCard label="ลูกค้า · Customers" value={new Set(all.map((f) => f.customer)).size.toString()} note="รายที่ส่งแล้ว" />
+        <KpiCard label="ลูกค้า · Customers" value={new Set(scoped.map((f) => f.customer)).size.toString()} note="รายที่ส่งแล้ว" />
       </div>
 
-      <div className="row wrap" style={{ justifyContent: 'flex-end', marginBottom: 16, gap: 12 }}>
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
+        </div>
         <div style={{ width: 320 }}>
           <SearchInput placeholder="เลขที่ส่งสินค้า / ลูกค้า / ทะเบียนรถ" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>

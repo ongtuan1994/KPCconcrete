@@ -14,6 +14,8 @@ const TH_MONTH_FULL = ['มกราคม', 'กุมภาพันธ์', '
 const TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 export const monthLabel = (m: number) => MONTHS.find((x) => x.num === m)?.label ?? (TH_MONTH_FULL[m - 1] ? `${TH_MONTH_FULL[m - 1]} 2569` : '')
 export const monthShort = (m: number) => MONTHS.find((x) => x.num === m)?.short ?? (TH_MONTH_SHORT[m - 1] ?? '')
+/** Thai month name only (no year), months 1–12 — e.g. "กรกฎาคม". */
+export const monthName = (m: number) => TH_MONTH_FULL[m - 1] ?? ''
 
 /** Buddhist year (พ.ศ.) of a ticket from its dd/mm/yy date; 2569 when unparseable.
     2-digit yy → 25xx; 4-digit Gregorian (< 2200) → +543; else taken as-is. */
