@@ -875,6 +875,11 @@ function commit(next: CreatedDocs) {
 export function addInvoice(inv: Invoice) {
   commit({ ...state, invoices: [stamp(inv), ...state.invoices] })
 }
+/** Correct the number of a user-created invoice (fixing a wrong เลขที่ใบกำกับ).
+    Only affects created invoices; seed/imported ones are read-only. */
+export function updateInvoiceNo(oldNo: string, newNo: string) {
+  commit({ ...state, invoices: state.invoices.map((i) => (i.no === oldNo ? { ...i, no: newNo } : i)) })
+}
 
 /* Installment payments against invoices (ผ่อนชำระใบกำกับ). */
 export function addInvoicePayment(p: Omit<InvoicePayment, 'createdBy' | 'createdAt'>) {

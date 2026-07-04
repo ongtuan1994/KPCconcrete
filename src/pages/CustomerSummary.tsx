@@ -4,12 +4,19 @@ import { PageHeader } from '../components/Layout'
 import { Button, Badge, SearchInput, MonthSelect, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
-import { customerAgg, baht, bahtShort, qm, monthLabel, type CustomerAgg } from '../data/selectors'
-import { AR_OUTSTANDING } from '../data/receivables'
+import { customerAgg, baht, bahtShort, qm, monthLabel, INVOICES, SEED_IMPORTED_INVOICES, type CustomerAgg, type Invoice } from '../data/selectors'
+import { AR_OUTSTANDING, AR_INVOICES } from '../data/receivables'
 import { useCan } from '../data/auth'
 import { AuditButton } from '../components/AuditButton'
-import { addGeneralReport, type LedgerReport } from '../data/createdDocs'
+import { Modal } from '../components/Modal'
+import { DocModal } from '../components/documents/DocModal'
+import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
+import { addGeneralReport, useCreatedDocs, type LedgerReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
+
+/** Normalise an invoice number for matching (the ยอดค้าง sheet keeps an "IV"
+    prefix the imported documents may omit). */
+const invKey = (no: string) => no.replace(/^IV/i, '').trim()
 
 /** Render an ISO yyyy-mm-dd as Thai-style dd/mm/yyyy (Buddhist year). */
 function fmtDate(iso: string): string {
@@ -44,8 +51,23 @@ function arStatus(outstanding: number, dueDate?: string): PayStatus {
 export function CustomerSummary() {
   const [month, setMonth] = useState<number | 'all'>('all')
   const [query, setQuery] = useState('')
+  /* Debtor whose outstanding-invoice breakdown is open, + an invoice being viewed. */
+  const [detail, setDetail] = useState<string | null>(null)
+  const [viewInv, setViewInv] = useState<Invoice | null>(null)
   const navigate = useNavigate()
   const canCollect = useCan('receipts').edit
+  const created = useCreatedDocs()
+
+  /* Every invoice in the system, keyed by normalised number — so a debtor's
+     outstanding invoice can link to the actual ใบกำกับ document when it exists. */
+  const invByKey = useMemo(() => {
+    const m = new Map<string, Invoice>()
+    for (const inv of [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES]) {
+      const k = invKey(inv.no)
+      if (!m.has(k)) m.set(k, inv)
+    }
+    return m
+  }, [created.invoices])
 
   /* Outstanding is the real current AR snapshot (everyone not listed = cleared),
      overlaid on the month-aware sales aggregation. Debtors with a balance but no
@@ -124,6 +146,12 @@ export function CustomerSummary() {
             ชำระหนี้
           </Button>
         ) : null,
+    },
+    {
+      key: 'view', header: '', align: 'center',
+      cell: (r) => (r.outstanding > 0 && (AR_INVOICES[r.name]?.length ?? 0) > 0
+        ? <Button variant="ghost" size="sm" onClick={() => setDetail(r.name)} title="ดูใบกำกับที่ยังค้างชำระ">เปิดดู</Button>
+        : null),
     },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'customers', group: 'ลูกหนี้', ref: r.name, label: r.name, sub: r.outstanding > 0 ? `ค้างชำระ ${baht(r.outstanding)}` : `ยอดซื้อ ${baht(r.sales)}`, route: '/ledger' }} /> },
   ]
@@ -205,6 +233,61 @@ export function CustomerSummary() {
         </div>
       </div>
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ลูกค้า`} />
+
+      {/* Outstanding-invoice breakdown for a debtor. */}
+      <Modal
+        open={!!detail}
+        title={detail ? `ใบกำกับที่ยังค้างชำระ · ${detail}` : ''}
+        onClose={() => setDetail(null)}
+        maxWidth={640}
+        footer={<Button variant="secondary" onClick={() => setDetail(null)}>ปิด</Button>}
+      >
+        {detail && (() => {
+          const list = AR_INVOICES[detail] ?? []
+          const sum = list.reduce((s, x) => s + x.amount, 0)
+          const balance = AR_OUTSTANDING[detail]?.amount ?? sum
+          return (
+            <>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, fontSize: 13 }}>
+                <span style={{ color: 'var(--kpc-text-muted)' }}>{list.length} ใบกำกับ · รวมมูลค่า {baht(sum)}</span>
+                <span>ยอดค้างปัจจุบัน: <strong className="mono" style={{ color: 'var(--kpc-danger-ink)' }}>{baht(balance)}</strong></span>
+              </div>
+              <div className="card flush" style={{ overflowX: 'auto' }}>
+                <table className="data" style={{ minWidth: 480 }}>
+                  <thead>
+                    <tr><th>#</th><th>เลขที่ใบกำกับ</th><th className="num">มูลค่า (รวม VAT)</th><th className="ctr">เอกสาร</th></tr>
+                  </thead>
+                  <tbody>
+                    {list.map((x, i) => {
+                      const inv = invByKey.get(invKey(x.no))
+                      return (
+                        <tr key={x.no + i}>
+                          <td style={{ color: 'var(--kpc-text-faint)' }}>{i + 1}</td>
+                          <td className="mono">{x.no}</td>
+                          <td className="num mono">{baht(x.amount)}</td>
+                          <td className="ctr">
+                            {inv
+                              ? <Button variant="ghost" size="sm" onClick={() => setViewInv(inv)}>ดูใบกำกับ</Button>
+                              : <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }}>อ้างอิง</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="page-sub" style={{ marginTop: 10, fontSize: 12 }}>
+                * รายการจากยอดค้างจริง · ยอดค้างปัจจุบันเป็นยอดสุทธิหลังหักชำระบางส่วนแล้ว — ใบที่ลิงก์เอกสารได้จะเปิดใบกำกับในระบบ
+              </p>
+            </>
+          )
+        })()}
+      </Modal>
+
+      {/* View a linked tax invoice. */}
+      <DocModal open={!!viewInv} title={viewInv ? `ใบกำกับภาษี ${viewInv.no}` : ''} onClose={() => setViewInv(null)}>
+        {viewInv && <TaxInvoiceDoc inv={viewInv} />}
+      </DocModal>
     </>
   )
 }

@@ -15,7 +15,7 @@ import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
 import { PRODUCT_MAP } from '../data/real'
-import { useCreatedDocs, removeInvoice, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
+import { useCreatedDocs, removeInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
@@ -52,6 +52,10 @@ export function Invoices() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
+  /* Editing the number of a created invoice (fixing a wrong เลขที่ใบกำกับ). */
+  const [editNoInv, setEditNoInv] = useState<Invoice | null>(null)
+  const [newNo, setNewNo] = useState('')
+  const [noErr, setNoErr] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [fdRefs, setFdRefs] = useState<string | undefined>(undefined)
   const [downloading, setDownloading] = useState<Invoice | null>(null)
@@ -248,6 +252,12 @@ export function Invoices() {
         extraActions={
           active ? (
             <>
+              {/* เลขที่ใบกำกับ can be fixed on created invoices (seed/imported are read-only). */}
+              {created.invoices.some((i) => i.no === active.no) && (
+                <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setNewNo(inv.no); setNoErr(''); setEditNoInv(inv) }}>
+                  แก้ไขเลขที่
+                </Button>
+              )}
               <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setPayingInvoice(inv) }}>
                 ผ่อนชำระ
               </Button>
@@ -260,6 +270,32 @@ export function Invoices() {
       >
         {active && <TaxInvoiceDoc inv={active} />}
       </DocModal>
+
+      {/* Fix a wrong invoice number on a created invoice. */}
+      <Modal
+        open={!!editNoInv}
+        title="แก้ไขเลขที่ใบกำกับ"
+        onClose={() => setEditNoInv(null)}
+        maxWidth={440}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditNoInv(null)}>ยกเลิก</Button>
+            <Button variant="primary" onClick={() => {
+              if (!editNoInv) return
+              const n = newNo.trim()
+              if (!n) { setNoErr('กรุณากรอกเลขที่ใบกำกับ'); return }
+              if (n !== editNoInv.no && allInvoices.some((i) => i.no === n)) { setNoErr(`เลขที่ ${n} ถูกใช้แล้ว`); return }
+              updateInvoiceNo(editNoInv.no, n)
+              setEditNoInv(null)
+            }}>บันทึก</Button>
+          </>
+        }
+      >
+        {noErr && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{noErr}</div>}
+        <Field label="เลขที่ใบกำกับ" required hint={editNoInv ? `เดิม: ${editNoInv.no}` : undefined}>
+          <Input className="input mono" value={newNo} onChange={(e) => { setNewNo(e.target.value); setNoErr('') }} placeholder="เช่น 690621-0001" />
+        </Field>
+      </Modal>
 
       <InstallmentModal invoice={payingInvoice} payments={created.invoicePayments} onClose={() => setPayingInvoice(null)} />
 

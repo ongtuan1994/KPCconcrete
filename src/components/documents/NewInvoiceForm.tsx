@@ -71,9 +71,20 @@ export function NewInvoiceForm({
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [err, setErr] = useState<string>('')
   const [pullInfo, setPullInfo] = useState<string>('')
+  /* Invoice number — auto-generated but editable. `noDirty` stops the auto-fill
+     once the user types their own (real) number. */
+  const [no, setNo] = useState<string>('')
+  const [noDirty, setNoDirty] = useState(false)
 
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
+
+  /* Keep the auto number in sync with งวด/วันที่ until the user edits it. */
+  useEffect(() => {
+    if (noDirty) return
+    const dnum = parseInt(day, 10)
+    setNo(dnum >= 1 && dnum <= 31 ? nextInvoiceNo(month, dnum, all) : '')
+  }, [month, day, all, noDirty])
 
   /* Prices entered (and in PRODUCTS / TRANSPORT_FEES) are VAT-inclusive.
      For the printed Thai tax invoice we still need line items in pre-VAT form
@@ -156,6 +167,7 @@ export function NewInvoiceForm({
   const reset = () => {
     setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setPay('เงินสด')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
+    setNo(''); setNoDirty(false)
   }
 
   /* When opened with initialRefs (from the delivery-tickets page), seed and auto-pull. */
@@ -314,12 +326,16 @@ export function NewInvoiceForm({
     if (!dnum || dnum < 1 || dnum > 31) return setErr('กรุณาระบุวันที่ (1–31)')
     if (computed.ls.length === 0) return setErr('กรุณากรอกรายการสินค้าอย่างน้อย 1 รายการ (จำนวน + ราคา)')
 
+    const invNo = no.trim()
+    if (!invNo) return setErr('กรุณากรอกเลขที่ใบกำกับ')
+    if (all.some((i) => i.no === invNo)) return setErr(`เลขที่ใบกำกับ ${invNo} ถูกใช้แล้ว`)
+
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const dueDate = plus30(date)
     const paid = pay === 'เงินสด' || pay === 'โอน'
     const status: InvStatus = paid ? 'paid' : month < LATEST_MONTH ? 'overdue' : 'pending'
     const inv: Invoice = {
-      no: nextInvoiceNo(month, dnum, all),
+      no: invNo,
       month, date, dueDate, customer: customer.trim(), pay,
       lines: computed.ls,
       refs: [...refs.split(/[,\s]+/), ...fdRefs.split(/[,\s]+/)].map((x) => x.trim()).filter(Boolean),
@@ -365,6 +381,9 @@ export function NewInvoiceForm({
       </div>
 
       <div className="grid g-2" style={{ marginBottom: 16 }}>
+        <Field label="เลขที่ใบกำกับ" required hint="สร้างอัตโนมัติจากงวด/วันที่ — แก้ไขเป็นเลขจริงได้" style={{ gridColumn: '1 / -1' }}>
+          <Input className="input mono" value={no} onChange={(e) => { setNo(e.target.value); setNoDirty(true) }} placeholder="เช่น IV690621-0001 หรือ 690621-0001" />
+        </Field>
         <Field label="ลูกค้า" required>
           <Input
             list="kpc-customer-list"
