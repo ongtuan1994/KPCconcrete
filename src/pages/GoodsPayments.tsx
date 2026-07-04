@@ -8,15 +8,20 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { NewSupplierForm } from '../components/documents/NewSupplierForm'
-import { baht } from '../data/selectors'
+import { baht, monthName } from '../data/selectors'
 import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addGoodsPayment, addPurchaseOrder, removeGoodsPayment, CAN_DELETE,
+  useCreatedDocs, addGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, CAN_DELETE, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
+  type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const METHOD_TONE: Record<string, Tone> = { เงินสดย่อย: 'success', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
+const r2 = (n: number) => Math.round(n * 100) / 100
+/** พ.ศ. year / month from a voucher's ISO payDate "YYYY-MM-DD". */
+const gpYear = (g: { payDate: string }) => Number(g.payDate.slice(0, 4)) + 543
+const gpMonth = (g: { payDate: string }) => Number(g.payDate.slice(5, 7))
 
 /** Optional pre-fill values, e.g. when paying from a purchase order. */
 export interface GoodsPaymentInitial {
@@ -55,6 +60,8 @@ function nextPoNo(existing: PurchaseOrder[]): string {
 
 export function GoodsPayments() {
   const [query, setQuery] = useState('')
+  const [year, setYear] = useState(2569)
+  const [month, setMonth] = useState<number | 'all'>('all')
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<GoodsPaymentInitial | null>(null)
   const created = useCreatedDocs()
@@ -73,27 +80,105 @@ export function GoodsPayments() {
     }
   }, [location, navigate])
 
+  /* Year (พ.ศ.) + month scope — current year always offered. */
+  const years = useMemo(() => { const s = new Set(all.map(gpYear)); s.add(2569); return [...s].sort((a, b) => b - a) }, [all])
+  useEffect(() => { if (!years.includes(year)) setYear(years[0]) }, [years, year])
+  const scoped = useMemo(() => all.filter((g) => gpYear(g) === year && (month === 'all' || gpMonth(g) === month)), [all, year, month])
   const rows = useMemo(
     () =>
-      all.filter((g) => {
+      scoped.filter((g) => {
         if (!query) return true
         return `${g.gpNo} ${g.supplier} ${g.ref ?? ''} ${g.note ?? ''}`.toLowerCase().includes(query.toLowerCase())
       }),
-    [all, query],
+    [scoped, query],
   )
 
-  const totalPaid = all.reduce((s, g) => s + g.amount, 0)
+  const totalPaid = scoped.reduce((s, g) => s + g.amount, 0)
 
   const exportExcel = () => {
-    const head = ['เลขที่ใบสำคัญจ่าย', 'วันที่จ่าย', 'ซัพพลายเออร์', 'อ้างอิง', 'ภาษี', 'เลขที่ใบกำกับ', 'วิธีจ่าย', 'เลขที่เช็ค', 'จำนวนเงิน', 'หมายเหตุ']
-    const body = rows.map((g) => [g.gpNo, fmtDate(g.payDate), g.supplier, g.ref ?? '', g.withVat === false ? 'ไม่ลง VAT' : 'ลง VAT', g.taxInvoiceNo ?? '', g.method, g.chequeNo ?? '', g.amount, g.note ?? ''])
+    const head = ['เลขที่ใบสำคัญจ่าย', 'วันที่จ่าย', 'ซัพพลายเออร์', 'ประเภทค่าใช้จ่าย', 'SITE', 'อ้างอิง', 'ภาษี', 'เลขที่ใบกำกับ', 'วิธีจ่าย', 'เลขที่เช็ค', 'จำนวนเงิน', 'หมายเหตุ']
+    const body = rows.map((g) => [g.gpNo, fmtDate(g.payDate), g.supplier, g.category ?? '', g.site ?? '', g.ref ?? '', g.withVat === false ? 'ไม่ลง VAT' : 'ลง VAT', g.taxInvoiceNo ?? '', g.method, g.chequeNo ?? '', g.amount, g.note ?? ''])
     downloadCsv('goods-payments', [head, ...body])
+  }
+
+  /* ── รายงานค่าใช้จ่ายรายเดือน (7 ประเภท, ลง VAT) — เดือน × ประเภท ── */
+  const createExpenseReport = () => {
+    const CATS: string[] = GOODS_PAYMENT_CATEGORIES.filter((c) => c !== 'ค่าซื้อวัตถุดิบ')
+    const byMonth = new Map<string, { y: number; m: number; values: number[] }>()
+    for (const g of all) {
+      if (g.withVat === false || !g.category) continue
+      const ci = CATS.indexOf(g.category)
+      if (ci < 0) continue
+      const y = Number(g.payDate.slice(0, 4)) + 543, m = Number(g.payDate.slice(5, 7))
+      if (!y || !m) continue
+      const key = `${y}-${String(m).padStart(2, '0')}`
+      const row = byMonth.get(key) ?? { y, m, values: new Array(CATS.length).fill(0) }
+      row.values[ci] += g.amount
+      byMonth.set(key, row)
+    }
+    const sorted = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    if (sorted.length === 0) return alert('ยังไม่มีใบสำคัญจ่าย (ลง VAT) ใน 7 ประเภทนี้')
+    const rows = sorted.map(([, r]) => {
+      const values = r.values.map((v) => r2(v))
+      return { month: `${monthName(r.m)} ${r.y}`, values, total: r2(values.reduce((s, v) => s + v, 0)) }
+    })
+    const colTotals = CATS.map((_, i) => r2(rows.reduce((s, row) => s + row.values[i], 0)))
+    const grandTotal = r2(colTotals.reduce((s, v) => s + v, 0))
+    const fromLabel = rows[0].month, toLabel = rows[rows.length - 1].month
+    const report: ExpenseReport = {
+      id: `gr_${Date.now()}`, kind: 'expense',
+      title: `รายงานค่าใช้จ่าย ${fromLabel} – ${toLabel}`,
+      fromLabel, toLabel, scopeLabel: 'ทุกเดือนที่มีข้อมูล',
+      categories: CATS, rows, colTotals, grandTotal, createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" แล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) navigate('/general-reports')
+  }
+
+  /* ── บัญชีซื้อสินค้า (ค่าซื้อวัตถุดิบ, ลง VAT) — เดือน × SITE (แพล้นปูน/โรงหล่อ) ── */
+  const createPurchaseReport = () => {
+    const emptyS = (): PurchaseSiteAmount => ({ base: 0, vat: 0, total: 0 })
+    const byMonth = new Map<string, { y: number; m: number; plant: PurchaseSiteAmount; foundry: PurchaseSiteAmount }>()
+    const addTo = (s: PurchaseSiteAmount, amount: number) => {
+      const base = r2(amount / 1.07)
+      s.base = r2(s.base + base); s.vat = r2(s.vat + (amount - base)); s.total = r2(s.total + amount)
+    }
+    for (const g of all) {
+      if (g.withVat === false || g.category !== 'ค่าซื้อวัตถุดิบ') continue
+      const y = Number(g.payDate.slice(0, 4)) + 543, m = Number(g.payDate.slice(5, 7))
+      if (!y || !m) continue
+      const key = `${y}-${String(m).padStart(2, '0')}`
+      const row = byMonth.get(key) ?? { y, m, plant: emptyS(), foundry: emptyS() }
+      addTo(g.site === 'โรงหล่อ' ? row.foundry : row.plant, g.amount)
+      byMonth.set(key, row)
+    }
+    const sorted = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    if (sorted.length === 0) return alert('ยังไม่มีใบสำคัญจ่ายประเภท "ค่าซื้อวัตถุดิบ" ที่ลง VAT')
+    const rows = sorted.map(([, r]) => ({ month: `${monthName(r.m)} ${r.y}`, plant: r.plant, foundry: r.foundry }))
+    const sum = (pick: (x: typeof rows[number]) => PurchaseSiteAmount): PurchaseSiteAmount =>
+      rows.reduce((a, x) => { const s = pick(x); return { base: r2(a.base + s.base), vat: r2(a.vat + s.vat), total: r2(a.total + s.total) } }, emptyS())
+    const fromLabel = rows[0].month, toLabel = rows[rows.length - 1].month
+    const report: PurchaseAccountReport = {
+      id: `gr_${Date.now()}`, kind: 'purchase-account',
+      title: `บัญชีซื้อวัตถุดิบ ${fromLabel} – ${toLabel}`,
+      fromLabel, toLabel, scopeLabel: 'ทุกเดือนที่มีข้อมูล',
+      rows, totals: { plant: sum((x) => x.plant), foundry: sum((x) => x.foundry) },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" แล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) navigate('/general-reports')
   }
 
   const columns: Column<GoodsPayment>[] = [
     { key: 'no', header: 'เลขที่ใบสำคัญจ่าย', cell: (r) => <span className="mono">{r.gpNo}</span>, className: 'docno' },
     { key: 'date', header: 'วันที่จ่าย', cell: (r) => fmtDate(r.payDate), className: 'date' },
     { key: 'sup', header: 'ซัพพลายเออร์', cell: (r) => r.supplier },
+    {
+      key: 'cat', header: 'ประเภท',
+      cell: (r) => (r.category
+        ? <span style={{ fontSize: 13 }}>{r.category}{r.site ? <span style={{ color: 'var(--kpc-text-muted)' }}> · {r.site}</span> : ''}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
+    },
     { key: 'ref', header: 'อ้างอิง', cell: (r) => (r.ref ? <span className="mono" style={{ fontSize: 13 }}>{r.ref}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     {
       key: 'vat', header: 'ภาษี', align: 'center',
@@ -130,18 +215,33 @@ export function GoodsPayments() {
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
+            <Button variant="secondary" onClick={createExpenseReport} disabled={all.length === 0}>รายงานค่าใช้จ่าย</Button>
+            <Button variant="secondary" onClick={createPurchaseReport} disabled={all.length === 0}>บัญชีซื้อวัตถุดิบ</Button>
             <Button variant="primary" onClick={() => setShowForm(true)}><IconPlus /> ออกใบสำคัญจ่าย</Button>
           </>
         }
       />
 
       <div className="grid g-3" style={{ marginBottom: 24 }}>
-        <KpiCard label="ใบสำคัญจ่าย · Vouchers" value={all.length.toString()} note="ใบ" />
-        <KpiCard label="ยอดจ่ายรวม · Paid" value={baht(totalPaid)} note="ทุกใบสำคัญจ่าย" invert />
-        <KpiCard label="ซัพพลายเออร์ · Suppliers" value={new Set(all.map((g) => g.supplier)).size.toString()} note="รายที่จ่ายแล้ว" />
+        <KpiCard label="ใบสำคัญจ่าย · Vouchers" value={scoped.length.toString()} note="ใบ" />
+        <KpiCard label="ยอดจ่ายรวม · Paid" value={baht(totalPaid)} note="ตามช่วงที่เลือก" invert />
+        <KpiCard label="ซัพพลายเออร์ · Suppliers" value={new Set(scoped.map((g) => g.supplier)).size.toString()} note="รายที่จ่ายแล้ว" />
       </div>
 
-      <div className="row wrap" style={{ justifyContent: 'flex-end', marginBottom: 16, gap: 12 }}>
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
+        </div>
         <div style={{ width: 320 }}>
           <SearchInput placeholder="เลขที่ / ซัพพลายเออร์ / อ้างอิง" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
@@ -181,6 +281,8 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   const created = useCreatedDocs()
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
+  const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
+  const [site, setSite] = useState<GoodsPaymentSite>('แพล้นปูน')
   const [showAddSupplier, setShowAddSupplier] = useState(false)
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
   const [amount, setAmount] = useState('')
@@ -200,6 +302,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   useEffect(() => {
     if (!open) return
     setPayDate(todayIso()); setMethod('โอน'); setChequeNo(''); setWithVat(true); setTaxInvoiceNo(''); setNote(''); setErr(''); setPullInfo('')
+    setCategory('ค่าซื้อวัตถุดิบ'); setSite('แพล้นปูน')
     setSupplier(initial?.supplier ?? '')
     setItems([emptyItem()])
     setAmount(initial?.amount ?? '')
@@ -270,7 +373,9 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
     }
 
     const gp: GoodsPayment = {
-      id: gpNo, gpNo, payDate, supplier: supplier.trim(), items: savedItems, amount: amt, method,
+      id: gpNo, gpNo, payDate, supplier: supplier.trim(),
+      category, site: category === 'ค่าซื้อวัตถุดิบ' ? site : undefined,
+      items: savedItems, amount: amt, method,
       chequeNo: method === 'เช็ค' ? chequeNo.trim() : undefined,
       ref: finalRef || undefined, withVat, taxInvoiceNo: taxInvoiceNo.trim() || undefined,
       note: note.trim() || undefined, createdAt: new Date().toISOString(),
@@ -311,6 +416,20 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
             {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
           </datalist>
         </Field>
+
+        <Field label="ประเภทค่าใช้จ่าย" required>
+          <Select value={category} onChange={(e) => setCategory(e.target.value as GoodsPaymentCategory)}>
+            {GOODS_PAYMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+        </Field>
+        {category === 'ค่าซื้อวัตถุดิบ' && (
+          <Field label="SITE (คลังปลายทาง)" required hint="วัตถุดิบนี้เข้าคลังไหน">
+            <Select value={site} onChange={(e) => setSite(e.target.value as GoodsPaymentSite)}>
+              <option value="แพล้นปูน">แพล้นปูน</option>
+              <option value="โรงหล่อ">โรงหล่อ</option>
+            </Select>
+          </Field>
+        )}
 
         <div style={{ gridColumn: '1 / -1' }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>

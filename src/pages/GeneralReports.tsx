@@ -14,10 +14,13 @@ import { FoundryFormulaReportDoc } from '../components/documents/FoundryFormulaR
 import { StockReportDoc } from '../components/documents/StockReportDoc'
 import { LedgerReportDoc } from '../components/documents/LedgerReportDoc'
 import { EmployeeReportDoc } from '../components/documents/EmployeeReportDoc'
+import { ExpenseReportDoc } from '../components/documents/ExpenseReportDoc'
+import { PurchaseAccountReportDoc } from '../components/documents/PurchaseAccountReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
 const money = (n: number) => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const r2 = (n: number) => Math.round(n * 100) / 100
 
 const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'truck-trips': 'บันทึกเที่ยวรถโม่',
@@ -31,6 +34,8 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'stock': 'คลังวัตถุดิบ',
   'ledger': 'ลูกหนี้ / เจ้าหนี้',
   'employees': 'รายชื่อพนักงาน',
+  'expense': 'ค่าใช้จ่ายรายเดือน',
+  'purchase-account': 'บัญชีซื้อวัตถุดิบ',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
@@ -39,7 +44,9 @@ const reportAmount = (r: GeneralReport): number | null =>
     : r.kind === 'truck-trips' ? r.totals.feeTotal
       : r.kind === 'payroll' ? r.totals.net
         : r.kind === 'ledger' ? r.totals.outstanding
-          : null
+          : r.kind === 'expense' ? r.grandTotal
+            : r.kind === 'purchase-account' ? r2(r.totals.plant.total + r.totals.foundry.total)
+              : null
 const reportSummary = (r: GeneralReport) =>
   r.kind === 'commission'
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
@@ -59,7 +66,11 @@ const reportSummary = (r: GeneralReport) =>
                   ? `${r.totals.count} ราย · เลยกำหนด ${r.totals.overdue} ราย · ${r.scopeLabel}`
                   : r.kind === 'employees'
                     ? `${r.totals.count} คน · ${r.scopeLabel}`
-                    : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+                    : r.kind === 'expense'
+                      ? `${r.rows.length} เดือน · ${r.categories.length} ประเภทค่าใช้จ่าย`
+                      : r.kind === 'purchase-account'
+                        ? `${r.rows.length} เดือน · แยกแพล้นปูน/โรงหล่อ`
+                        : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -145,7 +156,11 @@ export function GeneralReports() {
                         ? <LedgerReportDoc report={active} />
                         : active.kind === 'employees'
                           ? <EmployeeReportDoc report={active} />
-                          : <TruckTripReportDoc report={active} />)}
+                          : active.kind === 'expense'
+                            ? <ExpenseReportDoc report={active} />
+                            : active.kind === 'purchase-account'
+                              ? <PurchaseAccountReportDoc report={active} />
+                              : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

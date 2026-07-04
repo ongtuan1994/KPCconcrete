@@ -155,11 +155,32 @@ export interface GoodsPaymentItem {
   unitPrice: number
 }
 
+/** ประเภทค่าใช้จ่าย recorded on a goods-payment voucher. */
+export type GoodsPaymentCategory =
+  | 'สินทรัพย์'
+  | 'ค่าน้ำมัน'
+  | 'ค่าไฟฟ้า'
+  | 'ค่าวัสดุสิ้นเปลือง'
+  | 'ค่าอะไหล่และเครื่องมือ'
+  | 'ค่าใช้จ่ายยานพาหนะ'
+  | 'ค่าบริการ'
+  | 'ค่าซื้อวัตถุดิบ'
+export const GOODS_PAYMENT_CATEGORIES: GoodsPaymentCategory[] = [
+  'สินทรัพย์', 'ค่าน้ำมัน', 'ค่าไฟฟ้า', 'ค่าวัสดุสิ้นเปลือง',
+  'ค่าอะไหล่และเครื่องมือ', 'ค่าใช้จ่ายยานพาหนะ', 'ค่าบริการ', 'ค่าซื้อวัตถุดิบ',
+]
+/** For a 'ค่าซื้อวัตถุดิบ' voucher — which SITE the raw materials are for. */
+export type GoodsPaymentSite = 'แพล้นปูน' | 'โรงหล่อ'
+
 export interface GoodsPayment {
   id: string         /* = gpNo */
   gpNo: string       /* running no., e.g. GP00001 */
   payDate: string    /* ISO */
   supplier: string
+  /** ประเภทค่าใช้จ่าย (expense category). Optional for legacy vouchers. */
+  category?: GoodsPaymentCategory
+  /** SITE — only when category is 'ค่าซื้อวัตถุดิบ' (แพล้นปูน / โรงหล่อ). */
+  site?: GoodsPaymentSite
   /** Itemised product/material lines. When present, `amount` = Σ(qty×unitPrice). */
   items?: GoodsPaymentItem[]
   amount: number     /* baht paid */
@@ -702,7 +723,29 @@ export interface EmployeeReport extends GeneralReportBase {
   rows: EmployeeReportRow[]
   totals: { count: number; active: number; terminated: number }
 }
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport
+/** Monthly expense report (ค่าใช้จ่าย · ลง VAT) — one row per month, one column
+    per expense category (excludes ค่าซื้อวัตถุดิบ). `values` align to `categories`. */
+export interface ExpenseReport extends GeneralReportBase {
+  kind: 'expense'
+  scopeLabel: string
+  categories: string[]
+  rows: { month: string; values: number[]; total: number }[]
+  colTotals: number[]
+  grandTotal: number
+}
+
+/** One SITE's amounts on a purchase-account row (VAT split). */
+export interface PurchaseSiteAmount { base: number; vat: number; total: number }
+/** Purchase account (บัญชีซื้อสินค้า · ค่าซื้อวัตถุดิบ ลง VAT) — one row per month,
+    split into แพล้นปูน (left) and โรงหล่อ (right), each with base + VAT + total. */
+export interface PurchaseAccountReport extends GeneralReportBase {
+  kind: 'purchase-account'
+  scopeLabel: string
+  rows: { month: string; plant: PurchaseSiteAmount; foundry: PurchaseSiteAmount }[]
+  totals: { plant: PurchaseSiteAmount; foundry: PurchaseSiteAmount }
+}
+
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport | ExpenseReport | PurchaseAccountReport
 
 const KEY = 'kpc.createdDocs.v1'
 
