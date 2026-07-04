@@ -14,6 +14,7 @@ import type { Employee } from './employees'
 import type { Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
+import { createRemoteSync } from './supabase'
 
 /** Audit stamp applied to every newly saved record: who saved it and when.
     `createdBy` is the logged-in username; `createdAt` is an ISO timestamp. */
@@ -866,11 +867,30 @@ let state: CreatedDocs = read()
 const listeners = new Set<() => void>()
 const notify = () => listeners.forEach((l) => l())
 
+/* Pushes state to the shared Supabase row (no-op until sync is wired below). */
+let pushRemote: (data: CreatedDocs) => void = () => {}
+
 function commit(next: CreatedDocs) {
   state = next
   try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
   notify()
+  pushRemote(state)
 }
+
+/* ── Cross-browser sync via Supabase (falls back to localStorage-only) ── */
+const remote = createRemoteSync<Partial<CreatedDocs>>(
+  'createdDocs',
+  (data) => {
+    /* Remote change (another browser saved) → adopt it. Merge over `empty` so a
+       blob from an older schema still has every key. Does NOT push back. */
+    state = { ...empty, ...data }
+    try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
+    notify()
+  },
+  () => state,
+)
+pushRemote = remote.push
+remote.start()
 
 export function addInvoice(inv: Invoice) {
   commit({ ...state, invoices: [stamp(inv), ...state.invoices] })

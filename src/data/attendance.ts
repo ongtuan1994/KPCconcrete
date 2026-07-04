@@ -11,6 +11,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { EMPLOYEES, type Employee } from './employees'
+import { createRemoteSync } from './supabase'
 
 export const SHIFT_START_MIN = 8 * 60   /* 08:00 */
 export const SHIFT_END_MIN = 17 * 60    /* 17:00 */
@@ -112,11 +113,28 @@ function read(): AttendanceRecord[] {
 
 let state: AttendanceRecord[] = read()
 const listeners = new Set<() => void>()
+const notify = () => listeners.forEach((l) => l())
+
+let pushRemote: (data: AttendanceRecord[]) => void = () => {}
 function commit(next: AttendanceRecord[]) {
   state = next
   try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
-  listeners.forEach((l) => l())
+  notify()
+  pushRemote(state)
 }
+
+/* Cross-browser sync via Supabase (no-op when not configured). */
+const remote = createRemoteSync<AttendanceRecord[]>(
+  'attendance',
+  (data) => {
+    state = Array.isArray(data) ? data : []
+    try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
+    notify()
+  },
+  () => state,
+)
+pushRemote = remote.push
+remote.start()
 
 export function useAttendance(): AttendanceRecord[] {
   return useSyncExternalStore(
