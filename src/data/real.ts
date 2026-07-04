@@ -32,6 +32,10 @@ export type ProductPickup = 'รับเอง' | 'จัดส่ง'
 export interface Product {
   code: string; name: string; strengthKsc: number; unit: string; category: ProductCategory
   site?: ProductSite; kind?: FoundryKind; pickup?: ProductPickup
+  /** Custom foundry product-type label (โรงหล่อ) for types beyond the built-in
+      kinds. When set it drives the ประเภท column instead of `kind`; such products
+      carry no built-in production formula. */
+  typeLabel?: string
   /** Foundry items whose price depends on การรับของ — same product, two prices. */
   pickupPrices?: { 'รับเอง': number; 'จัดส่ง': number }
   /** เลขที่สูตรการผลิต override — the MIX_DESIGNS code this product's สูตรการผลิต links to.

@@ -8,8 +8,9 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus, IconChevron } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { SEED_IMPORTED_TICKETS } from '../data/ticketSeed'
-import { INVOICES, baht, qm, prodShort, LATEST_MONTH, ticketYear } from '../data/selectors'
-import { useCreatedDocs, removeTicket, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, LATEST_MONTH, ticketYear, type Invoice } from '../data/selectors'
+import { useCreatedDocs, removeTicket, removeInvoice, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
+import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
 import { useCurrentUser } from '../data/auth'
 import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { ImportDeliveryTicketsModal } from '../components/documents/ImportDeliveryTicketsModal'
@@ -39,8 +40,12 @@ export function DeliveryTickets() {
      flip that order's status to 'ผลิต' once the ticket is saved. */
   const [prefillSalesOrderNo, setPrefillSalesOrderNo] = useState<string | null>(null)
   const [active, setActive] = useState<DeliveryTicket | null>(null)
+  /* The user-created ticket currently being edited (opens the form in edit mode). */
+  const [editing, setEditing] = useState<DeliveryTicket | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [invoiceRefs, setInvoiceRefs] = useState<string | null>(null)
+  /* Issued invoice currently being viewed (opened from a ticket's detail modal). */
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const created = useCreatedDocs()
   const isAdmin = useCurrentUser()?.role === 'Admin'
   const location = useLocation()
@@ -74,7 +79,7 @@ export function DeliveryTickets() {
   const hiddenInvoiceSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const invoiceByTicket = useMemo(() => {
     const map = new Map<string, string>()
-    for (const inv of [...created.invoices, ...INVOICES]) {
+    for (const inv of [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES]) {
       if (hiddenInvoiceSet.has(inv.no)) continue
       for (const r of inv.refs) {
         if (r && !map.has(r)) map.set(r, inv.no)
@@ -85,6 +90,17 @@ export function DeliveryTickets() {
   const ticketInvoiceNo = (t: DeliveryTicket): string =>
     invoiceByTicket.get(t.dtNo) || invoiceByTicket.get(t.ref) || ''
   const hasInvoice = (t: DeliveryTicket): boolean => ticketInvoiceNo(t) !== ''
+  const invoiceByNo = (no: string): Invoice | undefined =>
+    [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES].find((i) => i.no === no)
+  /* Cancel an issued invoice (e.g. one raised by mistake) — the linked ใบจ่าย
+     becomes re-issuable. removeInvoice removes a user-created one or hides a seed one. */
+  const cancelInvoice = (no: string) => {
+    if (!no) return
+    if (confirm(`ยกเลิกใบกำกับภาษี ${no} ?\nใบจ่ายที่เกี่ยวข้องจะกลับมาออกใบกำกับใหม่ได้`)) {
+      removeInvoice(no)
+      setViewInvoice(null)
+    }
+  }
   /* Runtime tickets + baked import seed + built-in seed, deduped by dtNo
      (runtime wins) and minus hidden ones. */
   const allTickets = useMemo(() => {
@@ -231,7 +247,16 @@ export function DeliveryTickets() {
     { key: 'pay', header: 'ชำระโดย', align: 'center', cell: (r) => (r.pay ? <Badge tone={PAY_TONE[r.pay] ?? 'neutral'} pip={false} square>{r.pay}</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบจ่ายคอนกรีต', ref: r.dtNo, label: r.dtNo, sub: `${r.customer} · ${qm(r.m3)} คิว · ${baht(r.amount)}`, route: '/delivery-tickets' }} /> },
-    { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    {
+      key: 'act', header: '', align: 'center',
+      cell: (r) => (
+        <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
+          {/* Edit only user-created tickets — seed tickets have no store record to patch. */}
+          {newSet.has(r.dtNo) && <Button variant="ghost" size="sm" onClick={() => { setEditing(r); setShowForm(true) }}>แก้ไข</Button>}
+          <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button>
+        </div>
+      ),
+    },
     ...(CAN_DELETE ? [{
       key: 'del',
       header: '',
@@ -259,7 +284,7 @@ export function DeliveryTickets() {
             )}
             {isAdmin && <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>}
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
-            <Button variant="primary" onClick={() => setShowForm(true)}>
+            <Button variant="primary" onClick={() => { setEditing(null); setPrefill(null); setShowForm(true) }}>
               <IconPlus /> บันทึกใบจ่ายคอนกรีต
             </Button>
           </>
@@ -318,11 +343,15 @@ export function DeliveryTickets() {
 
       <NewDeliveryTicketForm
         open={showForm}
-        onClose={() => { setShowForm(false); setPrefill(null); setPrefillSalesOrderNo(null) }}
+        onClose={() => { setShowForm(false); setPrefill(null); setPrefillSalesOrderNo(null); setEditing(null) }}
         createdTickets={created.tickets}
         initial={prefill}
+        editTicket={editing}
         onSaved={(t) => {
-          if (prefillSalesOrderNo) {
+          const wasEdit = !!editing
+          if (wasEdit) {
+            /* Editing an existing ticket — don't spin up a new sales order. */
+          } else if (prefillSalesOrderNo) {
             /* Issued from a sales order → flip it to 'ผลิต' and link the ticket. */
             markSalesOrderProduced(prefillSalesOrderNo)
             updateTicket(t.dtNo, { soNo: prefillSalesOrderNo })
@@ -343,6 +372,7 @@ export function DeliveryTickets() {
           setShowForm(false)
           setPrefill(null)
           setPrefillSalesOrderNo(null)
+          setEditing(null)
           setPeriod({ y: ticketYear(t), m: t.month })
           setFilter('all')
           setQuery(t.dtNo)
@@ -356,9 +386,10 @@ export function DeliveryTickets() {
         extraActions={
           active ? (
             hasInvoice(active) ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)', flexWrap: 'wrap' }}>
                 ออกใบกำกับภาษี <span className="mono" style={{ color: 'var(--kpc-primary-ink, #1d4ed8)', fontWeight: 600 }}>{ticketInvoiceNo(active)}</span> แล้ว
-                <Button variant="tonal" disabled>ออกใบกำกับภาษี</Button>
+                <Button variant="secondary" size="sm" onClick={() => { const inv = invoiceByNo(ticketInvoiceNo(active)); if (inv) { setActive(null); setViewInvoice(inv) } }}>เปิดดูใบกำกับ</Button>
+                <Button variant="secondary" size="sm" onClick={() => cancelInvoice(ticketInvoiceNo(active))} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
               </span>
             ) : (
               <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
@@ -369,6 +400,18 @@ export function DeliveryTickets() {
         }
       >
         {active && <DeliveryTicketDoc ticket={active} />}
+      </DocModal>
+
+      {/* View an issued invoice (from a ticket's detail) with a cancel action. */}
+      <DocModal
+        open={!!viewInvoice}
+        title={viewInvoice ? `ใบกำกับภาษี ${viewInvoice.no}` : ''}
+        onClose={() => setViewInvoice(null)}
+        extraActions={viewInvoice ? (
+          <Button variant="secondary" onClick={() => cancelInvoice(viewInvoice.no)} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
+        ) : undefined}
+      >
+        {viewInvoice && <TaxInvoiceDoc inv={viewInvoice} />}
       </DocModal>
 
       <NewInvoiceForm

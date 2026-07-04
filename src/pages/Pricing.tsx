@@ -53,8 +53,10 @@ const FOUNDRY_KIND: Record<FoundryKind, { th: string; tone: Tone }> = {
   ipole: { th: 'เสาไอ', tone: 'warning' },
   wallpanel: { th: 'แผ่นผนัง', tone: 'success' },
 }
-/** ประเภท shown per row: foundry kind when set, otherwise the concrete category. */
-const prodType = (p: Product): { th: string; tone: Tone } => (p.kind ? FOUNDRY_KIND[p.kind] : CAT[p.category])
+/** ประเภท shown per row: a custom foundry type label wins, then the built-in
+    foundry kind, otherwise the concrete category. */
+const prodType = (p: Product): { th: string; tone: Tone } =>
+  p.typeLabel ? { th: p.typeLabel, tone: 'neutral' } : p.kind ? FOUNDRY_KIND[p.kind] : CAT[p.category]
 
 /* Delivery zone is encoded in the product code (positions 6-9):
    OS00 = On Site (≤20 km), OV21 / OV31 / OV41 = the next 10-km bands. */
@@ -677,6 +679,9 @@ const FOUNDRY_KIND_OPTS: { id: FoundryKind; label: string; unit: string }[] = [
   { id: 'ipole', label: 'เสาไอ', unit: 'ต้น' },
   { id: 'wallpanel', label: 'แผ่นผนัง', unit: 'แผ่น' },
 ]
+/** Sentinel value in the ประเภทสินค้า dropdown for "add a brand-new type". */
+const CUSTOM_KIND = '__new__' as const
+type KindSel = FoundryKind | typeof CUSTOM_KIND
 
 /** เพิ่ม / แก้ไขสินค้า. Add mode forces a SITE choice (แพล้นปูน / โรงหล่อ) first, then
     shows the fields for that site; plant products can also link a สูตรการผลิต. */
@@ -699,7 +704,8 @@ function ProductFormModal({
   const [brand, setBrand] = useState<BrandId>('SCG')
   const [category, setCategory] = useState<'concrete' | 'lean'>('concrete')
   const [zone, setZone] = useState<ZoneId>('OS')
-  const [kind, setKind] = useState<FoundryKind>('plank')
+  const [kind, setKind] = useState<KindSel>('plank')
+  const [customType, setCustomType] = useState('')
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('คิว')
@@ -714,6 +720,7 @@ function ProductFormModal({
   const [err, setErr] = useState('')
 
   const readOnlyStructure = mode === 'edit' /* code/site/brand/zone are fixed once created */
+  const isCustom = kind === CUSTOM_KIND /* custom foundry type — single price, manual unit */
 
   /* Reset the form whenever it opens (edit → prefill from the row, add → blank). */
   useEffect(() => {
@@ -724,7 +731,8 @@ function ProductFormModal({
       setBrand(cementBrand(initial.code)?.id ?? 'SCG')
       setCategory(initial.category === 'lean' ? 'lean' : 'concrete')
       setZone(deliveryZone(initial.code)?.id ?? 'OS')
-      setKind(initial.kind ?? 'plank')
+      setKind(initial.typeLabel ? CUSTOM_KIND : (initial.kind ?? 'plank'))
+      setCustomType(initial.typeLabel ?? '')
       setCode(initial.code)
       setName(initial.name)
       setUnit(initial.unit)
@@ -737,7 +745,7 @@ function ProductFormModal({
       setCodeDirty(true); setNameDirty(true)
     } else {
       setSite(null)
-      setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank')
+      setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank'); setCustomType('')
       setCode(''); setName(''); setUnit('คิว'); setStrength(''); setPrice('')
       setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง'); setFormulaCode('')
       setCodeDirty(false); setNameDirty(false)
@@ -756,8 +764,13 @@ function ProductFormModal({
     setSite(s)
     setUnit(s === 'plant' ? 'คิว' : kind === 'ipole' ? 'ต้น' : 'แผ่น')
   }
-  const changeKind = (k: FoundryKind) => {
+  const changeKind = (k: KindSel) => {
     setKind(k)
+    if (k === CUSTOM_KIND) {
+      /* New type — clear the unit so the user must enter their own. */
+      setUnit((u) => (u === 'แผ่น' || u === 'ต้น' ? '' : u))
+      return
+    }
     /* Snap the unit to the kind's default unless the user set a custom one. */
     setUnit((u) => (u === '' || u === 'แผ่น' || u === 'ต้น' ? (k === 'ipole' ? 'ต้น' : 'แผ่น') : u))
   }
@@ -787,6 +800,18 @@ function ProductFormModal({
       } else {
         updateProduct(initial!.code, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc })
       }
+    } else if (isCustom) {
+      /* Brand-new foundry type — user supplies the type name, unit and a single price. */
+      const t = customType.trim()
+      if (!t) return setErr('กรุณากรอกชื่อประเภทสินค้าใหม่')
+      if (!u) return setErr('กรุณากรอกหน่วยของสินค้า')
+      const pr = Number(price)
+      if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
+      if (mode === 'add') {
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: pr })
+      } else {
+        updateProduct(initial!.code, { name: nm, unit: u, price: pr })
+      }
     } else if (kind === 'ipole') {
       const ps = Number(priceSelf), pd = Number(priceDeliver)
       if (!Number.isFinite(ps) || ps <= 0 || !Number.isFinite(pd) || pd <= 0) return setErr('กรุณากรอกราคารับเอง / จัดส่งให้ถูกต้อง')
@@ -800,7 +825,7 @@ function ProductFormModal({
       if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       const isWall = kind === 'wallpanel'
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind, price: pr, ...(isWall ? { pickup } : {}) })
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind: kind as FoundryKind, price: pr, ...(isWall ? { pickup } : {}) })
       } else {
         updateProduct(initial!.code, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}) })
       }
@@ -924,18 +949,24 @@ function ProductFormModal({
             <>
               <div className="grid g-2" style={{ gap: 12 }}>
                 <Field label="ประเภทสินค้า" required>
-                  <Select value={kind} disabled={readOnlyStructure} onChange={(e) => changeKind(e.target.value as FoundryKind)}>
+                  <Select value={kind} disabled={readOnlyStructure} onChange={(e) => changeKind(e.target.value as KindSel)}>
                     {FOUNDRY_KIND_OPTS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+                    <option value={CUSTOM_KIND}>+ เพิ่มประเภทใหม่…</option>
                   </Select>
                 </Field>
-                <Field label="หน่วย" required>
-                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="แผ่น / ต้น" />
+                {isCustom && (
+                  <Field label="ชื่อประเภทสินค้าใหม่" required>
+                    <Input value={customType} readOnly={readOnlyStructure} onChange={(e) => setCustomType(e.target.value)} placeholder="เช่น รั้วสำเร็จรูป / ท่อระบายน้ำ" />
+                  </Field>
+                )}
+                <Field label="หน่วย" required hint={isCustom ? 'สินค้าประเภทใหม่ต้องระบุหน่วยเอง' : undefined}>
+                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={isCustom ? 'เช่น ต้น / อัน / ชุด' : 'แผ่น / ต้น'} />
                 </Field>
                 <Field label="รหัสสินค้า" required>
                   <Input className="input mono" value={code} readOnly={readOnlyStructure}
                     onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} placeholder="เช่น KPCFDPL200" />
                 </Field>
-                {kind === 'wallpanel' && (
+                {!isCustom && kind === 'wallpanel' && (
                   <Field label="การรับของ" required>
                     <Select value={pickup} onChange={(e) => setPickup(e.target.value as 'รับเอง' | 'จัดส่ง')}>
                       <option value="รับเอง">รับเอง</option>
@@ -947,7 +978,7 @@ function ProductFormModal({
               <Field label="รายการสินค้า" required>
                 <Input value={name} onChange={(e) => { setName(e.target.value); setNameDirty(true) }} placeholder="เช่น แผ่นพื้น 0.05x0.35x2.00 ม." />
               </Field>
-              {kind === 'ipole' ? (
+              {!isCustom && kind === 'ipole' ? (
                 <div className="grid g-2" style={{ gap: 12 }}>
                   <Field label="ราคา · รับเอง (รวม VAT)" required>
                     <Input type="number" min={0} value={priceSelf} onChange={(e) => setPriceSelf(e.target.value)} placeholder="เช่น 325" />

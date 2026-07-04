@@ -4,11 +4,16 @@
    customer aggregates and dashboard figures — all from real data, month-aware. */
 
 import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, VEHICLES, ZONE_ROUNDTRIP_KM, type DeliveryTicket } from './real'
+import { SEED_IMPORTED_TICKETS } from './ticketSeed'
 
 export { MONTHS }
 export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
-export const monthLabel = (m: number) => MONTHS.find((x) => x.num === m)?.label ?? ''
-export const monthShort = (m: number) => MONTHS.find((x) => x.num === m)?.short ?? ''
+/** Full/short Thai month names — used to label งวด beyond the 6-month seed data
+    (e.g. issuing a ticket for กรกฎาคม 2569 onward). */
+const TH_MONTH_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+const TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+export const monthLabel = (m: number) => MONTHS.find((x) => x.num === m)?.label ?? (TH_MONTH_FULL[m - 1] ? `${TH_MONTH_FULL[m - 1]} 2569` : '')
+export const monthShort = (m: number) => MONTHS.find((x) => x.num === m)?.short ?? (TH_MONTH_SHORT[m - 1] ?? '')
 
 /** Buddhist year (พ.ศ.) of a ticket from its dd/mm/yy date; 2569 when unparseable.
     2-digit yy → 25xx; 4-digit Gregorian (< 2200) → +543; else taken as-is. */
@@ -191,6 +196,56 @@ function buildInvoices(): Invoice[] {
   return invoices.sort((a, b) => b.month - a.month || dd(b.date) - dd(a.date) || b.no.localeCompare(a.no))
 }
 export const INVOICES: Invoice[] = buildInvoices()
+
+/** Tax invoices reconstructed from the REAL imported delivery tickets, grouped by
+    the invoice number stamped on each ticket (t.invoice). These are historical
+    documents (ก่อน มิ.ย. 2569 ย้อนหลัง) that never had an invoice record — built as a
+    SEPARATE list so they can be viewed/linked from tickets and listed in the
+    invoice register, WITHOUT entering `INVOICES` (which feeds the 2569 month-based
+    dashboards/receipts/billing) or the tax report (a wholly separate import). */
+function buildImportedInvoices(): Invoice[] {
+  const byInv = new Map<string, DeliveryTicket[]>()
+  for (const t of SEED_IMPORTED_TICKETS) {
+    const no = (t.invoice || '').trim()
+    if (!no || t.type !== 'ขายลูกค้า' || t.amount <= 0) continue
+    const arr = byInv.get(no) ?? []
+    arr.push(t)
+    byInv.set(no, arr)
+  }
+  const invoices: Invoice[] = []
+  for (const [no, ts] of byInv) {
+    const first = ts[0]
+    const lineMap = new Map<string, InvoiceLine>()
+    for (const t of ts) {
+      const lk = `${t.prod}__${t.price}`
+      const ex = lineMap.get(lk)
+      if (ex) { ex.qty += t.m3; ex.amount += t.amount } else {
+        const p = PRODUCT_MAP[t.prod]
+        lineMap.set(lk, { code: t.prod, name: cleanProductName(p?.name ?? t.prod), unit: p?.unit ?? 'คิว', qty: t.m3, price: t.price, amount: t.amount })
+      }
+    }
+    const lines = [...lineMap.values()]
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100
+    const vat = Math.round(subtotal * 0.07 * 100) / 100
+    const total = Math.round((subtotal + vat) * 100) / 100
+    /* The invoice number encodes its real date "YYMMDD-SEQ" (พ.ศ.) — prefer it
+       over the delivery-ticket date (goods may be invoiced days later). */
+    const dm = no.match(/^(\d{2})(\d{2})(\d{2})-/)
+    const month = dm ? Number(dm[2]) : first.month
+    const date = dm ? `${dm[3]}/${dm[2]}/${dm[1]}` : first.date
+    invoices.push({
+      no, month, date, dueDate: plus30(date),
+      customer: first.customer, pay: first.pay, lines,
+      /* Link by full dtNo (unique) so short refs don't collide across years. */
+      refs: ts.map((t) => t.dtNo),
+      subtotal, vat, total,
+      /* Historical records — treat as settled so they don't inflate outstanding. */
+      status: 'paid',
+    })
+  }
+  return invoices
+}
+export const SEED_IMPORTED_INVOICES: Invoice[] = buildImportedInvoices()
 
 /* ---------- receipts (from paid invoices) ---------- */
 export interface Receipt { no: string; month: number; date: string; customer: string; invoiceNos: string[]; amount: number; method: string; createdBy?: string; createdAt?: string }

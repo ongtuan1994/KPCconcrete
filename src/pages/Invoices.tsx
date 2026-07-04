@@ -13,7 +13,7 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
 import { PRODUCT_MAP } from '../data/real'
 import { useCreatedDocs, removeInvoice, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -74,7 +74,7 @@ export function Invoices() {
 
   const hiddenSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const allInvoices = useMemo(
-    () => [...created.invoices, ...INVOICES].filter((i) => !hiddenSet.has(i.no)),
+    () => [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES].filter((i) => !hiddenSet.has(i.no)),
     [created.invoices, hiddenSet],
   )
   const monthRows = useMemo(() => (month === 'all' ? allInvoices : allInvoices.filter((i) => i.month === month)), [month, allInvoices])
