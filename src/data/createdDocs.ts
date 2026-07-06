@@ -550,6 +550,9 @@ export interface PriceListReportRow {
   zone?: string      /* ระยะส่ง — e.g. "On Site (≤20 km)" (concrete items only) */
   unit: string
   pickup?: string    /* การรับของ — รับเอง / จัดส่ง (foundry items only) */
+  /** Foundry items priced per collection method — shown as two prices in the
+      ราคา/หน่วย cell (รับเอง / จัดส่ง). */
+  pickupPrices?: { 'รับเอง': number; 'จัดส่ง': number }
   price: number
 }
 /** One category group (หมวดหมู่) in a price-list report. */

@@ -288,6 +288,7 @@ function ProductPricing() {
         zone: z ? `${z.label} (${z.range})` : undefined,
         unit: p.unit,
         pickup: p.pickup,
+        pickupPrices: p.pickupPrices,
         price: p.price,
       })
       groupsMap.set(label, arr)

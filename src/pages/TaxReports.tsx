@@ -6,11 +6,11 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { Modal } from '../components/Modal'
-import { baht } from '../data/selectors'
+import { baht, customerLegal } from '../data/selectors'
 import { COMPANY } from '../data/real'
 import { TAX_SALE, TAX_PURCHASE, type TaxMonthData, type TaxRow, type ImportedTaxRow } from '../data/taxReports'
 import { SEED_TAX_IMPORTS } from '../data/taxSeed'
-import { useCreatedDocs, addTaxImports, clearTaxImports, taxImportKey, type GoodsPayment } from '../data/createdDocs'
+import { useCreatedDocs, addTaxImports, clearTaxImports, taxImportKey } from '../data/createdDocs'
 import { useCurrentUser } from '../data/auth'
 import { parseSpreadsheet } from '../utils/spreadsheet'
 import { downloadCsv } from '../utils/csv'
@@ -67,56 +67,42 @@ function splitVat(gross: number): { value: number; vat: number } {
   return { value, vat: r2(gross - value) }
 }
 
-/** Merge VAT-bearing ใบสำคัญจ่าย (goods payments marked "ลง VAT") for one พ.ศ.
-    year into the seed purchase-tax report, grouped by the payment month and
-    following the same row format. The paid amount is treated as VAT-inclusive. */
-function mergePurchaseTax(seed: TaxMonthData[], payments: GoodsPayment[], year: number): TaxMonthData[] {
-  const vatPays = payments.filter((p) => p.withVat !== false && buddhistYearOfIso(p.payDate) === year)
-  if (vatPays.length === 0) return seed
+/** From this filing period onward the reports are generated straight from the
+    in-system documents (issued ใบกำกับภาษี → ภาษีขาย, VAT-bearing ใบสำคัญจ่าย /
+    supplier tax invoices → ภาษีซื้อ). Earlier periods keep using the imported /
+    seed historical data, so the two never overlap and nothing is double-counted. */
+const LIVE_FROM_YEAR = 2569
+const LIVE_FROM_MONTH = 7 /* กรกฎาคม 2569 */
+function isLivePeriod(year: number, month: number): boolean {
+  return year > LIVE_FROM_YEAR || (year === LIVE_FROM_YEAR && month >= LIVE_FROM_MONTH)
+}
 
+/** Sortable "yy-mm-dd" key from a dd/mm/yy(yy) date, for chronological ordering. */
+function taxSortKey(dateStr: string): string {
+  const m = dateStr.match(/(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/)
+  if (!m) return dateStr
+  const yy = m[3].length >= 2 ? m[3].slice(-2) : m[3].padStart(2, '0')
+  return `${yy}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+}
+
+/** Group tagged rows into per-month report data, assigning the running ลำดับ
+    (M/N) and accumulating month totals. Rows arrive already in the order they
+    should be numbered within their month. */
+function buildMonths(entries: { month: number; row: TaxRow }[]): TaxMonthData[] {
   const byMonth = new Map<number, TaxMonthData>()
-  for (const md of seed) byMonth.set(md.month, { ...md, rows: [...md.rows] })
-
-  /* Oldest first so the running sequence numbers stay stable. */
-  const sorted = [...vatPays].sort((a, b) => a.payDate.localeCompare(b.payDate))
-  for (const p of sorted) {
-    const m = p.payDate.match(/^(\d{4})-(\d{2})-(\d{2})/)
-    if (!m) continue
-    const [, y, mm, dd] = m
-    const month = Number(mm)
+  for (const { month, row } of entries) {
     let md = byMonth.get(month)
     if (!md) { md = { month, rows: [], totalValue: 0, totalVat: 0 }; byMonth.set(month, md) }
-    const { value, vat } = splitVat(p.amount)
-    md.rows.push({
-      seq: `${month}/${md.rows.length + 1}`,
-      date: `${Number(dd)}/${month}/${y}`,
-      docNo: p.taxInvoiceNo || p.ref || p.gpNo,
-      name: p.supplier,
-      taxId: '',
-      branch: '',
-      value,
-      vat,
-    })
-    md.totalValue = r2(md.totalValue + value)
-    md.totalVat = r2(md.totalVat + vat)
+    md.rows.push({ ...row, seq: `${month}/${md.rows.length + 1}` })
+    md.totalValue = r2(md.totalValue + row.value)
+    md.totalVat = r2(md.totalVat + row.vat)
   }
   return [...byMonth.values()].sort((a, b) => a.month - b.month)
 }
 
-/** Merge imported historical rows into a report by month, re-sequencing and
-    accumulating month totals. Imported rows land after any seed / voucher rows. */
-function appendImportedTax(base: TaxMonthData[], rows: ImportedTaxRow[]): TaxMonthData[] {
-  if (rows.length === 0) return base
-  const byMonth = new Map<number, TaxMonthData>()
-  for (const md of base) byMonth.set(md.month, { ...md, rows: [...md.rows] })
-  for (const r of rows) {
-    let md = byMonth.get(r.month)
-    if (!md) { md = { month: r.month, rows: [], totalValue: 0, totalVat: 0 }; byMonth.set(r.month, md) }
-    md.rows.push({ seq: `${r.month}/${md.rows.length + 1}`, date: r.date, docNo: r.docNo, name: r.name, taxId: r.taxId, branch: r.branch, value: r.value, vat: r.vat })
-    md.totalValue = r2(md.totalValue + r.value)
-    md.totalVat = r2(md.totalVat + r.vat)
-  }
-  return [...byMonth.values()].sort((a, b) => a.month - b.month)
+/** An ImportedTaxRow reduced to a plain report row. */
+function importToRow(r: ImportedTaxRow): TaxRow {
+  return { seq: '', date: r.date, docNo: r.docNo, name: r.name, taxId: r.taxId, branch: r.branch, value: r.value, vat: r.vat }
 }
 
 /** Strip ฿ / thousands separators from a spreadsheet cell into a number. */
@@ -331,21 +317,49 @@ export function TaxReports() {
   const years = useMemo(() => {
     const s = new Set<number>([SEED_YEAR])
     for (const r of kind === 'sale' ? saleImports : purchaseImports) s.add(r.year)
-    if (kind === 'purchase') for (const g of created.goodsPayments) if (g.withVat !== false) s.add(buddhistYearOfIso(g.payDate))
-    return [...s].sort((a, b) => a - b)
-  }, [kind, saleImports, purchaseImports, created.goodsPayments])
-
-  /* Report data for the selected side + year: seed applies only to SEED_YEAR;
-     ใบสำคัญจ่าย + imported rows are filtered to the selected year. */
-  const data = useMemo(() => {
     if (kind === 'sale') {
-      const seed = year === SEED_YEAR ? TAX_SALE : []
-      return appendImportedTax(seed, saleImports.filter((r) => r.year === year))
+      for (const inv of created.invoices) { const iy = buddhistYearOf(inv.date); if (iy != null) s.add(iy) }
+    } else {
+      for (const g of created.goodsPayments) if (g.withVat !== false) s.add(buddhistYearOfIso(g.payDate))
     }
-    const seed = year === SEED_YEAR ? TAX_PURCHASE : []
-    const merged = mergePurchaseTax(seed, created.goodsPayments, year)
-    return appendImportedTax(merged, purchaseImports.filter((r) => r.year === year))
-  }, [kind, year, saleImports, purchaseImports, created.goodsPayments])
+    return [...s].sort((a, b) => a - b)
+  }, [kind, saleImports, purchaseImports, created.invoices, created.goodsPayments])
+
+  /* Report data for the selected side + year. Each month is EITHER historical
+     (seed + Excel imports, for periods before ก.ค. 2569) OR live (in-system
+     ใบกำกับภาษี / ใบสำคัญจ่าย, from ก.ค. 2569 on) — never both, so no double count. */
+  const data = useMemo(() => {
+    const historical: { month: number; row: TaxRow }[] = []
+    const live: { month: number; row: TaxRow }[] = []
+
+    if (kind === 'sale') {
+      for (const md of (year === SEED_YEAR ? TAX_SALE : [])) if (!isLivePeriod(year, md.month)) for (const r of md.rows) historical.push({ month: md.month, row: r })
+      for (const r of saleImports) if (r.year === year && !isLivePeriod(year, r.month)) historical.push({ month: r.month, row: importToRow(r) })
+      /* Live ภาษีขาย = ใบกำกับภาษี ที่ออกให้ลูกค้าในระบบ. */
+      for (const inv of created.invoices) {
+        const iy = buddhistYearOf(inv.date) ?? year
+        const im = parseTaxMonth(inv.date) ?? inv.month
+        if (iy !== year || im == null || !isLivePeriod(iy, im)) continue
+        const cust = customerLegal(inv.customer)
+        live.push({ month: im, row: { seq: '', date: inv.date, docNo: inv.no, name: inv.customer, taxId: cust.taxId !== '—' ? cust.taxId : '', branch: '', value: inv.subtotal, vat: inv.vat } })
+      }
+    } else {
+      for (const md of (year === SEED_YEAR ? TAX_PURCHASE : [])) if (!isLivePeriod(year, md.month)) for (const r of md.rows) historical.push({ month: md.month, row: r })
+      for (const r of purchaseImports) if (r.year === year && !isLivePeriod(year, r.month)) historical.push({ month: r.month, row: importToRow(r) })
+      /* Live ภาษีซื้อ = VAT-bearing ใบสำคัญจ่าย (ใบกำกับภาษีจากผู้ขาย). */
+      for (const p of created.goodsPayments) {
+        if (p.withVat === false) continue
+        const iy = buddhistYearOfIso(p.payDate)
+        const im = Number(p.payDate.slice(5, 7))
+        if (iy !== year || !im || !isLivePeriod(iy, im)) continue
+        const { value, vat } = splitVat(p.amount)
+        live.push({ month: im, row: { seq: '', date: `${Number(p.payDate.slice(8, 10))}/${im}/${String(iy % 100).padStart(2, '0')}`, docNo: p.taxInvoiceNo || p.ref || p.gpNo, name: p.supplier, taxId: '', branch: '', value, vat } })
+      }
+    }
+    /* Live rows numbered chronologically; historical keep their imported order. */
+    live.sort((a, b) => taxSortKey(a.row.date).localeCompare(taxSortKey(b.row.date)))
+    return buildMonths([...historical, ...live])
+  }, [kind, year, saleImports, purchaseImports, created.goodsPayments, created.invoices])
 
   const available = useMemo(() => data.map((d) => d.month), [data])
   /* Banner counts only the user's runtime uploads (seed is the baseline, not
