@@ -70,3 +70,32 @@ export async function downloadBackup(): Promise<{ filename: string; stores: numb
 
   return { filename, stores: keys.length }
 }
+
+/** Read a backup produced by `downloadBackup` (either the .zip or the inner
+    backup.json) and write every kpc.* store back into localStorage, overwriting
+    what's there. Returns how many stores were restored. The caller should reload
+    the app afterwards so React re-reads localStorage. */
+export async function restoreBackup(file: File): Promise<{ stores: number; exportedAt?: string }> {
+  let text: string
+  if (file.name.toLowerCase().endsWith('.zip')) {
+    const zip = await JSZip.loadAsync(file)
+    const entry = zip.file('backup.json')
+    if (!entry) throw new Error('ไม่พบไฟล์ backup.json ในไฟล์ zip')
+    text = await entry.async('string')
+  } else {
+    text = await file.text()
+  }
+
+  const payload = JSON.parse(text) as { type?: string; exportedAt?: string; stores?: Record<string, unknown> }
+  if (payload?.type !== 'kpc-backup' || !payload.stores) {
+    throw new Error('ไฟล์นี้ไม่ใช่ไฟล์สำรองของ KPC (kpc-backup)')
+  }
+
+  let count = 0
+  for (const [key, value] of Object.entries(payload.stores)) {
+    if (!key.startsWith('kpc.')) continue /* only touch our own keys */
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value))
+    count++
+  }
+  return { stores: count, exportedAt: payload.exportedAt }
+}

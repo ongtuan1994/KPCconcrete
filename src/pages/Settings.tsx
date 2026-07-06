@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/Layout'
 import { Card, CardHead, Button, Badge, Field, Input, Select } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { Pill } from '../components/ui'
 import { IconCheck, IconPlus } from '../components/icons'
 import { downloadCsv } from '../utils/csv'
-import { downloadBackup } from '../utils/backup'
+import { downloadBackup, restoreBackup } from '../utils/backup'
 import {
   ROLES, ROLE_LABEL, RESOURCES, type Role, type Level, type User, type ActivityEntry,
   useUsers, usePerms, useCan, useActivity, setPerm, updateUser, addUser, removeUser, resetPerms, clearActivity,
@@ -28,6 +28,8 @@ export function Settings() {
   const [adding, setAdding] = useState(false)
   const [tab, setTab] = useState<'users' | 'activity'>('users')
   const [backingUp, setBackingUp] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+  const restoreRef = useRef<HTMLInputElement>(null)
 
   const handleBackup = async () => {
     setBackingUp(true)
@@ -38,6 +40,23 @@ export function Settings() {
       alert('สำรองข้อมูลไม่สำเร็จ กรุณาลองใหม่')
     } finally {
       setBackingUp(false)
+    }
+  }
+
+  const handleRestore = async (files: FileList | null) => {
+    const file = files?.[0]
+    if (restoreRef.current) restoreRef.current.value = '' /* allow re-picking the same file */
+    if (!file) return
+    if (!confirm('กู้คืนข้อมูลจากไฟล์นี้? ข้อมูลปัจจุบันในเครื่องนี้จะถูกเขียนทับทั้งหมด')) return
+    setRestoring(true)
+    try {
+      const { stores } = await restoreBackup(file)
+      alert(`กู้คืนข้อมูลเรียบร้อย (${stores} รายการ)\nระบบจะโหลดหน้าใหม่`)
+      location.reload()
+    } catch (e) {
+      alert(`กู้คืนข้อมูลไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไฟล์ไม่ถูกต้อง'}`)
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -71,6 +90,12 @@ export function Settings() {
         actions={
           <>
             {tab === 'users' && canEdit && <Button variant="secondary" onClick={() => { if (confirm('คืนค่าสิทธิ์ทั้งหมดเป็นค่าเริ่มต้น?')) resetPerms() }}>คืนค่าสิทธิ์เริ่มต้น</Button>}
+            {canEdit && (
+              <>
+                <input ref={restoreRef} type="file" accept=".zip,.json,application/json,application/zip" style={{ display: 'none' }} onChange={(e) => handleRestore(e.target.files)} />
+                <Button variant="secondary" onClick={() => restoreRef.current?.click()} disabled={restoring}>{restoring ? 'กำลังกู้คืน…' : 'กู้คืนข้อมูล'}</Button>
+              </>
+            )}
             <Button variant="primary" onClick={handleBackup} disabled={backingUp}>{backingUp ? 'กำลังสำรอง…' : 'Backup ข้อมูล (.zip)'}</Button>
           </>
         }
