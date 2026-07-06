@@ -11,6 +11,7 @@ import { FoundryDeliveryDoc } from '../components/documents/FoundryDeliveryDoc'
 import { IconPlus } from '../components/icons'
 import { PRODUCTS, CUSTOMER_MASTER } from '../data/real'
 import { cleanProductName as cleanName, monthName } from '../data/selectors'
+import { currentBuddhistYear, currentMonth } from '../utils/datetime'
 import {
   useCreatedDocs, addFoundryDelivery, removeFoundryDelivery, CAN_DELETE,
   type FoundryDelivery, type FoundryDeliveryItem,
@@ -45,8 +46,8 @@ interface FoundryDeliveryInitial { customer: string; items: { code: string; qty:
 
 export function FoundryDeliveries() {
   const [query, setQuery] = useState('')
-  const [year, setYear] = useState(2569)
-  const [month, setMonth] = useState<number | 'all'>('all')
+  const [year, setYear] = useState(currentBuddhistYear())
+  const [month, setMonth] = useState<number | 'all'>(currentMonth())
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
@@ -69,7 +70,7 @@ export function FoundryDeliveries() {
   /* Years present (พ.ศ.), newest first — current year always offered. */
   const years = useMemo(() => {
     const s = new Set(all.map(feYear))
-    s.add(2569)
+    s.add(currentBuddhistYear())
     return [...s].sort((a, b) => b - a)
   }, [all])
   useEffect(() => { if (!years.includes(year)) setYear(years[0]) }, [years, year])

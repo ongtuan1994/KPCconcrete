@@ -13,7 +13,8 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
+import { currentBuddhistYear, currentMonth } from '../utils/datetime'
 import { PRODUCT_MAP } from '../data/real'
 import { useCreatedDocs, removeInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -45,10 +46,10 @@ const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {
 }
 
 export function Invoices() {
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
-  /* Year filter (พ.ศ.) — defaults to the live 2569 data so the imported historical
-     invoices (2564–2568) stay separate until the user selects their year. */
-  const [year, setYear] = useState<number>(2569)
+  const [month, setMonth] = useState<number | 'all'>(currentMonth())
+  /* Year + month filter (พ.ศ.) — defaults to the current period; imported
+     historical invoices (2564–2568) stay selectable via the year picker. */
+  const [year, setYear] = useState<number>(currentBuddhistYear())
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
@@ -86,7 +87,7 @@ export function Invoices() {
   )
   /* Distinct invoice years (พ.ศ.), newest first — for the year picker. */
   const years = useMemo(
-    () => [...new Set(allInvoices.map((i) => ticketYear(i)))].sort((a, b) => b - a),
+    () => [...new Set([currentBuddhistYear(), ...allInvoices.map((i) => ticketYear(i))])].sort((a, b) => b - a),
     [allInvoices],
   )
   /* Filter by year first (keeps the historical import separate), then month. */
