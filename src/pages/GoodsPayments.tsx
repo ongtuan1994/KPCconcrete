@@ -11,10 +11,13 @@ import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { baht, monthName } from '../data/selectors'
 import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, CAN_DELETE, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, addGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
+  type DeletedGoodsPayment,
 } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { fmtThaiDateTime } from '../utils/datetime'
 import { downloadCsv } from '../utils/csv'
 
 const METHOD_TONE: Record<string, Tone> = { เงินสดย่อย: 'success', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
@@ -66,6 +69,7 @@ export function GoodsPayments() {
   const [prefill, setPrefill] = useState<GoodsPaymentInitial | null>(null)
   const created = useCreatedDocs()
   const all = created.goodsPayments
+  const canDelete = useCan('goods-payments').edit
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -199,11 +203,31 @@ export function GoodsPayments() {
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ใบสำคัญจ่าย', ref: r.gpNo, label: r.gpNo, sub: `${r.supplier} · ${baht(r.amount)}`, route: '/goods-payments' }} /> },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del', header: '', align: 'center' as const,
       cell: (r: GoodsPayment) => (
-        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบสำคัญจ่าย ${r.gpNo} ?`)) removeGoodsPayment(r.gpNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบสำคัญจ่าย ${r.gpNo} ?\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removeGoodsPayment(r.gpNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
       ),
+    }] : []),
+  ]
+
+  /* Deleted goods-payment history for the current period — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedGoodsPayments.filter((g) =>
+      gpYear(g) === year && (month === 'all' || gpMonth(g) === month) &&
+      (!query || `${g.gpNo} ${g.supplier} ${g.ref ?? ''}`.toLowerCase().includes(query.toLowerCase()))),
+    [created.deletedGoodsPayments, year, month, query],
+  )
+  const deletedColumns: Column<DeletedGoodsPayment>[] = [
+    { key: 'gp', header: 'เลขที่ใบสำคัญจ่าย', cell: (r) => <span className="mono">{r.gpNo}</span>, className: 'docno' },
+    { key: 'date', header: 'วันที่จ่าย', cell: (r) => fmtDate(r.payDate), className: 'date' },
+    { key: 'sup', header: 'ซัพพลายเออร์', cell: (r) => r.supplier },
+    { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.amount)}</span> },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore', header: '', align: 'center' as const,
+      cell: (r: DeletedGoodsPayment) => <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบสำคัญจ่าย ${r.gpNo} ?`)) restoreGoodsPayment(r.gpNo) }}>กู้คืน</Button>,
     }] : []),
   ]
 
@@ -253,6 +277,17 @@ export function GoodsPayments() {
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบ`} />
+      )}
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบสำคัญจ่าย</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
       )}
 
       <NewGoodsPaymentForm

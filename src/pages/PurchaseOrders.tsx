@@ -11,9 +11,11 @@ import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { baht } from '../data/selectors'
 import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addPurchaseOrder, removePurchaseOrder, markPurchaseOrderReceived, CAN_DELETE,
-  type PurchaseOrder, type PurchaseOrderItem, type PurchaseStatus,
+  useCreatedDocs, addPurchaseOrder, removePurchaseOrder, restorePurchaseOrder, markPurchaseOrderReceived,
+  type PurchaseOrder, type PurchaseOrderItem, type PurchaseStatus, type DeletedPurchaseOrder,
 } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { fmtThaiDateTime } from '../utils/datetime'
 import { type GoodsPaymentInitial } from './GoodsPayments'
 import { downloadCsv } from '../utils/csv'
 
@@ -46,6 +48,7 @@ export function PurchaseOrders() {
   const [active, setActive] = useState<PurchaseOrder | null>(null)
   const created = useCreatedDocs()
   const all = created.purchaseOrders
+  const canDelete = useCan('purchase-orders').edit
   const navigate = useNavigate()
 
   /* Record a goods/material payment from a PO: jump to the payments page with
@@ -87,11 +90,30 @@ export function PurchaseOrders() {
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ใบสั่งซื้อ', ref: r.poNo, label: r.poNo, sub: `${r.supplier} · ${baht(poTotal(r))}`, route: '/purchase-orders' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del', header: '', align: 'center' as const,
       cell: (r: PurchaseOrder) => (
-        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบสั่งซื้อ ${r.poNo} ?`)) removePurchaseOrder(r.poNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบสั่งซื้อ ${r.poNo} ?\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removePurchaseOrder(r.poNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
       ),
+    }] : []),
+  ]
+
+  /* Deleted purchase-order history — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedPurchaseOrders.filter((d) => !query || `${d.poNo} ${d.supplier}`.toLowerCase().includes(query.toLowerCase())),
+    [created.deletedPurchaseOrders, query],
+  )
+  const deletedColumns: Column<DeletedPurchaseOrder>[] = [
+    { key: 'po', header: 'เลขที่ใบสั่งซื้อ', cell: (r) => <span className="mono">{r.poNo}</span>, className: 'docno' },
+    { key: 'date', header: 'วันที่สั่ง', cell: (r) => fmtDate(r.orderDate), className: 'date' },
+    { key: 'sup', header: 'ซัพพลายเออร์', cell: (r) => r.supplier },
+    { key: 'items', header: 'รายการ', cell: (r) => <Badge tone="info" pip={false} square>{r.items.length} รายการ</Badge> },
+    { key: 'total', header: 'มูลค่ารวม', align: 'right', cell: (r) => <span className="amt mono">{baht(poTotal(r))}</span> },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore', header: '', align: 'center' as const,
+      cell: (r: DeletedPurchaseOrder) => <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบสั่งซื้อ ${r.poNo} ?`)) restorePurchaseOrder(r.poNo) }}>กู้คืน</Button>,
     }] : []),
   ]
 
@@ -126,6 +148,17 @@ export function PurchaseOrders() {
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบ`} />
+      )}
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบสั่งซื้อ</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
       )}
 
       <NewPurchaseOrderForm open={showForm} onClose={() => setShowForm(false)} existing={all} onSaved={(po) => { setShowForm(false); setQuery(po.poNo) }} />

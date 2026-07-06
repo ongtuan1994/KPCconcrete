@@ -9,7 +9,9 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { qm } from '../data/selectors'
 import { PRODUCTS } from '../data/real'
-import { useCreatedDocs, removeSalesOrder, CAN_DELETE, type SalesOrder, type SalesOrderStatus } from '../data/createdDocs'
+import { useCreatedDocs, removeSalesOrder, restoreSalesOrder, type SalesOrder, type SalesOrderStatus, type DeletedSalesOrder } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { fmtThaiDateTime } from '../utils/datetime'
 import { NewSalesOrderForm } from '../components/documents/NewSalesOrderForm'
 import { type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { downloadCsv } from '../utils/csv'
@@ -41,6 +43,7 @@ export function SalesOrders() {
   const [editing, setEditing] = useState<SalesOrder | null>(null)
   const [active, setActive] = useState<SalesOrder | null>(null)
   const created = useCreatedDocs()
+  const canDelete = useCan('sales-orders').edit
   const navigate = useNavigate()
 
   /* Issue the matching delivery document from a sales order, pre-filling the
@@ -153,15 +156,36 @@ export function SalesOrders() {
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบสั่งขาย', ref: r.soNo, label: r.soNo, sub: `${r.customer} · ${qm(orderVolume(r))} คิว`, route: '/sales-orders' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     { key: 'edit', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setEditing(r)}>แก้ไข</Button> },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
+      /* ลบได้เฉพาะรายการสถานะ "รอผลิต" (ผลิตแล้วมีใบจ่ายผูกอยู่ ห้ามลบ). */
       cell: (r: SalesOrder) => (
-        <Button variant="ghost" size="sm" onClick={() => {
-          if (confirm(`ลบใบสั่งขาย ${r.soNo} ?`)) removeSalesOrder(r.soNo)
-        }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+        r.status === 'รอผลิต' ? (
+          <Button variant="ghost" size="sm" onClick={() => {
+            if (confirm(`ลบใบสั่งขาย ${r.soNo} ?\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removeSalesOrder(r.soNo)
+          }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+        ) : null
       ),
+    }] : []),
+  ]
+
+  /* Deleted-order history (all deleted are 'รอผลิต') — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedSalesOrders.filter((d) => !query || `${d.soNo} ${d.customer}`.toLowerCase().includes(query.toLowerCase())),
+    [created.deletedSalesOrders, query],
+  )
+  const deletedColumns: Column<DeletedSalesOrder>[] = [
+    { key: 'so', header: 'เลขที่ใบสั่งขาย', cell: (r) => <span className="mono">{r.soNo}</span>, className: 'docno' },
+    { key: 'odate', header: 'วันที่สั่ง', cell: (r) => fmtDate(r.orderDate), className: 'date' },
+    { key: 'cust', header: 'ลูกค้า / หน่วยงาน', cell: (r) => r.customer },
+    { key: 'items', header: 'รายการ', cell: (r) => <span><Badge tone="info" pip={false} square>{r.items.length} รายการ</Badge> <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{qm(orderVolume(r))} คิว</span></span> },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore', header: '', align: 'center' as const,
+      cell: (r: DeletedSalesOrder) => <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบสั่งขาย ${r.soNo} ?`)) restoreSalesOrder(r.soNo) }}>กู้คืน</Button>,
     }] : []),
   ]
 
@@ -204,6 +228,17 @@ export function SalesOrders() {
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบ`} />
+      )}
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบสั่งขาย</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
       )}
 
       <NewSalesOrderForm
