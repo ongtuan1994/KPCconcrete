@@ -38,6 +38,7 @@ export function NewCustomerForm({
   const [terms, setTerms] = useState('เครดิต')
   const [phone, setPhone] = useState('')
   const [taxId, setTaxId] = useState('')
+  const [address, setAddress] = useState('')
   const [creditDays, setCreditDays] = useState('')
   const [creditLimit, setCreditLimit] = useState('')
   const [err, setErr] = useState('')
@@ -46,7 +47,7 @@ export function NewCustomerForm({
     if (!open) return
     setCustomerName(initialName ?? ''); setUnit('')
     setLegalName(''); setType('ขายลูกค้า'); setTerms('เครดิต')
-    setPhone(''); setTaxId('')
+    setPhone(''); setTaxId(''); setAddress('')
     setCreditDays(''); setCreditLimit(''); setErr('')
   }, [open, initialName])
 
@@ -77,7 +78,7 @@ export function NewCustomerForm({
       type,
       terms,
       legalName: legalName.trim(),
-      address: '',
+      address: address.trim(),
       taxId: taxId.trim(),
       phone: phone.trim() || undefined,
       creditDays: terms === 'เครดิต' && creditDays.trim() ? Number(creditDays) : undefined,
@@ -131,6 +132,9 @@ export function NewCustomerForm({
         </Field>
         <Field label="ชื่อนิติบุคคล (ถ้ามี)">
           <Input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="บจก. / หจก. ..." />
+        </Field>
+        <Field label="ที่อยู่" style={{ gridColumn: '1 / -1' }} hint="ใช้แสดงบนใบกำกับภาษี / เอกสาร">
+          <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="เช่น 123 ม.4 ต.ปากคลอง อ.เมือง จ.ระยอง" />
         </Field>
         <Field label="เลขผู้เสียภาษี" style={{ gridColumn: '1 / -1' }}>
           <Input value={taxId} onChange={(e) => setTaxId(e.target.value)} placeholder="—" />

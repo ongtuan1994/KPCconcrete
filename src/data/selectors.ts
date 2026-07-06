@@ -5,6 +5,7 @@
 
 import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, VEHICLES, ZONE_ROUNDTRIP_KM, type DeliveryTicket } from './real'
 import { SEED_IMPORTED_TICKETS } from './ticketSeed'
+import { liveCustomerByName } from './createdDocs'
 
 export { MONTHS }
 export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
@@ -101,7 +102,9 @@ export const customerUnit = (c: { name: string; unit?: string }): string =>
   c.unit ?? splitCustomerName(c.name).unit
 
 export function customerLegal(name: string) {
-  const c = CUSTOMER_MAP[name]
+  /* Prefer the LIVE registry (seed + quick-added + edits) so addresses / tax IDs
+     entered in ทะเบียนลูกค้า show on documents; fall back to the static seed map. */
+  const c = liveCustomerByName(name) ?? CUSTOMER_MAP[name]
   /* Split the customer key into ชื่อลูกค้า + หน่วยงาน so documents can show them in
      their own rows instead of the combined name. `display` (นามลูกค้า) prefers the
      registered legal name, else the bare ชื่อลูกค้า. */

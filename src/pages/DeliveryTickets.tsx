@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Select, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, Select, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
 import { SEED_IMPORTED_TICKETS } from '../data/ticketSeed'
-import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, LATEST_MONTH, monthName, ticketYear, type Invoice } from '../data/selectors'
-import { useCreatedDocs, removeTicket, removeInvoice, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, monthName, ticketYear, type Invoice } from '../data/selectors'
+import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
+import { useCreatedDocs, removeTicket, restoreTicket, removeInvoice, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, type DeletedTicket } from '../data/createdDocs'
 import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
-import { useCurrentUser } from '../data/auth'
+import { useCurrentUser, useCan } from '../data/auth'
 import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
 import { ImportDeliveryTicketsModal } from '../components/documents/ImportDeliveryTicketsModal'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
@@ -22,13 +23,12 @@ import { downloadCsv } from '../utils/csv'
 type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 'ใช้เอง'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
-const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 
 export function DeliveryTickets() {
-  /* Year (พ.ศ.) + month filter — keeps imported historical tickets (2564–2568)
-     separate from the live 2569 data (default view). */
-  const [year, setYear] = useState(2569)
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* Year (พ.ศ.) + month filter — defaults to the current month/year so the
+     newest tickets show first; historical years (2564–2568) stay selectable. */
+  const [year, setYear] = useState(currentBuddhistYear())
+  const [month, setMonth] = useState<number | 'all'>(currentMonth())
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -46,6 +46,9 @@ export function DeliveryTickets() {
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const created = useCreatedDocs()
   const isAdmin = useCurrentUser()?.role === 'Admin'
+  /* Deletion is allowed for anyone with edit rights on this page (now in
+     production too) — every removal is kept in the history table below. */
+  const canDelete = useCan('delivery-tickets').edit
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -114,7 +117,7 @@ export function DeliveryTickets() {
      exist — so importing historical data adds its periods to the dropdown. */
   /* Distinct ticket years (พ.ศ.), newest first — for the year picker. */
   const years = useMemo(
-    () => [...new Set(allTickets.map((t) => ticketYear(t)))].sort((a, b) => b - a),
+    () => [...new Set([currentBuddhistYear(), ...allTickets.map((t) => ticketYear(t))])].sort((a, b) => b - a),
     [allTickets],
   )
   /* Snap the year to a valid one if the current selection no longer exists. */
@@ -133,6 +136,12 @@ export function DeliveryTickets() {
         return true
       }),
     [monthRows, filter, query],
+  )
+
+  /* Deleted-ticket history for the current period — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedTickets.filter((t) => ticketYear(t) === year && (month === 'all' || t.month === month)),
+    [created.deletedTickets, year, month],
   )
 
   const cnt = (t: string) => monthRows.filter((x) => x.type === t).length
@@ -240,8 +249,6 @@ export function DeliveryTickets() {
       },
       className: 'docno',
     },
-    { key: 'pay', header: 'ชำระโดย', align: 'center', cell: (r) => (r.pay ? <Badge tone={PAY_TONE[r.pay] ?? 'neutral'} pip={false} square>{r.pay}</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
-    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบจ่ายคอนกรีต', ref: r.dtNo, label: r.dtNo, sub: `${r.customer} · ${qm(r.m3)} คิว · ${baht(r.amount)}`, route: '/delivery-tickets' }} /> },
     {
       key: 'act', header: '', align: 'center',
@@ -253,17 +260,37 @@ export function DeliveryTickets() {
         </div>
       ),
     },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
       cell: (r: DeliveryTicket) => (
         <Button variant="ghost" size="sm" onClick={() => {
-          if (confirm(`ลบใบจ่าย ${r.dtNo} ?\n(เฉพาะโหมดทดสอบ)`)) {
-            removeTicket(r.dtNo)
+          if (confirm(`ลบใบจ่าย ${r.dtNo} ?\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) {
+            removeTicket(r)
             const next = new Set(selected); next.delete(r.dtNo); setSelected(next)
           }
         }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
+  ]
+
+  /* Columns for the deletion-history table below the list (read-only + restore). */
+  const deletedColumns: Column<DeletedTicket>[] = [
+    { key: 'dt', header: 'เลขที่ใบจ่าย', cell: (r) => r.dtNo, className: 'docno' },
+    { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
+    { key: 'type', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone={TYPE_TONE[r.type] ?? 'neutral'} square pip={false}>{r.type}</Badge> },
+    { key: 'cust', header: 'ลูกค้า / หน่วยงาน', cell: (r) => r.customer },
+    { key: 'prod', header: 'สินค้า', cell: (r) => <span className="th">{prodShort(r.prod)}</span> },
+    { key: 'm3', header: 'คิว', align: 'right', cell: (r) => <span className="mono">{qm(r.m3)}</span> },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore',
+      header: '',
+      align: 'center' as const,
+      cell: (r: DeletedTicket) => (
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบจ่าย ${r.dtNo} ?`)) restoreTicket(r.dtNo) }}>กู้คืน</Button>
       ),
     }] : []),
   ]
@@ -330,6 +357,17 @@ export function DeliveryTickets() {
       )}
 
       <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบจ่าย`} />
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบจ่ายคอนกรีต</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
+      )}
 
       <NewDeliveryTicketForm
         open={showForm}

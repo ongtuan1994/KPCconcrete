@@ -7,7 +7,7 @@
 
 import { useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import type { DeliveryTicket, Customer, Product } from './real'
+import { CUSTOMER_MASTER, type DeliveryTicket, type Customer, type Product } from './real'
 import type { MixDesign } from './mixDesign'
 import type { FoundryFormula } from './foundryFormula'
 import type { Employee } from './employees'
@@ -759,6 +759,18 @@ interface Hidden {
   employees: string[]
 }
 
+/** A deleted ใบจ่ายคอนกรีต kept for the audit-history table — the full ticket
+    snapshot plus who removed it and when. */
+export interface DeletedTicket extends DeliveryTicket {
+  deletedAt: string
+  deletedBy: string
+}
+
+/** Deleted records kept for their pages' audit-history tables (snapshot + who/when). */
+export interface DeletedSalesOrder extends SalesOrder { deletedAt: string; deletedBy: string }
+export interface DeletedPurchaseOrder extends PurchaseOrder { deletedAt: string; deletedBy: string }
+export interface DeletedGoodsPayment extends GoodsPayment { deletedAt: string; deletedBy: string }
+
 export interface CreatedDocs {
   invoices: Invoice[]
   billingNotes: BillingNote[]
@@ -829,10 +841,18 @@ export interface CreatedDocs {
   taxImports: ImportedTaxRow[]
   /** Installment payments recorded against tax invoices (ผ่อนชำระใบกำกับ). */
   invoicePayments: InvoicePayment[]
+  /** Audit history of deleted ใบจ่ายคอนกรีต (newest first) — shown below the list. */
+  deletedTickets: DeletedTicket[]
+  /** Audit history of deleted ใบสั่งขาย (เฉพาะรอผลิต) — newest first. */
+  deletedSalesOrders: DeletedSalesOrder[]
+  /** Audit history of deleted ใบสั่งซื้อ — newest first. */
+  deletedPurchaseOrders: DeletedPurchaseOrder[]
+  /** Audit history of deleted ใบสำคัญจ่าย — newest first. */
+  deletedGoodsPayments: DeletedGoodsPayment[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -900,6 +920,10 @@ function read(): CreatedDocs {
          original seed/imports were พ.ศ. 2569). */
       taxImports: (v.taxImports ?? []).map((r) => ({ ...r, year: r.year ?? 2569 })),
       invoicePayments: v.invoicePayments ?? [],
+      deletedTickets: v.deletedTickets ?? [],
+      deletedSalesOrders: v.deletedSalesOrders ?? [],
+      deletedPurchaseOrders: v.deletedPurchaseOrders ?? [],
+      deletedGoodsPayments: v.deletedGoodsPayments ?? [],
     }
   } catch {
     return empty
@@ -1008,12 +1032,33 @@ export function removeReceipt(no: string) {
     hidden: wasCreated ? state.hidden : { ...state.hidden, receipts: [...state.hidden.receipts, no] },
   })
 }
-export function removeTicket(dtNo: string) {
-  const wasCreated = state.tickets.some((t) => t.dtNo === dtNo)
+export function removeTicket(t: DeliveryTicket) {
+  const wasCreated = state.tickets.some((x) => x.dtNo === t.dtNo)
+  const record: DeletedTicket = { ...t, deletedAt: new Date().toISOString(), deletedBy: currentUserName() }
   commit({
     ...state,
-    tickets: state.tickets.filter((t) => t.dtNo !== dtNo),
-    hidden: wasCreated ? state.hidden : { ...state.hidden, tickets: [...state.hidden.tickets, dtNo] },
+    tickets: state.tickets.filter((x) => x.dtNo !== t.dtNo),
+    /* Seed/imported tickets have no store record — hide them by dtNo instead. */
+    hidden: wasCreated ? state.hidden : { ...state.hidden, tickets: [...state.hidden.tickets, t.dtNo] },
+    /* Keep an audit trail (newest first); replace any prior record for the same no. */
+    deletedTickets: [record, ...state.deletedTickets.filter((d) => d.dtNo !== t.dtNo)],
+  })
+}
+
+/** Undo a deletion recorded by removeTicket — re-adds a user-created ticket or
+    un-hides a seed one, and drops it from the deletion history. */
+export function restoreTicket(dtNo: string) {
+  const rec = state.deletedTickets.find((d) => d.dtNo === dtNo)
+  if (!rec) return
+  const ticket = { ...rec } as Partial<DeletedTicket>
+  delete ticket.deletedAt
+  delete ticket.deletedBy
+  const wasSeed = state.hidden.tickets.includes(dtNo)
+  commit({
+    ...state,
+    deletedTickets: state.deletedTickets.filter((d) => d.dtNo !== dtNo),
+    hidden: wasSeed ? { ...state.hidden, tickets: state.hidden.tickets.filter((x) => x !== dtNo) } : state.hidden,
+    tickets: wasSeed ? state.tickets : [ticket as DeliveryTicket, ...state.tickets],
   })
 }
 
@@ -1021,8 +1066,35 @@ export function removeTicket(dtNo: string) {
 export function addSalesOrder(so: SalesOrder) {
   commit({ ...state, salesOrders: [stamp(so), ...state.salesOrders] })
 }
+/** Stamp a record with who deleted it and when, for the audit-history tables. */
+function stampDeleted<T>(rec: T): T & { deletedAt: string; deletedBy: string } {
+  return { ...rec, deletedAt: new Date().toISOString(), deletedBy: currentUserName() }
+}
+/** Strip the deletion metadata so a history record can be re-added to its list. */
+function unstampDeleted<T extends { deletedAt: string; deletedBy: string }>(rec: T): Omit<T, 'deletedAt' | 'deletedBy'> {
+  const copy = { ...rec } as Partial<T>
+  delete copy.deletedAt
+  delete copy.deletedBy
+  return copy as Omit<T, 'deletedAt' | 'deletedBy'>
+}
+
 export function removeSalesOrder(soNo: string) {
-  commit({ ...state, salesOrders: state.salesOrders.filter((s) => s.soNo !== soNo) })
+  const rec = state.salesOrders.find((s) => s.soNo === soNo)
+  commit({
+    ...state,
+    salesOrders: state.salesOrders.filter((s) => s.soNo !== soNo),
+    deletedSalesOrders: rec ? [stampDeleted(rec), ...state.deletedSalesOrders.filter((d) => d.soNo !== soNo)] : state.deletedSalesOrders,
+  })
+}
+/** Undo a ใบสั่งขาย deletion — re-add it to the list and drop the history row. */
+export function restoreSalesOrder(soNo: string) {
+  const rec = state.deletedSalesOrders.find((d) => d.soNo === soNo)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedSalesOrders: state.deletedSalesOrders.filter((d) => d.soNo !== soNo),
+    salesOrders: [unstampDeleted(rec) as SalesOrder, ...state.salesOrders],
+  })
 }
 /** Replace an existing sales order (matched by soNo) with an edited version. */
 export function updateSalesOrder(so: SalesOrder) {
@@ -1041,7 +1113,22 @@ export function updatePurchaseOrder(po: PurchaseOrder) {
   commit({ ...state, purchaseOrders: state.purchaseOrders.map((p) => (p.poNo === po.poNo ? po : p)) })
 }
 export function removePurchaseOrder(poNo: string) {
-  commit({ ...state, purchaseOrders: state.purchaseOrders.filter((p) => p.poNo !== poNo) })
+  const rec = state.purchaseOrders.find((p) => p.poNo === poNo)
+  commit({
+    ...state,
+    purchaseOrders: state.purchaseOrders.filter((p) => p.poNo !== poNo),
+    deletedPurchaseOrders: rec ? [stampDeleted(rec), ...state.deletedPurchaseOrders.filter((d) => d.poNo !== poNo)] : state.deletedPurchaseOrders,
+  })
+}
+/** Undo a ใบสั่งซื้อ deletion — re-add it to the list and drop the history row. */
+export function restorePurchaseOrder(poNo: string) {
+  const rec = state.deletedPurchaseOrders.find((d) => d.poNo === poNo)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedPurchaseOrders: state.deletedPurchaseOrders.filter((d) => d.poNo !== poNo),
+    purchaseOrders: [unstampDeleted(rec) as PurchaseOrder, ...state.purchaseOrders],
+  })
 }
 /** Flip a purchase order to 'รับของแล้ว' (e.g. when goods arrive / a payment is made). */
 export function markPurchaseOrderReceived(poNo: string) {
@@ -1053,7 +1140,22 @@ export function addGoodsPayment(gp: GoodsPayment) {
   commit({ ...state, goodsPayments: [stamp(gp), ...state.goodsPayments] })
 }
 export function removeGoodsPayment(gpNo: string) {
-  commit({ ...state, goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo) })
+  const rec = state.goodsPayments.find((g) => g.gpNo === gpNo)
+  commit({
+    ...state,
+    goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo),
+    deletedGoodsPayments: rec ? [stampDeleted(rec), ...state.deletedGoodsPayments.filter((d) => d.gpNo !== gpNo)] : state.deletedGoodsPayments,
+  })
+}
+/** Undo a ใบสำคัญจ่าย deletion — re-add it to the list and drop the history row. */
+export function restoreGoodsPayment(gpNo: string) {
+  const rec = state.deletedGoodsPayments.find((d) => d.gpNo === gpNo)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedGoodsPayments: state.deletedGoodsPayments.filter((d) => d.gpNo !== gpNo),
+    goodsPayments: [unstampDeleted(rec) as GoodsPayment, ...state.goodsPayments],
+  })
 }
 
 /* Foundry goods-delivery notes (ใบส่งสินค้าโรงหล่อ). */
@@ -1192,6 +1294,22 @@ export function clearTaxImports(kind: 'sale' | 'purchase', year?: number) {
 
 export function addCustomer(c: Customer) {
   commit({ ...state, customersAdded: [stamp(c), ...state.customersAdded] })
+}
+
+/** Resolve a customer from the LIVE registry (ทะเบียนลูกค้า) by its name key —
+    quick-added customers first (they can shadow a seed name), then the seed
+    master, with per-id edits (customerEdits) applied. Returns undefined when the
+    name isn't registered. This is what documents should use so that addresses /
+    tax IDs entered in the registry actually appear, instead of the static seed. */
+export function liveCustomerByName(name: string): Customer | undefined {
+  const withEdit = (c: Customer): Customer => {
+    const e = state.customerEdits[c.id]
+    return e ? { ...c, ...e } : c
+  }
+  const added = state.customersAdded.find((c) => c.name === name)
+  if (added) return withEdit(added)
+  const seed = CUSTOMER_MASTER.find((c) => c.name === name)
+  return seed ? withEdit(seed) : undefined
 }
 
 /** Push a brand-new supplier (ซัพพลายเออร์) to the head of the user-added list.
