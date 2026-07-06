@@ -188,7 +188,7 @@
     width: auto !important;
   }
   .modal-head, .modal-foot { display: none !important; }
-  .modal-body { padding: 0 !important; }
+  .modal-body { padding: 0 !important; overflow: visible !important; }
 
   /* The printable sheet IS the full A4 page; uniform padding provides the
      top/right/bottom/left paper margins. `overflow: hidden` plus a height a
@@ -353,15 +353,15 @@
 
 /* ============================================================
    Bank deposit / pay-in slip (ใบนำฝาก · ttb)
-   Prints onto the pre-printed bank form, landscape, on a fixed
-   9 × 4 inch page. Each field is absolutely positioned in mm so it lines
+   Prints onto the pre-printed bank form, landscape, on the real slip paper
+   size 210 × 110 mm. Each field is absolutely positioned in mm so it lines
    up with the boxes on the form (offsets live in DepositSlipDoc.tsx).
    ============================================================ */
 .deposit-wrap { overflow: auto; }
 .deposit-sheet {
   position: relative;
-  width: 9in;
-  height: 4in;
+  width: 210mm;
+  height: 110mm;
   background: #fff;
   box-sizing: border-box;
   color: #111;
@@ -376,7 +376,7 @@
 
 /* On screen, scale the sheet down so the whole slip fits the modal. */
 @media screen {
-  .deposit-wrap { height: calc(4in * 0.78); }
+  .deposit-wrap { height: calc(110mm * 0.78); }
   .deposit-wrap .deposit-sheet {
     transform: scale(0.78);
     transform-origin: top left;
@@ -385,15 +385,16 @@
 }
 
 @media print {
-  /* Dedicated 9 × 4 inch page box for the deposit slip; the default @page stays
-     A4 for every other document. The deposit sheet opts in via `page: envelope10`. */
-  @page envelope10 { size: 9in 4in; margin: 0; }
+  /* Dedicated 210 × 110 mm page box for the deposit slip (the real ttb slip paper);
+     the default @page stays A4 for every other document. The deposit sheet opts in
+     via `page: envelope10`. */
+  @page envelope10 { size: 210mm 110mm; margin: 0; }
   .deposit-wrap { height: auto !important; overflow: visible !important; }
   .deposit-wrap .deposit-sheet { transform: none !important; }
   .deposit-sheet {
     page: envelope10;
-    width: 9in !important;
-    height: 4in !important;
+    width: 210mm !important;
+    height: 110mm !important;
     overflow: hidden !important;
     border: none !important;
   }
@@ -423,9 +424,96 @@
 .trip-report-sheet table.trr-detail th, .trip-report-sheet table.trr-detail td { padding: 2px 5px; }
 
 @media print {
-  .trip-report-sheet { font-size: 10px; padding: 10mm; }
+  /* DEFAULT for every report: uniform four-side paper margins on EVERY page.
+     The margins live on the @page box (not the sheet's own padding, which only
+     pads the first/last page of a multi-page table). Specific reports below
+     override `page`/size where they need different margins or landscape. */
+  @page report { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet { font-size: 10px; padding: 0; page: report; }
   .trip-report-sheet table.trr-table { font-size: 9px; }
   .trip-report-sheet table.trr-detail { font-size: 8.5px; }
   .trip-report-sheet table.trr-table thead { display: table-header-group; }
   .trip-report-sheet table.trr-table tr { break-inside: avoid; }
+
+  /* Truck-trip report: slightly tighter 12mm margin to fit the wide table. */
+  @page truckReport { size: A4 portrait; margin: 12mm; }
+  .trip-report-sheet.truck-report { page: truckReport; padding: 0 !important; }
 }
+
+/* Attendance report: the daily เข้า–ออก breakdown is a separate section.
+   On screen, separate it from the summary with a dashed rule to hint the
+   page break that happens on paper. */
+.trip-report-sheet.att-report .att-daily {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 2px dashed #c4c4c4;
+}
+
+@media print {
+  /* Uniform paper margins on EVERY page (incl. page 2+). Element padding only
+     pads the first/last printed page, so the four-side margins live on the
+     @page box instead; the sheet's own padding is dropped to avoid doubling. */
+  @page attReport { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet.att-report { page: attReport; padding: 0 !important; }
+
+  /* The daily breakdown always starts on a fresh page (page 2 onward). */
+  .trip-report-sheet.att-report .att-daily {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}
+
+/* Payroll report: each group table (รวม/แพล้นปูน/โรงหล่อไทย/โรงหล่อพม่า) prints
+   on its own page. On screen, separate them with a dashed rule. */
+.trip-report-sheet.payroll-report .payroll-page {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 2px dashed #c4c4c4;
+}
+/* One line per row — never wrap names/labels so each employee is a single row. */
+.trip-report-sheet.payroll-report table.trr-table th,
+.trip-report-sheet.payroll-report table.trr-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+@media print {
+  /* Landscape so the wide single-line payroll table fits the page. */
+  @page payrollReport { size: A4 landscape; margin: 12mm; }
+  .trip-report-sheet.payroll-report { page: payrollReport; padding: 0 !important; }
+  .trip-report-sheet.payroll-report .payroll-page {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}
+
+/* Commission report: the per-ticket detail is a separate section, separated
+   on screen by a dashed rule to hint the page break that happens on paper. */
+.trip-report-sheet.comm-report .comm-detail {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 2px dashed #c4c4c4;
+}
+
+@media print {
+  /* Uniform paper margins on every page (see att-report rationale). */
+  @page commReport { size: A4 portrait; margin: 14mm; }
+  .trip-report-sheet.comm-report { page: commReport; padding: 0 !important; }
+
+  /* The ticket detail always starts on a fresh page (page 2 onward). */
+  .trip-report-sheet.comm-report .comm-detail {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    break-before: page;
+    page-break-before: always;
+  }
+}
+
+/* Price-list report (รายงานราคาสินค้า) uses the default @page margins above. */

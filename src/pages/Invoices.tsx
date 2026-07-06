@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Field, Input, Select, type Tone } from '../components/ui'
+import { Modal } from '../components/Modal'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -11,11 +13,30 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, baht, qm, LATEST_MONTH, monthLabel, type Invoice, type InvStatus } from '../data/selectors'
-import { useCreatedDocs, removeInvoice, CAN_DELETE } from '../data/createdDocs'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, LATEST_MONTH, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
+import { PRODUCT_MAP } from '../data/real'
+import { useCreatedDocs, removeInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
+
+const r2 = (n: number) => Math.round(n * 100) / 100
+function todayIso(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+function fmtThaiDate(iso: string): string {
+  if (!iso) return '—'
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return iso
+  return `${d}/${m}/${Number(y) + 543}`
+}
+
+/** SITE of an invoice — โรงหล่อ if any line is a foundry product, else แพล้นปูน. */
+function invoiceSite(inv: Invoice): 'foundry' | 'plant' {
+  return inv.lines.some((l) => PRODUCT_MAP[l.code]?.site === 'foundry') ? 'foundry' : 'plant'
+}
 
 const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {
   paid: { th: 'ชำระแล้ว', tone: 'success' },
@@ -25,23 +46,52 @@ const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {
 
 export function Invoices() {
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* Year filter (พ.ศ.) — defaults to the live 2569 data so the imported historical
+     invoices (2564–2568) stay separate until the user selects their year. */
+  const [year, setYear] = useState<number>(2569)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
+  /* Editing the number of a created invoice (fixing a wrong เลขที่ใบกำกับ). */
+  const [editNoInv, setEditNoInv] = useState<Invoice | null>(null)
+  const [newNo, setNewNo] = useState('')
+  const [noErr, setNoErr] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [fdRefs, setFdRefs] = useState<string | undefined>(undefined)
   const [downloading, setDownloading] = useState<Invoice | null>(null)
   const [receiptForInvoice, setReceiptForInvoice] = useState<Invoice | null>(null)
+  const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [zipQueue, setZipQueue] = useState<Invoice[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  /* When navigated here from a foundry delivery note ("ออกใบกำกับภาษี"), open the
+     invoice form pre-filled + auto-pulled. Clear router state so a refresh won't re-trigger. */
+  useEffect(() => {
+    const st = location.state as { invoiceFromFoundry?: string } | null
+    if (st?.invoiceFromFoundry) {
+      setFdRefs(st.invoiceFromFoundry)
+      setShowForm(true)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location, navigate])
 
   const hiddenSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const allInvoices = useMemo(
-    () => [...created.invoices, ...INVOICES].filter((i) => !hiddenSet.has(i.no)),
+    () => [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES].filter((i) => !hiddenSet.has(i.no)),
     [created.invoices, hiddenSet],
   )
-  const monthRows = useMemo(() => (month === 'all' ? allInvoices : allInvoices.filter((i) => i.month === month)), [month, allInvoices])
+  /* Distinct invoice years (พ.ศ.), newest first — for the year picker. */
+  const years = useMemo(
+    () => [...new Set(allInvoices.map((i) => ticketYear(i)))].sort((a, b) => b - a),
+    [allInvoices],
+  )
+  /* Filter by year first (keeps the historical import separate), then month. */
+  const yearRows = useMemo(() => allInvoices.filter((i) => ticketYear(i) === year), [allInvoices, year])
+  const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((i) => i.month === month)), [month, yearRows])
   const rows = useMemo(
     () =>
       monthRows.filter((inv) => {
@@ -86,6 +136,7 @@ export function Invoices() {
     { key: 'no', header: 'เลขที่ใบกำกับ', cell: (r) => r.no, className: 'docno' },
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
     { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'site', header: 'SITE', align: 'center', cell: (r) => { const s = invoiceSite(r); return <Badge tone={s === 'foundry' ? 'warning' : 'info'} pip={false} square>{s === 'foundry' ? 'โรงหล่อ' : 'แพล้นปูน'}</Badge> } },
     { key: 'm3', header: 'ปริมาณ', align: 'right', cell: (r) => <span className="mono">{qm(r.lines.reduce((s, l) => s + l.qty, 0))} m³</span> },
     { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
@@ -152,7 +203,17 @@ export function Invoices() {
 
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div className="row wrap" style={{ gap: 10 }}>
-          <MonthSelect value={month} onChange={setMonth} />
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
           <div className="pills">
             <Pill active={filter === 'all'} onClick={() => setFilter('all')}>ทั้งหมด {monthRows.length}</Pill>
             <Pill active={filter === 'pending'} onClick={() => setFilter('pending')}>รอชำระ {cnt('pending')}</Pill>
@@ -190,20 +251,60 @@ export function Invoices() {
         onClose={() => setActive(null)}
         extraActions={
           active ? (
-            <Button variant="tonal" onClick={() => { const inv = active; setActive(null); setReceiptForInvoice(inv) }}>
-              ออกใบเสร็จรับเงิน
-            </Button>
+            <>
+              {/* เลขที่ใบกำกับ can be fixed on created invoices (seed/imported are read-only). */}
+              {created.invoices.some((i) => i.no === active.no) && (
+                <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setNewNo(inv.no); setNoErr(''); setEditNoInv(inv) }}>
+                  แก้ไขเลขที่
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setPayingInvoice(inv) }}>
+                ผ่อนชำระ
+              </Button>
+              <Button variant="tonal" onClick={() => { const inv = active; setActive(null); setReceiptForInvoice(inv) }}>
+                ออกใบเสร็จรับเงิน
+              </Button>
+            </>
           ) : undefined
         }
       >
         {active && <TaxInvoiceDoc inv={active} />}
       </DocModal>
 
+      {/* Fix a wrong invoice number on a created invoice. */}
+      <Modal
+        open={!!editNoInv}
+        title="แก้ไขเลขที่ใบกำกับ"
+        onClose={() => setEditNoInv(null)}
+        maxWidth={440}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditNoInv(null)}>ยกเลิก</Button>
+            <Button variant="primary" onClick={() => {
+              if (!editNoInv) return
+              const n = newNo.trim()
+              if (!n) { setNoErr('กรุณากรอกเลขที่ใบกำกับ'); return }
+              if (n !== editNoInv.no && allInvoices.some((i) => i.no === n)) { setNoErr(`เลขที่ ${n} ถูกใช้แล้ว`); return }
+              updateInvoiceNo(editNoInv.no, n)
+              setEditNoInv(null)
+            }}>บันทึก</Button>
+          </>
+        }
+      >
+        {noErr && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{noErr}</div>}
+        <Field label="เลขที่ใบกำกับ" required hint={editNoInv ? `เดิม: ${editNoInv.no}` : undefined}>
+          <Input className="input mono" value={newNo} onChange={(e) => { setNewNo(e.target.value); setNoErr('') }} placeholder="เช่น 690621-0001" />
+        </Field>
+      </Modal>
+
+      <InstallmentModal invoice={payingInvoice} payments={created.invoicePayments} onClose={() => setPayingInvoice(null)} />
+
       <NewInvoiceForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setFdRefs(undefined) }}
         createdInvoices={created.invoices}
-        onIssued={(inv) => { setShowForm(false); setActive(inv) }}
+        initialFdRefs={fdRefs}
+        onIssued={(inv) => { setShowForm(false); setFdRefs(undefined); setActive(inv) }}
       />
 
       <NewReceiptForm
@@ -225,5 +326,125 @@ export function Invoices() {
         />
       )}
     </>
+  )
+}
+
+function SummaryStat({ label, value, tone, strong }: { label: string; value: string; tone?: 'ok' | 'warn'; strong?: boolean }) {
+  const color = tone === 'warn' ? 'var(--kpc-danger)' : tone === 'ok' ? '#15803d' : 'var(--kpc-text-strong)'
+  return (
+    <div className="card" style={{ padding: '10px 12px', background: 'var(--kpc-surface-alt)', borderRadius: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }}>{label}</div>
+      <div className="mono" style={{ fontSize: strong ? 18 : 15, fontWeight: strong ? 800 : 700, color }}>{value}</div>
+    </div>
+  )
+}
+
+/** ผ่อนชำระ — record installment payments against an invoice; the system tracks
+    ชำระแล้ว and computes the live ยอดคงค้าง (invoice.total − Σ payments). */
+function InstallmentModal({ invoice, payments, onClose }: { invoice: Invoice | null; payments: InvoicePayment[]; onClose: () => void }) {
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(todayIso())
+  const [method, setMethod] = useState('เงินสด')
+  const [note, setNote] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!invoice) return
+    setAmount(''); setDate(todayIso()); setMethod('เงินสด'); setNote(''); setErr('')
+  }, [invoice])
+
+  const invPayments = useMemo(
+    () => (invoice ? payments.filter((p) => p.invoiceNo === invoice.no).sort((a, b) => a.date.localeCompare(b.date)) : []),
+    [payments, invoice],
+  )
+  if (!invoice) return null
+
+  const isPaid = invoice.status === 'paid'
+  const paid = invPayments.reduce((s, p) => s + p.amount, 0)
+  const paidDisplay = isPaid ? invoice.total : paid
+  const outstanding = isPaid ? 0 : Math.max(0, r2(invoice.total - paid))
+  const amt = Number(amount) || 0
+  const afterOutstanding = Math.max(0, r2(outstanding - amt))
+
+  const save = () => {
+    setErr('')
+    if (!amt || amt <= 0) return setErr('กรุณาระบุจำนวนเงินที่ชำระ (มากกว่า 0)')
+    if (amt > outstanding + 0.001) return setErr(`จำนวนเกินยอดคงค้าง (${baht(outstanding)})`)
+    if (!date) return setErr('กรุณาระบุวันที่ชำระ')
+    addInvoicePayment({ id: `ip_${Date.now()}`, invoiceNo: invoice.no, amount: r2(amt), date, method, note: note.trim() || undefined })
+    setAmount(''); setNote(''); setErr('')
+  }
+
+  return (
+    <Modal
+      open={!!invoice}
+      title={`ผ่อนชำระ · ใบกำกับ ${invoice.no}`}
+      onClose={onClose}
+      maxWidth={560}
+      footer={<><Button variant="secondary" onClick={onClose}>ปิด</Button><Button variant="primary" onClick={save} disabled={outstanding <= 0}>บันทึกการชำระ</Button></>}
+    >
+      <div style={{ fontSize: 13, color: 'var(--kpc-text-muted)', marginBottom: 12 }}>ลูกค้า: <strong style={{ color: 'var(--kpc-text-strong)' }}>{invoice.customer}</strong></div>
+
+      <div className="grid g-3" style={{ gap: 10, marginBottom: 16 }}>
+        <SummaryStat label="ยอดรวมทั้งสิ้น" value={baht(invoice.total)} />
+        <SummaryStat label="ชำระแล้ว" value={baht(paidDisplay)} tone="ok" />
+        <SummaryStat label="ยอดคงค้าง" value={baht(outstanding)} tone={outstanding > 0 ? 'warn' : 'ok'} strong />
+      </div>
+
+      {outstanding <= 0 ? (
+        <div style={{ padding: 12, borderRadius: 8, background: 'rgba(34,197,94,0.12)', color: '#15803d', fontSize: 13, fontWeight: 600 }}>✓ ชำระครบแล้ว ไม่มียอดคงค้าง</div>
+      ) : (
+        <>
+          {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 10 }}>{err}</div>}
+          <div className="grid g-2" style={{ gap: 12 }}>
+            <Field label="จำนวนเงินที่ชำระ" required hint={`ยอดคงค้าง ${baht(outstanding)}`}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Input type="number" step="0.01" min={0} placeholder="เช่น 5000" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1 }} />
+                <Button variant="tonal" size="sm" onClick={() => setAmount(String(outstanding))}>ทั้งหมด</Button>
+              </div>
+            </Field>
+            <Field label="วันที่ชำระ" required hint="ค่าเริ่มต้น = วันนี้">
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </Field>
+            <Field label="วิธีชำระ">
+              <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+                <option value="เงินสด">เงินสด</option>
+                <option value="โอน">โอน</option>
+                <option value="เช็ค">เช็ค</option>
+              </Select>
+            </Field>
+            <Field label="หมายเหตุ">
+              <Input placeholder="เช่น งวดที่ 1" value={note} onChange={(e) => setNote(e.target.value)} />
+            </Field>
+          </div>
+          <div style={{ marginTop: 12, fontSize: 13, textAlign: 'right', color: 'var(--kpc-text-muted)' }}>
+            ยอดคงค้างหลังชำระ: <strong className="mono" style={{ color: afterOutstanding > 0 ? 'var(--kpc-danger)' : '#15803d', fontSize: 15 }}>{baht(afterOutstanding)}</strong>
+          </div>
+        </>
+      )}
+
+      {invPayments.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 8 }}>ประวัติการชำระ ({invPayments.length} ครั้ง)</div>
+          <table className="table" style={{ width: '100%', fontSize: 13 }}>
+            <thead><tr><th style={{ textAlign: 'left' }}>วันที่</th><th style={{ textAlign: 'left' }}>วิธี</th><th style={{ textAlign: 'right' }}>จำนวนเงิน</th><th style={{ textAlign: 'left' }}>ผู้บันทึก</th><th /></tr></thead>
+            <tbody>
+              {invPayments.map((p) => (
+                <tr key={p.id}>
+                  <td className="mono">{fmtThaiDate(p.date)}</td>
+                  <td>{p.method ?? '—'}{p.note ? ` · ${p.note}` : ''}</td>
+                  <td style={{ textAlign: 'right' }} className="mono">{baht(p.amount)}</td>
+                  <td style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{p.createdBy ?? '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <Button variant="ghost" size="sm" onClick={() => { if (confirm('ลบรายการชำระนี้?')) removeInvoicePayment(p.id) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr><td colSpan={2} style={{ fontWeight: 600 }}>รวมชำระแล้ว</td><td style={{ textAlign: 'right', fontWeight: 600 }} className="mono">{baht(paid)}</td><td colSpan={2} /></tr></tfoot>
+          </table>
+        </div>
+      )}
+    </Modal>
   )
 }

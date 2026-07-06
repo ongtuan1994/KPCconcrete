@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, Select, Checkbox, SavedBy, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -11,13 +11,14 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { ReceiptPdfDownload } from '../components/documents/ReceiptPdfDownload'
 import { ReceiptZipDownload } from '../components/documents/ReceiptZipDownload'
 import { IconDownload } from '../components/icons'
-import { RECEIPTS, baht, LATEST_MONTH, monthLabel, type Receipt } from '../data/selectors'
+import { RECEIPTS, baht, LATEST_MONTH, monthName, ticketYear, type Receipt } from '../data/selectors'
 import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning' }
+const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning', เช็ค: 'warning' }
 
 export function Receipts() {
+  const [year, setYear] = useState(2569)
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Receipt | null>(null)
@@ -47,7 +48,10 @@ export function Receipts() {
     () => [...created.receipts, ...RECEIPTS].filter((r) => !hiddenSet.has(r.no)),
     [created.receipts, hiddenSet],
   )
-  const monthRows = useMemo(() => (month === 'all' ? allReceipts : allReceipts.filter((r) => r.month === month)), [month, allReceipts])
+  const years = useMemo(() => [...new Set(allReceipts.map((r) => ticketYear(r)))].sort((a, b) => b - a), [allReceipts])
+  useEffect(() => { if (years.length && !years.includes(year)) setYear(years[0]) }, [years, year])
+  const yearRows = useMemo(() => allReceipts.filter((r) => ticketYear(r) === year), [allReceipts, year])
+  const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((r) => r.month === month)), [month, yearRows])
   const rows = useMemo(
     () => monthRows.filter((r) => !query || `${r.no} ${r.customer}`.toLowerCase().includes(query.toLowerCase())),
     [monthRows, query],
@@ -123,13 +127,13 @@ export function Receipts() {
     <>
       <PageHeader
         title="ใบเสร็จรับเงิน"
-        sub={`Receipts · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)} — เงินสด/โอน`}
+        sub={`Receipts · ${month === 'all' ? 'ทุกเดือน' : monthName(month)} ${year} — เงินสด/โอน`}
         actions={
           <>
             <Button variant="secondary" onClick={() => {
               const head = ['เลขที่ใบเสร็จ', 'วันที่', 'ลูกค้า', 'อ้างอิงใบกำกับ', 'วิธีชำระ', 'ยอดเงิน']
               const body = rows.map((r) => [r.no, r.date, r.customer, r.invoiceNos.join('; '), r.method, r.amount])
-              const slug = `receipts-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+              const slug = `receipts-${year}-${month === 'all' ? 'all' : monthName(month)}`
               downloadCsv(slug, [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => { setPrefillCustomer(undefined); setShowForm(true) }}>+ เพิ่มใบเสร็จรับเงิน</Button>
@@ -142,7 +146,19 @@ export function Receipts() {
         <KpiCard label="เฉลี่ยต่อใบ · Avg" value={baht(monthRows.length ? Math.round(total / monthRows.length) : 0)} note="ค่าเฉลี่ย" invert />
       </div>
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
-        <MonthSelect value={month} onChange={setMonth} />
+        <div className="row wrap" style={{ gap: 10 }}>
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
+        </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="เลขที่ใบเสร็จ / ลูกค้า" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>

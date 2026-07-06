@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Input } from '../components/ui'
+import { Button, Input, MonthPeriodSelect } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS } from '../data/real'
 import { qm, prodShort } from '../data/selectors'
@@ -100,6 +100,23 @@ export function Commission() {
     if (custTickets === 0) { alert('ไม่มียอดขายให้ลูกค้าในช่วงที่เลือก'); return }
     const fromLabel = isoToThai(from)
     const toLabel = isoToThai(to)
+    /* Detail of every ใบจ่าย in the range — customer sales feed the volume;
+       โรงหล่อ/ใช้เอง are shown pink (counted = false), excluded from the total. */
+    const tickets = allTickets
+      .filter((t) => {
+        const iso = ticketISO(t.date)
+        return iso && (!from || iso >= from) && (!to || iso <= to)
+      })
+      .sort((a, b) => ticketISO(a.date).localeCompare(ticketISO(b.date)) || a.dtNo.localeCompare(b.dtNo))
+      .map((t) => ({
+        date: t.date,
+        dp: t.ref || t.dtNo,
+        customer: t.customer,
+        prod: prodShort(t.prod),
+        type: t.type,
+        m3: t.m3,
+        counted: t.type === 'ขายลูกค้า',
+      }))
     const report: CommissionReport = {
       id: `gr_${Date.now()}`,
       kind: 'commission',
@@ -111,6 +128,7 @@ export function Commission() {
       status,
       lines,
       total,
+      tickets,
       createdAt: new Date().toISOString(),
     }
     addGeneralReport(report)
@@ -135,6 +153,10 @@ export function Commission() {
       {/* Date range */}
       <div className="card" style={{ padding: 14, marginBottom: 16 }}>
         <div className="row wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
+          <label className="stack" style={{ gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>งวดเดือน</span>
+            <MonthPeriodSelect from={from} onPick={(f, t) => { setFrom(f); setTo(t) }} width={170} />
+          </label>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
             <Input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />

@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, MONTHS, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, type DeliveryTicket, type PayMethod } from '../../data/real'
-import { LATEST_MONTH } from '../../data/selectors'
-import { addTicket, useCreatedDocs } from '../../data/createdDocs'
+import { CUSTOMER_MASTER, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, type DeliveryTicket, type PayMethod } from '../../data/real'
+import { monthLabel } from '../../data/selectors'
+import { addTicket, updateTicket, useCreatedDocs } from '../../data/createdDocs'
 import { NewCustomerForm } from './NewCustomerForm'
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
+
+/** งวด (เดือน) options — full B.E. 2569 year so tickets can be issued for the
+    current month and beyond (seed data only covered Jan–Jun). */
+const MONTH_OPTS = Array.from({ length: 12 }, (_, i) => i + 1)
+/** Current calendar month (1–12) — the sensible default งวด for a new ticket. */
+const CURRENT_MONTH = new Date().getMonth() + 1
 
 /** Delivery tickets only cover concrete products — precast (เสาเข็ม / คานสำเร็จรูป) excluded. */
 const SELECTABLE_PRODUCTS = PRODUCTS.filter((p) => p.category !== 'precast')
@@ -26,15 +32,19 @@ export function NewDeliveryTicketForm({
   onSaved,
   createdTickets,
   initial,
+  editTicket,
 }: {
   open: boolean
   onClose: () => void
   onSaved: (t: DeliveryTicket) => void
   createdTickets: DeliveryTicket[]
   initial?: DeliveryTicketInitial | null
+  /** When set, the form edits this existing (user-created) ticket instead of adding. */
+  editTicket?: DeliveryTicket | null
 }) {
+  const isEdit = !!editTicket
   const [dtNoDigits, setDtNoDigits] = useState<string>('') /* user types 11 digits; "DT" prefix is implicit */
-  const [month, setMonth] = useState<number>(LATEST_MONTH)
+  const [month, setMonth] = useState<number>(CURRENT_MONTH)
   /* Default the delivery date to today — most tickets are issued the same day. */
   const [day, setDay] = useState<string>(String(new Date().getDate()))
   const [type, setType] = useState<string>('ขายลูกค้า')
@@ -52,26 +62,45 @@ export function NewDeliveryTicketForm({
 
   const all = useMemo(() => [...createdTickets, ...DELIVERY_TICKETS], [createdTickets])
 
+  /* Prefill every field from the ticket being edited when the form opens. */
+  useEffect(() => {
+    if (!open || !editTicket) return
+    setDtNoDigits(editTicket.dtNo.replace(/^DT/, ''))
+    setMonth(editTicket.month)
+    setDay(String(parseInt(editTicket.date.slice(0, 2), 10) || new Date().getDate()))
+    setType(editTicket.type)
+    setCustomer(editTicket.customer)
+    setProdCode(editTicket.prod)
+    setM3(String(editTicket.m3))
+    setVehicle(editTicket.vehicle || VEHICLES[0]?.id || '')
+    setPay((editTicket.pay || 'เครดิต') as PayMethod)
+    setIssuer(editTicket.issuer || ISSUERS[0] || '')
+    setReceiver(editTicket.receiver ?? '')
+    setNote(editTicket.note ?? '')
+    setErr('')
+  }, [open, editTicket])
+
   /* Apply pre-fill values (e.g. issuing from a sales order) when the form opens.
      Only fields supplied by `initial` are overridden — the rest keep defaults. */
   useEffect(() => {
-    if (!open || !initial) return
+    if (!open || !initial || editTicket) return
     if (initial.type) setType(initial.type)
     if (initial.customer !== undefined) setCustomer(initial.customer)
     if (initial.prodCode && SELECTABLE_PRODUCTS.some((p) => p.code === initial.prodCode)) setProdCode(initial.prodCode)
     if (initial.m3 !== undefined) setM3(initial.m3)
     if (initial.note !== undefined) setNote(initial.note)
-  }, [open, initial])
+  }, [open, initial, editTicket])
 
   /* Live duplicate check: when the user has typed all 11 digits, mark
      whether that dtNo already exists so the field can flag it before
      they try to submit. */
   const isDtNoComplete = dtNoDigits.length === 11
-  const dtNoDuplicate = isDtNoComplete && all.some((t) => t.dtNo === `DT${dtNoDigits}`)
+  /* In edit mode the number is fixed to this ticket, so an existing match is itself. */
+  const dtNoDuplicate = !isEdit && isDtNoComplete && all.some((t) => t.dtNo === `DT${dtNoDigits}`)
 
   const reset = () => {
     setDtNoDigits('')
-    setMonth(LATEST_MONTH); setDay(String(new Date().getDate())); setType('ขายลูกค้า'); setCustomer('')
+    setMonth(CURRENT_MONTH); setDay(String(new Date().getDate())); setType('ขายลูกค้า'); setCustomer('')
     setProdCode(SELECTABLE_PRODUCTS[0]?.code ?? ''); setM3('')
     setVehicle(VEHICLES[0]?.id ?? ''); setPay('เครดิต')
     setIssuer(ISSUERS[0] ?? ''); setReceiver(''); setNote(''); setErr('')
@@ -80,8 +109,8 @@ export function NewDeliveryTicketForm({
   const submit = () => {
     setErr('')
     if (dtNoDigits.length !== 11) return setErr('กรุณาใส่เลขใบจ่าย 11 หลัก (ระบบจะนำหน้าด้วย DT)')
-    const dtNo = `DT${dtNoDigits}`
-    if (all.some((t) => t.dtNo === dtNo)) return setErr(`เลขใบจ่าย ${dtNo} ถูกใช้แล้ว`)
+    const dtNo = isEdit ? editTicket!.dtNo : `DT${dtNoDigits}`
+    if (!isEdit && all.some((t) => t.dtNo === dtNo)) return setErr(`เลขใบจ่าย ${dtNo} ถูกใช้แล้ว`)
 
     const dnum = parseInt(day, 10)
     if (!dnum || dnum < 1 || dnum > 31) return setErr('กรุณาระบุวันที่ (1–31)')
@@ -96,16 +125,14 @@ export function NewDeliveryTicketForm({
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     /* ref mirrors seed-data convention: trailing 5 digits of the dtNo. */
     const ref = dtNoDigits.slice(-5)
-    const t: DeliveryTicket = {
-      month, date, dtNo, ref, type,
+    /* Fields the form owns — shared by add and edit. Price/amount/invoice are
+       managed elsewhere (set at tax-invoice time), so edit preserves them. */
+    const fields = {
+      month, date, type,
       customer: customer.trim() || (type === 'โรงหล่อ' ? 'โรงหล่อ' : type),
       prod: prodCode,
       m3: q,
-      /* Price/amount are intentionally 0 here — they're entered when the tax invoice is issued. */
-      price: 0,
-      amount: 0,
-      invoice: '', billing: '',
-      pay: type === 'ขายลูกค้า' ? pay : '' as PayMethod,
+      pay: (type === 'ขายลูกค้า' ? pay : '') as PayMethod,
       note: note.trim(),
       vehicle,
       /* Snapshot the driver name from the vehicle master so the ticket stays
@@ -113,9 +140,16 @@ export function NewDeliveryTicketForm({
       driver: VEHICLE_MAP[vehicle]?.driver || '',
       issuer,
       receiver: receiver.trim() || undefined,
+      ref,
     }
-    addTicket(t)
-    onSaved(t)
+    if (isEdit) {
+      updateTicket(dtNo, fields)
+      onSaved({ ...editTicket!, ...fields })
+    } else {
+      const t: DeliveryTicket = { dtNo, ...fields, price: 0, amount: 0, invoice: '', billing: '' }
+      addTicket(t)
+      onSaved(t)
+    }
     reset()
   }
 
@@ -124,7 +158,7 @@ export function NewDeliveryTicketForm({
   return (
     <Modal
       open={open}
-      title="บันทึกใบจ่ายคอนกรีตใหม่"
+      title={isEdit ? `แก้ไขใบจ่ายคอนกรีต ${editTicket!.dtNo}` : 'บันทึกใบจ่ายคอนกรีตใหม่'}
       onClose={close}
       maxWidth={720}
       footer={
@@ -136,7 +170,7 @@ export function NewDeliveryTicketForm({
             disabled={dtNoDuplicate}
             title={dtNoDuplicate ? 'เลขใบจ่ายซ้ำ — แก้ก่อนบันทึก' : undefined}
           >
-            บันทึก
+            {isEdit ? 'บันทึกการแก้ไข' : 'บันทึก'}
           </Button>
         </>
       }
@@ -149,6 +183,7 @@ export function NewDeliveryTicketForm({
           required
           error={dtNoDuplicate}
           hint={(() => {
+            if (isEdit) return 'เลขใบจ่ายคงที่ — แก้ไขรายละเอียดอื่นได้'
             if (!dtNoDigits) return 'ใส่เลข 11 หลัก ระบบนำหน้าด้วย "DT" ให้อัตโนมัติ'
             if (dtNoDuplicate) return `⚠ เลขใบจ่าย DT${dtNoDigits} ถูกใช้แล้ว — กรุณาเปลี่ยน`
             if (isDtNoComplete) return `✓ DT${dtNoDigits} (ใช้ได้)`
@@ -178,15 +213,16 @@ export function NewDeliveryTicketForm({
               inputMode="numeric"
               placeholder="เช่น 26021511739"
               value={dtNoDigits}
+              readOnly={isEdit}
               onChange={(e) => setDtNoDigits(e.target.value.replace(/\D/g, '').slice(0, 11))}
-              style={{ borderRadius: '0 8px 8px 0', flex: 1, fontFamily: 'var(--kpc-font-mono)' }}
+              style={{ borderRadius: '0 8px 8px 0', flex: 1, fontFamily: 'var(--kpc-font-mono)', ...(isEdit ? { background: 'var(--kpc-surface-alt)' } : {}) }}
             />
           </div>
         </Field>
 
         <Field label="งวด (เดือน)" required>
           <Select value={String(month)} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
+            {MONTH_OPTS.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </Select>
         </Field>
         <Field label="วันที่จ่ายสินค้า" required hint="ค่าเริ่มต้น = วันนี้ (1–31)">
@@ -269,6 +305,7 @@ export function NewDeliveryTicketForm({
           <Select value={pay} onChange={(e) => setPay(e.target.value as PayMethod)} disabled={type !== 'ขายลูกค้า'}>
             <option value="เงินสด">เงินสด</option>
             <option value="โอน">โอน</option>
+            <option value="เช็ค">เช็ค</option>
             <option value="เครดิต">เครดิต</option>
             <option value="">—</option>
           </Select>

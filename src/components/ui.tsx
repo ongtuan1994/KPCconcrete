@@ -18,14 +18,27 @@ export function SavedBy({ by, at, align = 'left' }: { by?: string; at?: string; 
 /* ---------------- Button ---------------- */
 type Variant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger'
 type Size = 'sm' | 'md' | 'lg'
+/** Microsoft Excel brand green — applied to every "ส่งออก Excel" button label
+    so the export action is recognisable in the same shade across all menus. */
+const EXCEL_GREEN = '#217346'
+/** "สร้างรายงาน" buttons render as solid black with white text across all menus. */
+const REPORT_BLACK = '#111'
 interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
   size?: Size
 }
-export function Button({ variant = 'primary', size = 'md', className = '', children, ...rest }: BtnProps) {
+export function Button({ variant = 'primary', size = 'md', className = '', children, style, ...rest }: BtnProps) {
   const cls = ['btn', `btn-${variant}`, size !== 'md' ? `btn-${size}` : '', className].filter(Boolean).join(' ')
+  /* App-wide label conventions (a call-site `style` still wins — spread last):
+     - "ส่งออก Excel"  → Excel-green label
+     - "สร้างรายงาน"   → solid black button with white text */
+  const label = typeof children === 'string' ? children.trim() : ''
+  const btnStyle =
+    label === 'ส่งออก Excel' ? { color: EXCEL_GREEN, ...style }
+      : label === 'สร้างรายงาน' ? { background: REPORT_BLACK, borderColor: REPORT_BLACK, color: '#fff', ...style }
+        : style
   return (
-    <button className={cls} {...rest}>
+    <button className={cls} style={btnStyle} {...rest}>
       {children}
     </button>
   )
@@ -113,6 +126,34 @@ export function MonthSelect({ value, onChange, allowAll = true }: { value: numbe
         {MONTHS.map((m) => (
           <option key={m.num} value={m.num}>{m.label}</option>
         ))}
+      </select>
+      <span className="chev"><IconChevron /></span>
+    </div>
+  )
+}
+
+const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+/** First & last day (ISO yyyy-mm-dd) of a "YYYY-MM" month. */
+export function monthBoundsIso(ym: string): [string, string] {
+  const [y, m] = ym.split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  return [`${ym}-01`, `${ym}-${String(last).padStart(2, '0')}`]
+}
+
+/** งวดเดือน (Thai พ.ศ.) dropdown that fills a date range. `from` (ISO) determines
+    the shown month; onPick returns the [from, to] bounds of the chosen month. */
+export function MonthPeriodSelect({ from, onPick, width = 168 }: { from: string; onPick: (from: string, to: string) => void; width?: number }) {
+  const opts: string[] = []
+  const now = new Date()
+  let y = now.getFullYear(), m = now.getMonth() + 1
+  for (let i = 0; i < 24; i++) { opts.push(`${y}-${String(m).padStart(2, '0')}`); m--; if (m === 0) { m = 12; y-- } }
+  const ym = from.slice(0, 7)
+  const list = ym && !opts.includes(ym) ? [ym, ...opts] : opts
+  return (
+    <div className="select-wrap" style={{ width }}>
+      <select className="select" value={ym} onChange={(e) => { const [f, t] = monthBoundsIso(e.target.value); onPick(f, t) }} aria-label="งวดเดือน">
+        {list.map((mm) => <option key={mm} value={mm}>{THAI_MONTHS_FULL[Number(mm.slice(5, 7)) - 1]} {Number(mm.slice(0, 4)) + 543}</option>)}
       </select>
       <span className="chev"><IconChevron /></span>
     </div>

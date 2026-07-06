@@ -19,6 +19,18 @@ export const DEPARTMENT_LABEL: Record<Department, { th: string; en: string }> = 
   intern:     { th: 'เด็กฝึกงาน',         en: 'Intern' },
 }
 
+/** Work site / business unit the employee belongs to. */
+export type Site = 'plant' | 'foundry'
+
+export const SITE_LABEL: Record<Site, { th: string; en: string }> = {
+  plant:   { th: 'แพล้นปูน', en: 'Concrete Plant' },
+  foundry: { th: 'โรงหล่อ',  en: 'Foundry' },
+}
+
+/** Employee nationality (สัญชาติ). */
+export type Nationality = 'ไทย' | 'พม่า'
+export const NATIONALITIES: Nationality[] = ['ไทย', 'พม่า']
+
 export interface Employee {
   id: string
   name: string
@@ -26,6 +38,10 @@ export interface Employee {
   /** Job title / role, e.g. "ผู้จัดการ", "พนักงานผลิต", "พนักงานจัดส่ง". */
   role: string
   department: Department
+  /** Work site / business unit — แพล้นปูน (plant) or โรงหล่อ (foundry). */
+  site?: Site
+  /** Nationality (สัญชาติ) — ไทย / พม่า. */
+  nationality?: Nationality
   /** ISO date string when employment began. Optional — when omitted the
       "อายุงาน" column shows "—". */
   startDate?: string
@@ -57,33 +73,33 @@ export const THAI_BANKS = [
 
 export const EMPLOYEES: Employee[] = [
   /* Management */
-  { id: 'E001', name: 'นายสหรัฐ เพ็ชรฉิม',  nickname: 'เบนซ์', role: 'ผู้จัดการ',     department: 'manager', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-37798-5' },
+  { id: 'E001', name: 'นายสหรัฐ เพ็ชรฉิม',  nickname: 'เบนซ์', role: 'ผู้จัดการ',     department: 'manager', site: 'foundry', nationality: 'ไทย', startDate: '2022-02-07', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-37798-5' },
 
   /* Accounting */
-  { id: 'E002', name: 'น.ส.เพียงแข ดันยูชน', nickname: 'ใหม่',    role: 'บัญชี',         department: 'accounting', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-46462-7' },
+  { id: 'E002', name: 'น.ส.เพียงแข ดันยูชน', nickname: 'ใหม่',    role: 'บัญชี',         department: 'accounting', site: 'plant', nationality: 'ไทย', startDate: '2022-05-04', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-46462-7' },
 
   /* Production — Thai staff */
-  { id: 'E003', name: 'นายชัยวัฒน์ ขุนเพ็ชร', nickname: 'บริ้ง',   role: 'พนักงานผลิต', department: 'production', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '791-2-07364-5' },
-  { id: 'E004', name: 'นายกฤษฎา ปื่นเกตุ',   nickname: 'พีช',     role: 'พนักงานผลิต', department: 'production', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '791-2-07664-8' },
-  { id: 'E005', name: 'นายธนกร โลวีรกุล',    nickname: 'กร',      role: 'พนักงานผลิต', department: 'production' },
+  { id: 'E003', name: 'นายชัยวัฒน์ ขุนเพ็ชร', nickname: 'บริ้ง',   role: 'พนักงานผลิต', department: 'production', site: 'plant', nationality: 'ไทย', startDate: '2022-04-16', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '791-2-07364-5' },
+  { id: 'E004', name: 'นายกฤษฎา ปื่นเกตุ',   nickname: 'พีช',     role: 'พนักงานผลิต', department: 'production', site: 'plant', nationality: 'ไทย', startDate: '2022-10-10', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '791-2-07664-8' },
+  { id: 'E005', name: 'นายธนกร โลวีรกุล',    nickname: 'กร',      role: 'พนักงานผลิต', department: 'production', site: 'plant', nationality: 'พม่า', startDate: '2025-08-25' },
 
   /* Labor — foreign workers */
-  { id: 'E006', name: 'YE HTAY AUNG YE HTAY', nickname: 'ตาด้า',   role: 'แรงงาน', department: 'labor' },
-  { id: 'E007', name: 'MIN ZAW',              nickname: 'มินซอ',  role: 'แรงงาน', department: 'labor' },
-  { id: 'E008', name: 'SAN AYE',              nickname: 'เอ้ย',    role: 'แรงงาน', department: 'labor' },
-  { id: 'E009', name: 'NWAY MOE THU TU',      nickname: 'โมตู',   role: 'แรงงาน', department: 'labor' },
-  { id: 'E010', name: 'SAY MAR OO',           nickname: 'เทมาอู้', role: 'แรงงาน', department: 'labor' },
-  { id: 'E011', name: 'THET TUN OO',          nickname: 'ชาย',    role: 'แรงงาน', department: 'labor' },
+  { id: 'E006', name: 'YE HTAY AUNG YE HTAY', nickname: 'ตาด้า',   role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2018-03-01' },
+  { id: 'E007', name: 'MIN ZAW',              nickname: 'มินซอ',  role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2018-03-01' },
+  { id: 'E008', name: 'SAN AYE',              nickname: 'เอ้ย',    role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2020-10-01' },
+  { id: 'E009', name: 'NWAY MOE THU TU',      nickname: 'โมตู',   role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2018-02-01' },
+  { id: 'E010', name: 'SAY MAR OO',           nickname: 'เทมาอู้', role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2018-02-01' },
+  { id: 'E011', name: 'THET TUN OO',          nickname: 'ชาย',    role: 'แรงงาน', department: 'labor', site: 'foundry', nationality: 'พม่า', startDate: '2025-02-03' },
 
   /* Transport — mixer truck drivers (cross-linked with VEHICLES) */
-  { id: 'E012', name: 'นายมนตรี ธนบัตร',     nickname: 'เบิ้ม', role: 'หัวหน้าพนักงานจัดส่ง', department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-25618-9' },
-  { id: 'E013', name: 'นายศุภชัย ซื่อเลื่อม', nickname: 'โอ๊ต',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '921-9-94486-6' },
-  { id: 'E014', name: 'นายเจนภพ เย็นกลาง',   nickname: 'วาน',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-924303-0' },
-  { id: 'E015', name: 'นายพงศกร พรหมจรรย์',  nickname: 'บอย',    role: 'พนักงานจัดส่ง',          department: 'transport', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-9-03038-7' },
+  { id: 'E012', name: 'นายมนตรี ธนบัตร',     nickname: 'เบิ้ม', role: 'หัวหน้าพนักงานจัดส่ง', department: 'transport', site: 'plant', nationality: 'ไทย', startDate: '2021-03-01', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-25618-9' },
+  { id: 'E013', name: 'นายศุภชัย ซื่อเลื่อม', nickname: 'โอ๊ต',    role: 'พนักงานจัดส่ง',          department: 'transport', site: 'plant', nationality: 'ไทย', startDate: '2024-08-10', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '921-9-94486-6' },
+  { id: 'E014', name: 'นายเจนภพ เย็นกลาง',   nickname: 'วาน',    role: 'พนักงานจัดส่ง',          department: 'transport', site: 'plant', nationality: 'ไทย', startDate: '2025-11-01', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-924303-0' },
+  { id: 'E015', name: 'นายพงศกร พรหมจรรย์',  nickname: 'บอย',    role: 'พนักงานจัดส่ง',          department: 'transport', site: 'plant', nationality: 'ไทย', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '760-9-03038-7' },
 
   /* Interns — day-rate trainees (เด็กฝึกงาน · รายวัน) */
-  { id: 'E016', name: 'กฤต',   nickname: 'กฤต',   role: 'เด็กฝึกงาน', department: 'intern' },
-  { id: 'E017', name: 'ปาล์ม', nickname: 'ปาล์ม', role: 'เด็กฝึกงาน', department: 'intern' },
+  { id: 'E016', name: 'กฤต',   nickname: 'กฤต',   role: 'เด็กฝึกงาน', department: 'intern', site: 'plant', nationality: 'ไทย' },
+  { id: 'E017', name: 'ปาล์ม', nickname: 'ปาล์ม', role: 'เด็กฝึกงาน', department: 'intern', site: 'plant', nationality: 'ไทย' },
 ]
 
 /** Calculate years-of-service from startDate to `asOf` (default today). Returns

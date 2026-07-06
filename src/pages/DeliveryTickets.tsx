@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, MonthSelect, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Select, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { DELIVERY_TICKETS, type DeliveryTicket } from '../data/real'
-import { INVOICES, baht, qm, prodShort, LATEST_MONTH, monthLabel } from '../data/selectors'
-import { useCreatedDocs, removeTicket, markSalesOrderProduced, CAN_DELETE } from '../data/createdDocs'
+import { SEED_IMPORTED_TICKETS } from '../data/ticketSeed'
+import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, prodShort, LATEST_MONTH, monthName, ticketYear, type Invoice } from '../data/selectors'
+import { useCreatedDocs, removeTicket, removeInvoice, markSalesOrderProduced, addSalesOrder, updateTicket, nextSoNo, CAN_DELETE } from '../data/createdDocs'
+import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
+import { useCurrentUser } from '../data/auth'
 import { NewDeliveryTicketForm, type DeliveryTicketInitial } from '../components/documents/NewDeliveryTicketForm'
+import { ImportDeliveryTicketsModal } from '../components/documents/ImportDeliveryTicketsModal'
 import { NewInvoiceForm } from '../components/documents/NewInvoiceForm'
 import { DocModal } from '../components/documents/DocModal'
 import { DeliveryTicketDoc } from '../components/documents/DeliveryTicketDoc'
@@ -18,21 +22,30 @@ import { downloadCsv } from '../utils/csv'
 type Filter = 'all' | 'ขายลูกค้า' | 'โรงหล่อ' | 'ใช้เอง'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
-const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info' }
+const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 
 export function DeliveryTickets() {
+  /* Year (พ.ศ.) + month filter — keeps imported historical tickets (2564–2568)
+     separate from the live 2569 data (default view). */
+  const [year, setYear] = useState(2569)
   const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [prefill, setPrefill] = useState<DeliveryTicketInitial | null>(null)
   /* soNo of the sales order this ticket is being issued from, if any — used to
      flip that order's status to 'ผลิต' once the ticket is saved. */
   const [prefillSalesOrderNo, setPrefillSalesOrderNo] = useState<string | null>(null)
   const [active, setActive] = useState<DeliveryTicket | null>(null)
+  /* The user-created ticket currently being edited (opens the form in edit mode). */
+  const [editing, setEditing] = useState<DeliveryTicket | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [invoiceRefs, setInvoiceRefs] = useState<string | null>(null)
+  /* Issued invoice currently being viewed (opened from a ticket's detail modal). */
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const created = useCreatedDocs()
+  const isAdmin = useCurrentUser()?.role === 'Admin'
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -40,14 +53,19 @@ export function DeliveryTickets() {
      create form pre-filled with the ordered item. Clear the router state so a
      refresh / back-nav doesn't re-trigger it. */
   useEffect(() => {
-    const st = location.state as { issueFromSalesOrder?: DeliveryTicketInitial; salesOrderNo?: string } | null
+    const st = location.state as { issueFromSalesOrder?: DeliveryTicketInitial; salesOrderNo?: string; focusDtNo?: string } | null
     if (st?.issueFromSalesOrder) {
       setPrefill(st.issueFromSalesOrder)
       setPrefillSalesOrderNo(st.salesOrderNo ?? null)
       setShowForm(true)
       navigate(location.pathname, { replace: true, state: null })
+    } else if (st?.focusDtNo) {
+      /* Navigated here from a sales order's ใบจ่ายคอนกรีต link — focus that ticket. */
+      const dt = [...created.tickets, ...DELIVERY_TICKETS].find((t) => t.dtNo === st.focusDtNo)
+      if (dt) { setYear(ticketYear(dt)); setMonth(dt.month); setFilter('all'); setQuery(dt.dtNo) }
+      navigate(location.pathname, { replace: true, state: null })
     }
-  }, [location, navigate])
+  }, [location, navigate, created.tickets])
 
   const newSet = useMemo(() => new Set(created.tickets.map((t) => t.dtNo)), [created.tickets])
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
@@ -59,7 +77,7 @@ export function DeliveryTickets() {
   const hiddenInvoiceSet = useMemo(() => new Set(created.hidden.invoices), [created.hidden.invoices])
   const invoiceByTicket = useMemo(() => {
     const map = new Map<string, string>()
-    for (const inv of [...created.invoices, ...INVOICES]) {
+    for (const inv of [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES]) {
       if (hiddenInvoiceSet.has(inv.no)) continue
       for (const r of inv.refs) {
         if (r && !map.has(r)) map.set(r, inv.no)
@@ -70,11 +88,43 @@ export function DeliveryTickets() {
   const ticketInvoiceNo = (t: DeliveryTicket): string =>
     invoiceByTicket.get(t.dtNo) || invoiceByTicket.get(t.ref) || ''
   const hasInvoice = (t: DeliveryTicket): boolean => ticketInvoiceNo(t) !== ''
-  const allTickets = useMemo(
-    () => [...created.tickets, ...DELIVERY_TICKETS].filter((t) => !hiddenSet.has(t.dtNo)),
-    [created.tickets, hiddenSet],
+  const invoiceByNo = (no: string): Invoice | undefined =>
+    [...created.invoices, ...INVOICES, ...SEED_IMPORTED_INVOICES].find((i) => i.no === no)
+  /* Cancel an issued invoice (e.g. one raised by mistake) — the linked ใบจ่าย
+     becomes re-issuable. removeInvoice removes a user-created one or hides a seed one. */
+  const cancelInvoice = (no: string) => {
+    if (!no) return
+    if (confirm(`ยกเลิกใบกำกับภาษี ${no} ?\nใบจ่ายที่เกี่ยวข้องจะกลับมาออกใบกำกับใหม่ได้`)) {
+      removeInvoice(no)
+      setViewInvoice(null)
+    }
+  }
+  /* Runtime tickets + baked import seed + built-in seed, deduped by dtNo
+     (runtime wins) and minus hidden ones. */
+  const allTickets = useMemo(() => {
+    const seen = new Set<string>()
+    const out: DeliveryTicket[] = []
+    for (const t of [...created.tickets, ...SEED_IMPORTED_TICKETS, ...DELIVERY_TICKETS]) {
+      if (hiddenSet.has(t.dtNo) || seen.has(t.dtNo)) continue
+      seen.add(t.dtNo); out.push(t)
+    }
+    return out
+  }, [created.tickets, hiddenSet])
+  /* Selectable periods (เดือน + ปี พ.ศ.) built from the tickets that actually
+     exist — so importing historical data adds its periods to the dropdown. */
+  /* Distinct ticket years (พ.ศ.), newest first — for the year picker. */
+  const years = useMemo(
+    () => [...new Set(allTickets.map((t) => ticketYear(t)))].sort((a, b) => b - a),
+    [allTickets],
   )
-  const monthRows = useMemo(() => (month === 'all' ? allTickets : allTickets.filter((t) => t.month === month)), [month, allTickets])
+  /* Snap the year to a valid one if the current selection no longer exists. */
+  useEffect(() => {
+    if (years.length && !years.includes(year)) setYear(years[0])
+  }, [years, year])
+  const monthRows = useMemo(
+    () => allTickets.filter((t) => ticketYear(t) === year && (month === 'all' || t.month === month)),
+    [year, month, allTickets],
+  )
   const rows = useMemo(
     () =>
       monthRows.filter((t) => {
@@ -139,8 +189,20 @@ export function DeliveryTickets() {
       r.dtNo, r.date, r.type, r.customer, prodShort(r.prod), r.m3, r.price, r.amount,
       r.vehicle ?? '', r.pay ?? '', ticketInvoiceNo(r),
     ])
-    const slug = `delivery-tickets-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
+    const slug = `delivery-tickets-${year}-${month === 'all' ? 'all' : month}`
     downloadCsv(slug, [head, ...body])
+  }
+
+  /* Dev-only: dump the runtime tickets (audit fields stripped) so they can be
+     baked into ticketSeed.json for production. */
+  const exportSeed = () => {
+    const clean = created.tickets.map((t) => { const c: DeliveryTicket = { ...t }; delete c.createdBy; delete c.createdAt; return c })
+    const blob = new Blob([JSON.stringify(clean)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'delivery-tickets-seed.json'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1500)
   }
 
   const columns: Column<DeliveryTicket>[] = [
@@ -181,7 +243,16 @@ export function DeliveryTickets() {
     { key: 'pay', header: 'ชำระโดย', align: 'center', cell: (r) => (r.pay ? <Badge tone={PAY_TONE[r.pay] ?? 'neutral'} pip={false} square>{r.pay}</Badge> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบจ่ายคอนกรีต', ref: r.dtNo, label: r.dtNo, sub: `${r.customer} · ${qm(r.m3)} คิว · ${baht(r.amount)}`, route: '/delivery-tickets' }} /> },
-    { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    {
+      key: 'act', header: '', align: 'center',
+      cell: (r) => (
+        <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
+          {/* Edit only user-created tickets — seed tickets have no store record to patch. */}
+          {newSet.has(r.dtNo) && <Button variant="ghost" size="sm" onClick={() => { setEditing(r); setShowForm(true) }}>แก้ไข</Button>}
+          <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button>
+        </div>
+      ),
+    },
     ...(CAN_DELETE ? [{
       key: 'del',
       header: '',
@@ -201,11 +272,15 @@ export function DeliveryTickets() {
     <>
       <PageHeader
         title="ใบจ่ายคอนกรีต"
-        sub={`Delivery Tickets · ${month === 'all' ? 'ทั้งปี 2569' : monthLabel(month)}`}
+        sub={`Delivery Tickets · ${month === 'all' ? 'ทุกเดือน' : monthName(month)} ${year}`}
         actions={
           <>
+            {import.meta.env.DEV && (
+              <Button variant="secondary" onClick={exportSeed} disabled={created.tickets.length === 0}>ส่งออก seed (dev)</Button>
+            )}
+            {isAdmin && <Button variant="secondary" onClick={() => setShowImport(true)}>นำเข้า Excel</Button>}
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
-            <Button variant="primary" onClick={() => setShowForm(true)}>
+            <Button variant="primary" onClick={() => { setEditing(null); setPrefill(null); setShowForm(true) }}>
               <IconPlus /> บันทึกใบจ่ายคอนกรีต
             </Button>
           </>
@@ -213,13 +288,23 @@ export function DeliveryTickets() {
       />
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="ใบจ่าย · Tickets" value={monthRows.length.toString()} note="ใบ" />
-        <KpiCard label="ปริมาณรวม · Volume" value={qm(Math.round(totM3))} unit="m³" note="ผลิต+ส่ง" />
+        <KpiCard label="ปริมาณรวม · Volume" value={totM3.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unit="m³" note="ผลิต+ส่ง" />
         <KpiCard label="ยอดขาย · Sales" value={baht(totSales)} note="เฉพาะขายลูกค้า" />
         <KpiCard label="ใช้ภายใน · Internal" value={cnt('โรงหล่อ').toString()} note="โรงหล่อ" invert />
       </div>
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div className="row wrap" style={{ gap: 10 }}>
-          <MonthSelect value={month} onChange={setMonth} />
+          <div className="select-wrap" style={{ width: 130 }}>
+            <Select value={String(year)} onChange={(e) => { setYear(Number(e.target.value)); setMonth('all') }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+          </div>
+          <div className="select-wrap" style={{ width: 150 }}>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทุกเดือน</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
+          </div>
           <div className="pills">
             <Pill active={filter === 'all'} onClick={() => setFilter('all')}>ทั้งหมด {monthRows.length}</Pill>
             <Pill active={filter === 'ขายลูกค้า'} onClick={() => setFilter('ขายลูกค้า')}>ขายลูกค้า {cnt('ขายลูกค้า')}</Pill>
@@ -248,16 +333,37 @@ export function DeliveryTickets() {
 
       <NewDeliveryTicketForm
         open={showForm}
-        onClose={() => { setShowForm(false); setPrefill(null); setPrefillSalesOrderNo(null) }}
+        onClose={() => { setShowForm(false); setPrefill(null); setPrefillSalesOrderNo(null); setEditing(null) }}
         createdTickets={created.tickets}
         initial={prefill}
+        editTicket={editing}
         onSaved={(t) => {
-          /* Issued from a sales order → flip that order to 'ผลิต'. */
-          if (prefillSalesOrderNo) markSalesOrderProduced(prefillSalesOrderNo)
+          const wasEdit = !!editing
+          if (wasEdit) {
+            /* Editing an existing ticket — don't spin up a new sales order. */
+          } else if (prefillSalesOrderNo) {
+            /* Issued from a sales order → flip it to 'ผลิต' and link the ticket. */
+            markSalesOrderProduced(prefillSalesOrderNo)
+            updateTicket(t.dtNo, { soNo: prefillSalesOrderNo })
+          } else if (t.type === 'ขายลูกค้า') {
+            /* Standalone customer ticket → auto-create a matching sales order
+               (already produced) and link it both ways. */
+            const soNo = nextSoNo(created.salesOrders)
+            const now = new Date()
+            const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+            addSalesOrder({
+              id: soNo, soNo, orderDate: iso, useDate: iso, customer: t.customer,
+              items: [{ code: t.prod, name: prodShort(t.prod), qty: t.m3, unit: 'คิว' }],
+              status: 'ผลิต', note: `สร้างอัตโนมัติจากใบจ่ายคอนกรีต ${t.dtNo}`,
+              createdAt: now.toISOString(),
+            })
+            updateTicket(t.dtNo, { soNo })
+          }
           setShowForm(false)
           setPrefill(null)
           setPrefillSalesOrderNo(null)
-          setMonth(t.month)
+          setEditing(null)
+          setYear(ticketYear(t)); setMonth(t.month)
           setFilter('all')
           setQuery(t.dtNo)
         }}
@@ -270,19 +376,39 @@ export function DeliveryTickets() {
         extraActions={
           active ? (
             hasInvoice(active) ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)', flexWrap: 'wrap' }}>
                 ออกใบกำกับภาษี <span className="mono" style={{ color: 'var(--kpc-primary-ink, #1d4ed8)', fontWeight: 600 }}>{ticketInvoiceNo(active)}</span> แล้ว
-                <Button variant="tonal" disabled>ออกใบกำกับภาษี</Button>
+                <Button variant="secondary" size="sm" onClick={() => { const inv = invoiceByNo(ticketInvoiceNo(active)); if (inv) { setActive(null); setViewInvoice(inv) } }}>เปิดดูใบกำกับ</Button>
+                <Button variant="secondary" size="sm" onClick={() => cancelInvoice(ticketInvoiceNo(active))} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
               </span>
             ) : (
-              <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
-                ออกใบกำกับภาษี
-              </Button>
+              <>
+                {/* Edit is allowed only before an invoice is issued, and only for
+                    user-created tickets (seed tickets have no store record to patch). */}
+                {newSet.has(active.dtNo) && (
+                  <Button variant="secondary" onClick={() => { const t = active; setActive(null); setEditing(t); setShowForm(true) }}>แก้ไข</Button>
+                )}
+                <Button variant="tonal" onClick={() => openInvoiceForTicket(active)}>
+                  ออกใบกำกับภาษี
+                </Button>
+              </>
             )
           ) : undefined
         }
       >
         {active && <DeliveryTicketDoc ticket={active} />}
+      </DocModal>
+
+      {/* View an issued invoice (from a ticket's detail) with a cancel action. */}
+      <DocModal
+        open={!!viewInvoice}
+        title={viewInvoice ? `ใบกำกับภาษี ${viewInvoice.no}` : ''}
+        onClose={() => setViewInvoice(null)}
+        extraActions={viewInvoice ? (
+          <Button variant="secondary" onClick={() => cancelInvoice(viewInvoice.no)} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
+        ) : undefined}
+      >
+        {viewInvoice && <TaxInvoiceDoc inv={viewInvoice} />}
       </DocModal>
 
       <NewInvoiceForm
@@ -291,6 +417,12 @@ export function DeliveryTickets() {
         createdInvoices={created.invoices}
         initialRefs={invoiceRefs ?? undefined}
         onIssued={() => { setInvoiceRefs(null); setSelected(new Set()) }}
+      />
+
+      <ImportDeliveryTicketsModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={(t) => { setShowImport(false); setYear(ticketYear(t)); setMonth(t.month); setFilter('all'); setQuery('') }}
       />
     </>
   )

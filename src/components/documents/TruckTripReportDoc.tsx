@@ -16,7 +16,7 @@ function fmtCreated(iso: string): string {
 export function TruckTripReportDoc({ report }: { report: TruckTripReport }) {
   const t = report.totals
   return (
-    <div className="trip-report-sheet">
+    <div className="trip-report-sheet truck-report">
       <div className="trr-head">
         <div>
           <div className="trr-co">{COMPANY.name}</div>

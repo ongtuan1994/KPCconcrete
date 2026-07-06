@@ -23,6 +23,18 @@ function nextSoNo(existing: SalesOrder[]): string {
   return `SO${String(max + 1).padStart(5, '0')}`
 }
 
+/* Products split by SITE: แพล้นปูน (คอนกรีต/lean, non-precast) vs โรงหล่อ (foundry). */
+const PLANT_PRODUCTS = PRODUCTS.filter((p) => p.category !== 'precast')
+const FOUNDRY_PRODUCTS = PRODUCTS.filter((p) => p.site === 'foundry')
+const productsFor = (site: SalesOrderSite) => (site === 'foundry' ? FOUNDRY_PRODUCTS : PLANT_PRODUCTS)
+
+type SalesOrderSite = 'plant' | 'foundry'
+/** Which SITE an existing order belongs to — its stored `site`, else inferred
+    from whether any line is a foundry product. */
+function inferSite(so: SalesOrder): SalesOrderSite {
+  return so.site ?? (so.items.some((it) => FOUNDRY_PRODUCTS.some((p) => p.code === it.code)) ? 'foundry' : 'plant')
+}
+
 /** One editable product row in the form (qty kept as a string while typing). */
 interface DraftItem { code: string; qty: string }
 
@@ -45,7 +57,8 @@ export function NewSalesOrderForm({
   const [orderDate, setOrderDate] = useState<string>(todayIso())
   const [useDate, setUseDate] = useState<string>('')
   const [customer, setCustomer] = useState<string>('')
-  const [items, setItems] = useState<DraftItem[]>([{ code: PRODUCTS[0]?.code ?? '', qty: '' }])
+  const [site, setSite] = useState<SalesOrderSite>('plant')
+  const [items, setItems] = useState<DraftItem[]>([{ code: PLANT_PRODUCTS[0]?.code ?? '', qty: '' }])
   const [note, setNote] = useState<string>('')
   const [attachment, setAttachment] = useState<SalesOrder['attachment']>(undefined)
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -62,18 +75,23 @@ export function NewSalesOrderForm({
       setOrderDate(editing.orderDate)
       setUseDate(editing.useDate)
       setCustomer(editing.customer)
+      setSite(inferSite(editing))
       setItems(editing.items.map((it) => ({ code: it.code, qty: String(it.qty) })))
       setNote(editing.note ?? '')
       setAttachment(editing.attachment)
     } else {
-      setOrderDate(todayIso()); setUseDate(''); setCustomer('')
-      setItems([{ code: PRODUCTS[0]?.code ?? '', qty: '' }])
+      setOrderDate(todayIso()); setUseDate(''); setCustomer(''); setSite('plant')
+      setItems([{ code: PLANT_PRODUCTS[0]?.code ?? '', qty: '' }])
       setNote(''); setAttachment(undefined)
     }
     setErr('')
   }, [open, editing])
 
-  const addRow = () => setItems((rows) => [...rows, { code: PRODUCTS[0]?.code ?? '', qty: '' }])
+  const siteProducts = productsFor(site)
+  /* Switching SITE resets the lines to a single default product of the new site,
+     since a plant code isn't valid in the foundry list and vice-versa. */
+  const changeSite = (s: SalesOrderSite) => { setSite(s); setItems([{ code: productsFor(s)[0]?.code ?? '', qty: '' }]) }
+  const addRow = () => setItems((rows) => [...rows, { code: siteProducts[0]?.code ?? '', qty: '' }])
   const removeRow = (i: number) => setItems((rows) => (rows.length === 1 ? rows : rows.filter((_, idx) => idx !== i)))
   const setRow = (i: number, patch: Partial<DraftItem>) =>
     setItems((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -113,6 +131,7 @@ export function NewSalesOrderForm({
       orderDate,
       useDate,
       customer: customer.trim(),
+      site,
       items: cleaned,
       /* Preserve the existing status when editing; new orders start as 'รอผลิต'. */
       status: editing?.status ?? 'รอผลิต',
@@ -174,23 +193,33 @@ export function NewSalesOrderForm({
         </Field>
       </div>
 
-      {/* ---- Product line items (เลือกได้หลายรายการ) ---- */}
+      {/* ---- SITE selector: which product source ---- */}
+      <div className="grid g-2" style={{ marginBottom: 16 }}>
+        <Field label="ประเภทสินค้า (SITE)" required hint="เลือกก่อน แล้วรายการสินค้าจะแสดงตาม SITE นี้">
+          <Select value={site} onChange={(e) => changeSite(e.target.value as SalesOrderSite)}>
+            <option value="plant">สินค้าแพล้นปูน (คอนกรีต · อ้างอิงใบจ่ายคอนกรีต)</option>
+            <option value="foundry">สินค้าโรงหล่อ (แผ่นพื้น/เสาไอ · อ้างอิงใบส่งสินค้าโรงหล่อ)</option>
+          </Select>
+        </Field>
+      </div>
+
+      {/* ---- Product line items (เลือกได้หลายรายการ) — filtered by SITE ---- */}
       <div style={{ marginBottom: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>
-            รายการสินค้า <span className="req">*</span>
+            {site === 'foundry' ? 'รายการสินค้าโรงหล่อ' : 'รายการสินค้าแพล้นปูน'} <span className="req">*</span>
           </label>
           <Button variant="tonal" size="sm" onClick={addRow}>+ เพิ่มรายการ</Button>
         </div>
 
         <div className="stack" style={{ gap: 8 }}>
           {items.map((row, i) => {
-            const p = PRODUCTS.find((x) => x.code === row.code)
+            const p = siteProducts.find((x) => x.code === row.code)
             return (
               <div key={i} className="row" style={{ gap: 8, alignItems: 'stretch' }}>
                 <div style={{ flex: 1 }}>
                   <Select value={row.code} onChange={(e) => setRow(i, { code: e.target.value })}>
-                    {PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
+                    {siteProducts.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
                   </Select>
                 </div>
                 <div style={{ width: 130 }}>

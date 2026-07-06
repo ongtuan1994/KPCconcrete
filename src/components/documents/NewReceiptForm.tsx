@@ -165,6 +165,7 @@ export function NewReceiptForm({
           <Select value={method} onChange={(e) => setMethod(e.target.value)}>
             <option value="เงินสด">เงินสด</option>
             <option value="โอน">โอน</option>
+            <option value="เช็ค">เช็ค</option>
             <option value="เครดิต">เครดิต</option>
           </Select>
         </Field>

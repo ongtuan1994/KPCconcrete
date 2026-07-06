@@ -14,8 +14,11 @@ function fmtCreated(iso: string): string {
     Commission per employee = rate (บาท/คิว) × ยอดขายให้ลูกค้า (คิว), paid only
     when the volume qualifies. Reuses the general-report sheet styling. */
 export function CommissionReportDoc({ report }: { report: CommissionReport }) {
+  /* Foundry/own-use (pink) volume and the grand total for the detail footer. */
+  const foundryM3 = (report.tickets ?? []).filter((t) => !t.counted).reduce((s, t) => s + t.m3, 0)
+  const totalM3 = (report.tickets ?? []).reduce((s, t) => s + t.m3, 0)
   return (
-    <div className="trip-report-sheet">
+    <div className="trip-report-sheet comm-report">
       <div className="trr-head">
         <div>
           <div className="trr-co">{COMPANY.name}</div>
@@ -71,6 +74,53 @@ export function CommissionReportDoc({ report }: { report: CommissionReport }) {
           <tr className="trr-total"><td>รวม</td><td className="n mono">{num2(report.total)}</td><td>บาท</td></tr>
         </tbody>
       </table>
+
+      {report.tickets && report.tickets.length > 0 && (
+        <div className="comm-detail">
+          <div className="trr-section">รายละเอียดรายการในช่วงที่เลือก ({report.tickets.length} รายการ)</div>
+          <table className="trr-table trr-detail">
+            <thead>
+              <tr>
+                <th className="c" style={{ width: 34 }}>ที่</th>
+                <th style={{ width: 70 }}>วันที่</th>
+                <th style={{ width: 120 }}>เลขที่ DP</th>
+                <th>ลูกค้า</th>
+                <th style={{ width: 130 }}>สินค้า</th>
+                <th className="c" style={{ width: 74 }}>ประเภท</th>
+                <th className="n" style={{ width: 58 }}>คิว</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.tickets.map((t, i) => (
+                <tr key={t.dp + i} className={t.counted ? undefined : 'dim'}>
+                  <td className="c">{i + 1}</td>
+                  <td className="mono">{t.date}</td>
+                  <td className="mono">{t.dp}</td>
+                  <td>{t.customer}</td>
+                  <td>{t.prod}</td>
+                  <td className="c">{t.type}</td>
+                  <td className="n mono">{qm(t.m3)}</td>
+                </tr>
+              ))}
+              <tr className="trr-total">
+                <td colSpan={6} className="c">รวมยอดขายให้ลูกค้า (นับรวมค่าคอมมิชชั่น)</td>
+                <td className="n mono">{qm(report.volumeM3)}</td>
+              </tr>
+              <tr className="trr-total">
+                <td colSpan={6} className="c">รวมยอดใช้งานในโรงหล่อ</td>
+                <td className="n mono">{qm(foundryM3)}</td>
+              </tr>
+              <tr className="trr-total">
+                <td colSpan={6} className="c">รวมยอดทั้งหมด</td>
+                <td className="n mono">{qm(totalM3)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 8 }}>
+            * แถวสีชมพู = โรงหล่อ / ใช้เอง — ไม่นับรวมยอดค่าคอมมิชชั่น
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -4,11 +4,12 @@ import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Settings } from './pages/Settings'
 import { AuditReport } from './pages/AuditReport'
-import { ROUTE_RESOURCE, useCurrentUser, usePerms } from './data/auth'
+import { ROUTE_RESOURCE, roleAllowsResource, landingRouteFor, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
 import { Commission } from './pages/Commission'
 import { SalesOrders } from './pages/SalesOrders'
+import { FoundryDeliveries } from './pages/FoundryDeliveries'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
 import { Payroll } from './pages/Payroll'
@@ -23,12 +24,17 @@ import { Suppliers } from './pages/Suppliers'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { TaxReports } from './pages/TaxReports'
 import { GeneralReports } from './pages/GeneralReports'
+import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
+import { FoundryStock } from './pages/FoundryStock'
+import { StockReconcileHistory } from './pages/StockReconcileHistory'
+import { MixDesign } from './pages/MixDesign'
+import { FoundryFormula } from './pages/FoundryFormula'
 import { Pricing } from './pages/Pricing'
-import { TransportHub } from './pages/TransportHub'
 import { PlantMonitoring } from './pages/PlantMonitoring'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
+import { LeaveRecords } from './pages/LeaveRecords'
 import { Attendance } from './pages/Attendance'
 import { SalaryStructure } from './pages/SalaryStructure'
 
@@ -41,7 +47,8 @@ function Guard({ children }: { children: ReactElement }) {
   const key = ROUTE_RESOURCE[loc.pathname]
   if (key && user) {
     const lvl = perms[user.role]?.[key] ?? 'none'
-    if (lvl === 'none') return <NoAccess />
+    /* Perm-matrix level OR a hard role allowlist for sensitive pages. */
+    if (lvl === 'none' || !roleAllowsResource(user.role, key)) return <NoAccess />
   }
   return children
 }
@@ -59,20 +66,25 @@ function NoAccess() {
 
 export default function App() {
   const user = useCurrentUser()
+  const perms = usePerms()
   if (!user) return <Login />
+  /* Redirect roots/unknowns to the first page this role may actually open. */
+  const landing = landingRouteFor(user.role, perms)
 
   return (
     <Layout>
       <Guard>
       <Routes>
-        <Route path="/" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/" element={<Navigate to={landing} replace />} />
         {/* Legacy /overview links now land on the monthly report. */}
-        <Route path="/overview" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/overview" element={<Navigate to={landing} replace />} />
         <Route path="/sales-orders" element={<SalesOrders />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
+        <Route path="/advances" element={<Payroll />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
+        <Route path="/foundry-deliveries" element={<FoundryDeliveries />} />
         <Route path="/truck-trips" element={<TruckTrips />} />
         <Route path="/commission" element={<Commission />} />
         <Route path="/invoices" element={<InvoicesHub />} />
@@ -87,19 +99,29 @@ export default function App() {
         <Route path="/monthly-report" element={<MonthlyReport />} />
         <Route path="/tax-reports" element={<TaxReports />} />
         <Route path="/general-reports" element={<GeneralReports />} />
+        <Route path="/my-work" element={<MyWork />} />
         <Route path="/audit-report" element={<AuditReport />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
-        <Route path="/yearly-report" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="/yearly-report" element={<Navigate to={landing} replace />} />
         <Route path="/stock" element={<Stock />} />
+        <Route path="/foundry-materials" element={<Stock scope="foundry" />} />
+        <Route path="/foundry-stock" element={<FoundryStock />} />
+        <Route path="/stock-reconcile" element={<StockReconcileHistory />} />
+        <Route path="/foundry-stock-reconcile" element={<StockReconcileHistory scope="foundry" />} />
+        <Route path="/foundry-materials-reconcile" element={<StockReconcileHistory scope="foundry-material" />} />
         <Route path="/pricing" element={<Pricing />} />
-        <Route path="/transport-pricing" element={<TransportHub />} />
+        {/* ราคาค่าขนส่ง now lives inside /pricing; this route is the รถขนส่งปูน fleet page. */}
+        <Route path="/mix-design" element={<MixDesign />} />
+        <Route path="/foundry-formula" element={<FoundryFormula />} />
+        <Route path="/transport-pricing" element={<TruckFleet />} />
         <Route path="/plant" element={<PlantMonitoring />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/leave-records" element={<LeaveRecords />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/salary-structure" element={<SalaryStructure />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/monthly-report" replace />} />
+        <Route path="*" element={<Navigate to={landing} replace />} />
       </Routes>
       </Guard>
     </Layout>

@@ -6,7 +6,8 @@ import { Button, Badge, MonthSelect } from '../components/ui'
 import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
 import { monthTotals, productMix, dailyM3, customerAgg, MONTHLY_TREND, MONTHS, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
 import { AR_OUTSTANDING, AR_OUTSTANDING_TOTAL } from '../data/receivables'
-import { COMPANY } from '../data/real'
+import { COMPANY, PRODUCT_MAP } from '../data/real'
+import { useCreatedDocs } from '../data/createdDocs'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
 
@@ -49,10 +50,77 @@ export function MonthlyReport() {
   const estCost = Math.round(net * 0.62)
   const grossProfit = net - estCost
 
+  /* ---------- SITE breakdown ---------- */
+  const created = useCreatedDocs()
+  /* แพล้นปูน = the concrete business above (seed tickets/invoices). */
+  const plant = { sales: net, m3All: t.m3All, m3Sold: t.m3Sold, tickets: t.tickets }
+  /* โรงหล่อ = foundry deliveries + production, filtered to the selected period. */
+  const monthOf = (iso: string) => Number(iso.slice(5, 7))
+  const inPeriod = (iso: string) => isYear || monthOf(iso) === month
+  const foundry = (() => {
+    let salesValue = 0, pieces = 0
+    let notes = 0
+    for (const fd of created.foundryDeliveries) {
+      if (!inPeriod(fd.date)) continue
+      notes += 1
+      for (const it of fd.items) {
+        pieces += it.qty
+        const p = PRODUCT_MAP[it.code]
+        const price = (p?.pickupPrices && it.pickup) ? p.pickupPrices[it.pickup] : (p?.price ?? 0)
+        salesValue += it.qty * price
+      }
+    }
+    const produced = created.foundryReceipts.filter((r) => inPeriod(r.date)).reduce((s, r) => s + r.qty, 0)
+    return { salesValue: Math.round(salesValue * 100) / 100, pieces: Math.round(pieces * 100) / 100, produced: Math.round(produced * 100) / 100, notes }
+  })()
+
+  /* ต้นทุนเสียหาย/สูญหาย — from stock reconciliations in the period, by scope. */
+  const reconcileLoss = (scope: 'material' | 'foundry') =>
+    Math.round(created.stockReconciles
+      .filter((rc) => (rc.scope ?? 'material') === scope && inPeriod(rc.date))
+      .reduce((s, rc) => s + (rc.lossValue || 0), 0) * 100) / 100
+  const lossMaterial = reconcileLoss('material')
+  const lossFoundry = reconcileLoss('foundry')
+  const lossTotal = Math.round((lossMaterial + lossFoundry) * 100) / 100
+
+  /* Foundry product mix — share of pieces delivered per product, for its donut. */
+  const FOUNDRY_COLORS = ['#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#d97706', '#b45309']
+  const foundryMix: Seg[] = (() => {
+    const map = new Map<string, number>()
+    for (const fd of created.foundryDeliveries) {
+      if (!inPeriod(fd.date)) continue
+      for (const it of fd.items) map.set(it.code, (map.get(it.code) ?? 0) + it.qty)
+    }
+    const entries = [...map.entries()].sort((a, b) => b[1] - a[1])
+    const total = entries.reduce((s, [, q]) => s + q, 0) || 1
+    const segs: Seg[] = entries.slice(0, 5).map(([code, q], i) => ({
+      label: PRODUCT_MAP[code]?.name ?? code,
+      pct: Math.round((q / total) * 100),
+      color: FOUNDRY_COLORS[i],
+    }))
+    const rest = entries.slice(5).reduce((s, [, q]) => s + Math.round((q / total) * 100), 0)
+    if (rest > 0) segs.push({ label: 'อื่นๆ', pct: rest, color: FOUNDRY_COLORS[5] })
+    return segs
+  })()
+
+  /* Foundry sales value per calendar month — drives the second trend line. */
+  const foundrySalesByMonth = (() => {
+    const map = new Map<number, number>()
+    for (const fd of created.foundryDeliveries) {
+      const mo = Number(fd.date.slice(5, 7))
+      let v = 0
+      for (const it of fd.items) {
+        const p = PRODUCT_MAP[it.code]
+        const price = p?.pickupPrices && it.pickup ? p.pickupPrices[it.pickup] : p?.price ?? 0
+        v += it.qty * price
+      }
+      map.set(mo, (map.get(mo) ?? 0) + v)
+    }
+    return map
+  })()
+
   const summary = [
     { label: 'ยอดขายรวม (ก่อน VAT)', value: baht(net) },
-    { label: 'ภาษีมูลค่าเพิ่ม 7%', value: baht(vat) },
-    { label: 'รวมเรียกเก็บ', value: baht(net + vat) },
     { label: 'กำไรขั้นต้น (ประมาณ)', value: baht(grossProfit), invert: true },
   ]
 
@@ -130,33 +198,35 @@ export function MonthlyReport() {
         backgroundColor: '#ffffff',
         windowWidth: 1240, /* a touch wider than the 1200px snapshot for safety */
       })
-      const imgData = canvas.toDataURL('image/jpeg', 0.95)
-
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
       const pageWidth = pdf.internal.pageSize.getWidth()   /* 210mm */
       const pageHeight = pdf.internal.pageSize.getHeight() /* 297mm */
-      const margin = 8                                      /* mm — slim margin keeps content as large as possible */
+      const margin = 10                                     /* mm — uniform top/bottom/left/right margin */
       const availW = pageWidth - 2 * margin
       const availH = pageHeight - 2 * margin
 
-      /* Fit the captured image inside the available area while preserving its
-         aspect ratio. This guarantees ALL content shows on exactly one page. */
-      const imgAspect = canvas.width / canvas.height
-      const areaAspect = availW / availH
-      let drawW: number, drawH: number
-      if (imgAspect > areaAspect) {
-        /* image relatively wider than the page area — width is the limit. */
-        drawW = availW
-        drawH = availW / imgAspect
-      } else {
-        /* image relatively taller — height is the limit. */
-        drawH = availH
-        drawW = availH * imgAspect
+      /* Fill the full content width on every page, then slice the capture into
+         page-height chunks so the report keeps margins on all four sides and
+         flows onto as many A4 pages as it needs. */
+      const pxPerMm = canvas.width / availW
+      const pageHpx = Math.floor(availH * pxPerMm)
+      let renderedHpx = 0
+      let first = true
+      while (renderedHpx < canvas.height) {
+        const sliceHpx = Math.min(pageHpx, canvas.height - renderedHpx)
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvas.width
+        pageCanvas.height = sliceHpx
+        const ctx = pageCanvas.getContext('2d')!
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, sliceHpx)
+        ctx.drawImage(canvas, 0, renderedHpx, canvas.width, sliceHpx, 0, 0, canvas.width, sliceHpx)
+        const sliceData = pageCanvas.toDataURL('image/jpeg', 0.95)
+        if (!first) pdf.addPage()
+        pdf.addImage(sliceData, 'JPEG', margin, margin, availW, sliceHpx / pxPerMm, undefined, 'FAST')
+        renderedHpx += sliceHpx
+        first = false
       }
-      const x = (pageWidth - drawW) / 2
-      const y = margin /* anchor at top so the report starts from the top of the page */
-
-      pdf.addImage(imgData, 'JPEG', x, y, drawW, drawH, undefined, 'FAST')
       pdf.save(`${slug}.pdf`)
     } catch (err) {
       console.error('Monthly report PDF export failed', err)
@@ -176,7 +246,10 @@ export function MonthlyReport() {
       rows.push([])
 
       rows.push(['สรุปรายรับ'])
-      for (const s of summary) rows.push([s.label, stripBaht(s.value)])
+      rows.push(['ยอดขายรวม (ก่อน VAT)', stripBaht(baht(net))])
+      rows.push(['ภาษีมูลค่าเพิ่ม 7%', stripBaht(baht(vat))])
+      rows.push(['รวมเรียกเก็บ', stripBaht(baht(net + vat))])
+      rows.push(['กำไรขั้นต้น (ประมาณ)', stripBaht(baht(grossProfit))])
       rows.push([])
 
       rows.push(['ตัวเลขรวม'])
@@ -187,6 +260,16 @@ export function MonthlyReport() {
       rows.push(['ขายเงินสด/โอน', stripBaht(baht(t.cash))])
       rows.push(['ขายเครดิต (ค้าง)', stripBaht(baht(t.credit))])
       rows.push(['ราคาขายเฉลี่ย / m³', t.m3Sold ? Math.round(net / t.m3Sold) : 0])
+      rows.push([])
+
+      rows.push(['แยกตาม SITE'])
+      rows.push(['', 'แพล้นปูน', 'โรงหล่อ'])
+      rows.push(['ยอดขาย/มูลค่าส่งมอบ (บาท)', Math.round(plant.sales), Math.round(foundry.salesValue)])
+      rows.push(['ปริมาณผลิต', Math.round(plant.m3All), foundry.produced])
+      rows.push(['ปริมาณขาย/ส่งมอบ', Math.round(plant.m3Sold), foundry.pieces])
+      rows.push(['จำนวนใบ (จ่าย/ส่งสินค้า)', plant.tickets, foundry.notes])
+      rows.push(['ต้นทุนเสียหาย/สูญหาย (บาท)', Math.round(lossMaterial), Math.round(lossFoundry)])
+      rows.push(['ต้นทุนเสียหาย/สูญหาย รวม (บาท)', Math.round(lossTotal)])
       rows.push([])
 
       rows.push(['ลูกหนี้ — เงินลูกค้าค้างชำระ (ยอดจริงจากหน้าลูกหนี้)'])
@@ -263,7 +346,7 @@ export function MonthlyReport() {
             <Button variant="secondary" onClick={exportPdf} disabled={!!exporting}>
               {exporting === 'pdf' ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
             </Button>
-            <Button variant="primary" onClick={exportExcel} disabled={!!exporting}>
+            <Button variant="secondary" onClick={exportExcel} disabled={!!exporting}>
               {exporting === 'excel' ? 'กำลังสร้าง Excel...' : 'ส่งออก Excel'}
             </Button>
           </>
@@ -285,47 +368,44 @@ export function MonthlyReport() {
           </div>
         </div>
 
-        <div className="grid g-4" style={{ marginBottom: 16 }}>
-          {summary.map((s) => (
-            <KpiCard key={s.label} label={s.label} value={s.value} invert={s.invert} />
-          ))}
+        {/* ===== การเงิน-การผลิต (รวม) — KPI cards (left) + monthly trend (right) ===== */}
+        <div className="row" style={{ gap: 8, margin: '2px 0 6px', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>การเงิน-การผลิต (รวม) · {periodLabel}</span>
+          <Badge tone="info" pip={false} square>กิจไพศาลคอนกรีต</Badge>
         </div>
-
-        <div className="grid g-4" style={{ marginBottom: 16 }}>
-          <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(t.m3All))} unit="m³" note={isYear ? `ทั้งปี · ${MONTHS.length} เดือน` : 'ทั้งเดือน'} />
-          <KpiCard
-            label="ลูกหนี้คงค้าง · Outstanding"
-            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(arOutstandingTotal)}</span>}
-            note={`${arDebtorCount} ราย · เลยกำหนด ${arOverdueCount}`}
-          />
-          <KpiCard
-            label="เลยกำหนดชำระ · Overdue"
-            value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(arOverdueAmt)}</span>}
-            note={`${arOverdueCount} ราย ต้องติดตามด่วน`}
-          />
-          <KpiCard label="เฉลี่ยต่อคิว · Avg / m³" value={baht(t.m3Sold ? Math.round(net / t.m3Sold) : 0)} note="ราคาขายเฉลี่ย" />
-        </div>
-
-        {/* Product mix donut + monthly revenue line chart side by side. */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1.2fr', gap: 16, marginBottom: 16 }}>
-          <div className="card row" style={{ gap: 20 }}>
-            <Donut segments={mix} />
-            <div className="stack" style={{ gap: 11, flex: 1 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>สัดส่วนสินค้า</div>
-                <div className="card-meta">{periodLabel} · {isYear ? `${MONTHS.length} เดือน` : `${daily.length} วัน`} · {qm(Math.round(t.m3All))} m³</div>
-              </div>
-              <Legend segments={mix} />
-            </div>
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
+          {/* left half — combined finance/production KPI cards */}
+          <div className="grid g-2" style={{ gap: 8 }}>
+            {summary.map((s) => (
+              <KpiCard key={s.label} label={s.label} value={s.value} invert={s.invert} />
+            ))}
+            <KpiCard
+              label="ต้นทุนเสียหาย/สูญหาย · Loss"
+              value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(lossTotal)}</span>}
+              note="วัตถุดิบ + โรงหล่อ"
+            />
+            <KpiCard
+              label="ลูกหนี้คงค้าง · Outstanding"
+              value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(arOutstandingTotal)}</span>}
+              note={`${arDebtorCount} ราย · เลยกำหนด ${arOverdueCount}`}
+            />
           </div>
 
-          <div className="card stack" style={{ gap: 10 }}>
+          {/* right half — monthly revenue trend */}
+          <div className="card stack" style={{ gap: 6, padding: 12 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>ยอดขายรายเดือน · 2569</div>
                 <div className="card-meta">Jan–Jun · รวม {baht(MONTHLY_TREND.reduce((s, m) => s + m.revenue, 0))}</div>
               </div>
-              <Badge tone="info" pip={false} square>{MONTHLY_TREND.length} เดือน</Badge>
+              <div className="row" style={{ gap: 14, alignItems: 'center' }}>
+                <span className="row" style={{ gap: 7, alignItems: 'center', fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>
+                  <span style={{ width: 20, height: 4, borderRadius: 3, background: 'var(--kpc-primary, #0E0EE6)' }} />แพล้นปูน
+                </span>
+                <span className="row" style={{ gap: 7, alignItems: 'center', fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>
+                  <span style={{ width: 20, height: 4, borderRadius: 3, background: '#f59e0b' }} />โรงหล่อ
+                </span>
+              </div>
             </div>
             <LineChart
               data={MONTHLY_TREND.map((m) => ({
@@ -333,7 +413,70 @@ export function MonthlyReport() {
                 value: m.revenue,
                 highlight: !isYear && m.month === month,
               }))}
+              /* TODO(mock): foundry trend seeded at ~half of plant revenue until real
+                 foundry deliveries accumulate; real values are added on top. */
+              series2={MONTHLY_TREND.map((m) => Math.round(m.revenue * 0.5) + (foundrySalesByMonth.get(m.month) ?? 0))}
             />
+          </div>
+        </div>
+
+        {/* ===== การเงิน-การผลิต แยกตาม SITE ===== */}
+        <div className="row" style={{ gap: 8, margin: '2px 0 6px', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>การเงิน-การผลิต แยกตาม SITE · {periodLabel}</span>
+          <Badge tone="neutral" pip={false} square>แพล้นปูน + โรงหล่อ</Badge>
+        </div>
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="card stack" style={{ gap: 8, padding: 12, borderTop: '3px solid var(--kpc-primary)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-primary-ink)' }}>แพล้นปูน · Concrete Plant</div>
+            <div className="grid g-2" style={{ gap: 8 }}>
+              <KpiCard label="ยอดขาย · Sales" value={baht(plant.sales)} note="ก่อน VAT" />
+              <KpiCard label="ปริมาณผลิต · Volume" value={qm(Math.round(plant.m3All))} unit="m³" note="ผลิตรวม" />
+              <KpiCard label="ปริมาณขาย · Sold" value={qm(Math.round(plant.m3Sold))} unit="m³" note="ส่งลูกค้า" />
+              <KpiCard label="ต้นทุนเสียหาย/สูญหาย · Loss" value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(lossMaterial)}</span>} note="จากกระทบยอด" />
+            </div>
+          </div>
+          <div className="card stack" style={{ gap: 8, padding: 12, borderTop: '3px solid #f59e0b' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309' }}>โรงหล่อ · Foundry</div>
+            <div className="grid g-2" style={{ gap: 8 }}>
+              <KpiCard label="มูลค่าส่งมอบ · Delivered" value={baht(foundry.salesValue)} note="รวม VAT (ประมาณ)" />
+              <KpiCard label="ผลิตเข้าสต๊อก · Produced" value={qm(foundry.produced)} note="ชิ้น/แผ่น/ต้น" />
+              <KpiCard label="จำนวนส่งมอบ · Pieces" value={qm(foundry.pieces)} note="ส่งให้ลูกค้า" />
+              <KpiCard label="ต้นทุนเสียหาย/สูญหาย · Loss" value={<span style={{ color: 'var(--kpc-danger-ink, #b91c1c)' }}>{baht(lossFoundry)}</span>} note="จากกระทบยอด" />
+            </div>
+          </div>
+        </div>
+
+        {/* Product mix donuts — concrete plant vs foundry, aligned by site. */}
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div className="card row" style={{ gap: 20, borderTop: '3px solid var(--kpc-primary)' }}>
+            <Donut segments={mix} />
+            <div className="stack" style={{ gap: 11, flex: 1 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-primary-ink)' }}>สัดส่วนสินค้า · แพล้นปูน</div>
+                <div className="card-meta">{periodLabel} · {qm(Math.round(t.m3All))} m³</div>
+              </div>
+              <Legend segments={mix} />
+            </div>
+          </div>
+
+          <div className="card row" style={{ gap: 20, borderTop: '3px solid #f59e0b' }}>
+            {foundryMix.length > 0 ? (
+              <>
+                <Donut segments={foundryMix} />
+                <div className="stack" style={{ gap: 11, flex: 1 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#b45309' }}>สัดส่วนสินค้า · โรงหล่อ</div>
+                    <div className="card-meta">{periodLabel} · {qm(foundry.pieces)} ชิ้น</div>
+                  </div>
+                  <Legend segments={foundryMix} />
+                </div>
+              </>
+            ) : (
+              <div className="stack" style={{ gap: 6, flex: 1, justifyContent: 'center' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#b45309' }}>สัดส่วนสินค้า · โรงหล่อ</div>
+                <div className="card-meta">ยังไม่มีการส่งมอบสินค้าโรงหล่อใน{isYear ? 'ปีนี้' : 'เดือนนี้'}</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -483,22 +626,26 @@ export function FinanceCard({
 
 /** Simple SVG line chart used for the monthly revenue trend. Uses a fixed
     viewBox so the SVG scales to whatever width the card gives it. */
-export function LineChart({ data }: { data: { label: string; value: number; highlight?: boolean }[] }) {
-  const W = 480, H = 200
-  const pad = { top: 18, right: 18, bottom: 30, left: 8 }
+export function LineChart({ data, series2 }: { data: { label: string; value: number; highlight?: boolean }[]; series2?: number[] }) {
+  const W = 480, H = 140
+  const pad = { top: 16, right: 18, bottom: 26, left: 8 }
   const innerW = W - pad.left - pad.right
   const innerH = H - pad.top - pad.bottom
-  const max = Math.max(1, ...data.map((d) => d.value)) * 1.15
+  const max = Math.max(1, ...data.map((d) => d.value), ...(series2 ?? [])) * 1.15
 
-  const points = data.map((d, i) => {
-    const x = data.length === 1 ? pad.left + innerW / 2 : pad.left + (i / (data.length - 1)) * innerW
-    const y = pad.top + innerH - (d.value / max) * innerH
-    return { x, y, ...d }
-  })
+  const xAt = (i: number) => (data.length === 1 ? pad.left + innerW / 2 : pad.left + (i / (data.length - 1)) * innerW)
+  const yAt = (v: number) => pad.top + innerH - (v / max) * innerH
+
+  const points = data.map((d, i) => ({ x: xAt(i), y: yAt(d.value), ...d }))
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
 
   /* Soft area fill under the line for visual weight. */
   const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${(pad.top + innerH).toFixed(1)} L ${points[0].x.toFixed(1)} ${(pad.top + innerH).toFixed(1)} Z`
+
+  /* Optional second series — foundry sales, drawn in amber. */
+  const FOUNDRY = '#f59e0b'
+  const points2 = series2 ? series2.map((v, i) => ({ x: xAt(i), y: yAt(v), value: v })) : null
+  const pathD2 = points2 ? points2.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') : ''
 
   const gridYs = [0, 0.25, 0.5, 0.75, 1]
 
@@ -512,7 +659,17 @@ export function LineChart({ data }: { data: { label: string; value: number; high
 
       {/* area + line */}
       <path d={areaD} fill="var(--kpc-primary-50, #eef2ff)" opacity="0.55" />
-      <path d={pathD} fill="none" stroke="var(--kpc-primary, #0E0EE6)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={pathD} fill="none" stroke="var(--kpc-primary, #0E0EE6)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* foundry line + dots (no value labels — keeps the chart readable) */}
+      {points2 && (
+        <>
+          <path d={pathD2} fill="none" stroke={FOUNDRY} strokeWidth="1.2" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" />
+          {points2.map((p, i) => (
+            <circle key={`f${i}`} cx={p.x} cy={p.y} r={3} fill={FOUNDRY} stroke="#fff" strokeWidth="1.5" />
+          ))}
+        </>
+      )}
 
       {/* dots + value labels */}
       {points.map((p, i) => (

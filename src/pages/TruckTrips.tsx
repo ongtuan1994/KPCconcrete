@@ -1,63 +1,21 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Input, Select } from '../components/ui'
+import { Button, Input, Select, MonthPeriodSelect } from '../components/ui'
 import { KpiCard } from '../components/charts'
-import { DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP } from '../data/real'
-import { EMPLOYEES } from '../data/employees'
+import { DELIVERY_TICKETS, VEHICLE_MAP } from '../data/real'
 import { qm, monthShort } from '../data/selectors'
 import { useCreatedDocs, setTruckTrip, addGeneralReport, type TruckTripEntry, type GeneralReport } from '../data/createdDocs'
+import { TEN_WHEEL, SPECIAL_DRIVERS, DRIVER_OPTIONS, isSpecialDriver, rowFee, ticketISO } from '../data/truckTripFee'
 import { downloadCsv } from '../utils/csv'
 
-/* The four mixer trucks. 001/002 are 10-wheel (bigger), 003/004 are 6-wheel. */
+/* The four mixer trucks. 001/002 are 10-wheel (bigger), 003/004 are 6-wheel.
+   Fee logic (rates, special drivers, ticketISO) lives in ../data/truckTripFee
+   so the payroll form's ค่าเที่ยววิ่ง pulls from the same source. */
 const TRUCKS = ['001', '002', '003', '004'] as const
-const TEN_WHEEL = new Set(['001', '002'])
 const wheelLabel = (v: string) => (TEN_WHEEL.has(v) ? '10 ล้อ' : '6 ล้อ')
 
-/* "คนขับรถนอก" + ผู้จัดการ ได้ค่าเที่ยวแบบเหมา (ไม่สนใจ เกิน20/หลัง18/หลัง22):
-   10 ล้อ (001/002) เหมา 100 บาท · 6 ล้อ (003/004) เหมา 80 บาท. */
-const OUTSIDE_DRIVER = 'คนขับรถนอก'
-const MANAGER_DRIVERS = EMPLOYEES.filter((e) => e.department === 'manager').map((e) => e.name)
-/** Drivers paid the flat per-trip rate (managers + the external driver). */
-const SPECIAL_DRIVERS = new Set<string>([...MANAGER_DRIVERS, OUTSIDE_DRIVER])
-const SPECIAL_FEE_TEN = 100
-const SPECIAL_FEE_SIX = 80
-
-/* Driver picker options: fleet drivers + ผู้จัดการ + คนขับรถนอก. */
-const DRIVER_OPTIONS = Array.from(
-  new Set([...VEHICLES.map((v) => v.driver), ...MANAGER_DRIVERS, OUTSIDE_DRIVER]),
-)
-
-/** Per-trip running fee:
- *  10-wheel (001/002): 35 บาท · 40 if เกิน 20 กม.
- *  6-wheel  (003/004): 25 บาท · 30 if เกิน 20 กม.
- *  +10 if วิ่งหลัง 18:00 · +10 more if วิ่งหลัง 22:00.
- *  EXCEPTION — ผู้จัดการ / คนขับรถนอก: เหมา 100 (10 ล้อ) / 80 (6 ล้อ) ต่อเที่ยว,
- *  ไม่คิด เกิน20/หลัง18/หลัง22. */
-function tripBase(vehicle: string, over20: boolean): number {
-  if (TEN_WHEEL.has(vehicle)) return over20 ? 40 : 35
-  return over20 ? 30 : 25
-}
-const OT_BONUS = 10
-function isSpecialDriver(driver: string | undefined): boolean {
-  return !!driver && SPECIAL_DRIVERS.has(driver)
-}
-function rowFee(vehicle: string | undefined, e: TruckTripEntry, driver?: string): number {
-  if (!vehicle) return 0
-  if (isSpecialDriver(driver)) return TEN_WHEEL.has(vehicle) ? SPECIAL_FEE_TEN : SPECIAL_FEE_SIX
-  return tripBase(vehicle, !!e.over20) + (e.ot18 ? OT_BONUS : 0) + (e.ot22 ? OT_BONUS : 0)
-}
-
 const money = (n: number) => '฿' + n.toLocaleString('en-US')
-
-/** Parse a Thai delivery-ticket date "DD/MM/YY" (พ.ศ.) into an ISO "YYYY-MM-DD"
-    (ค.ศ.) string so a native date-range picker can compare it. 69 → 2026. */
-function ticketISO(date: string): string {
-  const [dd, mm, yy] = date.split('/')
-  if (!dd || !mm || !yy) return ''
-  const ce = 1957 + Number(yy) /* 2500+yy (พ.ศ.) − 543 = 1957+yy */
-  return `${ce}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
-}
 /** วันนี้ + วันที่ 1 ของเดือนนี้ (ISO) — ใช้ตั้งค่าช่วงเวลาเริ่มต้น. */
 function todayIso(): string {
   const d = new Date()
@@ -214,6 +172,10 @@ export function TruckTrips() {
       {/* Date range */}
       <div className="card" style={{ padding: 14, marginBottom: 16 }}>
         <div className="row wrap" style={{ gap: 16, alignItems: 'flex-end' }}>
+          <label className="stack" style={{ gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>งวดเดือน</span>
+            <MonthPeriodSelect from={from} onPick={(f, t) => { setFrom(f); setTo(t) }} width={170} />
+          </label>
           <label className="stack" style={{ gap: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ตั้งแต่</span>
             <Input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} style={{ width: 170 }} />

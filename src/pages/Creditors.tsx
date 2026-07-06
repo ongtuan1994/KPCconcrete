@@ -8,9 +8,12 @@ import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
 import { baht } from '../data/selectors'
 import { useCan } from '../data/auth'
 import { AuditButton } from '../components/AuditButton'
+import { addGeneralReport, type LedgerReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'credit' | 'cash' | 'overdue'
+
+const FILTER_LABEL: Record<Filter, string> = { all: 'ทั้งหมด', credit: 'เครดิต', cash: 'เงินสด', overdue: 'เลยกำหนด' }
 
 /** Credit-limit display: numeric → baht; credit w/o cap → ไม่จำกัด; cash → —. */
 function creditLimitText(c: Creditor): string {
@@ -71,6 +74,44 @@ export function Creditors() {
   const cashCount = list.filter((c) => c.terms === 'เงินสด').length
   const overdueCount = list.filter((c) => payStatus(c).overdue).length
   const totalOutstanding = list.reduce((s, c) => s + (c.outstanding ?? 0), 0)
+
+  const scopeLabel = FILTER_LABEL[filter]
+
+  /* Snapshot the current creditors view → รายงานทั่วไป (kept as a PDF). */
+  const createReport = () => {
+    const reportRows = rows.map((c) => {
+      const s = payStatus(c)
+      return {
+        name: c.name,
+        detail: `${c.id}${c.note ? ' · ' + c.note : ''}`,
+        terms: c.terms === 'เครดิต' ? `เครดิต ${c.creditDays ?? 30} วัน` : 'เงินสด',
+        outstanding: c.outstanding ?? 0,
+        dueLabel: c.outstanding && c.outstanding > 0 && c.dueDate ? fmtDate(c.dueDate) : '',
+        status: s.text,
+        overdue: s.overdue,
+      }
+    })
+    const report: LedgerReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'ledger',
+      side: 'creditors',
+      title: `เจ้าหนี้ · ${scopeLabel}`,
+      fromLabel: scopeLabel,
+      toLabel: 'ณ ปัจจุบัน',
+      scopeLabel,
+      rows: reportRows,
+      totals: {
+        count: reportRows.length,
+        outstanding: reportRows.reduce((s, r) => s + r.outstanding, 0),
+        overdue: reportRows.filter((r) => r.overdue).length,
+      },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
 
   const exportExcel = () => {
     const head = ['รหัส', 'ชื่อเจ้าหนี้', 'เงื่อนไขชำระ', 'ระยะเวลา (วัน)', 'วงเงินเครดิต', 'ยอดค้างชำระ', 'วันครบกำหนด', 'สถานะการชำระ', 'หมวด']
@@ -149,7 +190,7 @@ export function Creditors() {
             onClick={() => navigate('/goods-payments', {
               state: { payFromPurchaseOrder: { supplier: r.name, amount: String(r.outstanding ?? '') } },
             })}
-            title="บันทึกใบทำจ่ายให้ซัพพลายเออร์รายนี้"
+            title="ออกใบสำคัญจ่ายให้ซัพพลายเออร์รายนี้"
           >
             ชำระหนี้
           </Button>
@@ -163,7 +204,12 @@ export function Creditors() {
       <PageHeader
         title="เจ้าหนี้"
         sub={`Creditors / Accounts Payable · ${list.length} ราย`}
-        actions={<Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
+            <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
+          </>
+        }
       />
 
       <div className="grid g-4" style={{ marginBottom: 24 }}>

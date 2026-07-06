@@ -12,10 +12,18 @@
    status countdown (เหลือกี่วัน / ครบกำหนด / เลยกำหนด) — replace with the real
    due date (วันที่วางบิล + จำนวนวันเครดิต) when available. */
 
+import AR_INVOICES_RAW from './arInvoices.json'
+
 export interface Receivable {
   amount: number   /* outstanding balance in baht */
   dueDate: string  /* ISO yyyy-mm-dd — payment due date */
 }
+
+/** Outstanding tax invoices per debtor (from the real ยอดค้าง sheet), keyed by
+    the canonical customer name. Each entry is the invoice number + its total —
+    lets the debtor view link to the specific ใบกำกับที่ยังค้างชำระ. */
+export interface ArInvoice { no: string; amount: number }
+export const AR_INVOICES: Record<string, ArInvoice[]> = AR_INVOICES_RAW
 
 export const AR_OUTSTANDING: Record<string, Receivable> = {
   'ช่างเลาะห์': { amount: 1867.50, dueDate: '2026-06-10' },

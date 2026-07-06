@@ -6,26 +6,71 @@ import { DocModal } from '../components/documents/DocModal'
 import { TruckTripReportDoc } from '../components/documents/TruckTripReportDoc'
 import { CommissionReportDoc } from '../components/documents/CommissionReportDoc'
 import { AttendanceReportDoc } from '../components/documents/AttendanceReportDoc'
+import { PriceListReportDoc } from '../components/documents/PriceListReportDoc'
+import { TransportPriceReportDoc } from '../components/documents/TransportPriceReportDoc'
+import { PayrollReportDoc } from '../components/documents/PayrollReportDoc'
+import { MixDesignReportDoc } from '../components/documents/MixDesignReportDoc'
+import { FoundryFormulaReportDoc } from '../components/documents/FoundryFormulaReportDoc'
+import { StockReportDoc } from '../components/documents/StockReportDoc'
+import { LedgerReportDoc } from '../components/documents/LedgerReportDoc'
+import { EmployeeReportDoc } from '../components/documents/EmployeeReportDoc'
+import { ExpenseReportDoc } from '../components/documents/ExpenseReportDoc'
+import { PurchaseAccountReportDoc } from '../components/documents/PurchaseAccountReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
 const money = (n: number) => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const r2 = (n: number) => Math.round(n * 100) / 100
 
 const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'truck-trips': 'บันทึกเที่ยวรถโม่',
   'commission': 'ค่าคอมมิชชั่น',
   'attendance': 'บันทึกลงเวลางาน',
+  'price-list': 'ราคาสินค้า',
+  'transport-pricing': 'ราคาค่าขนส่ง',
+  'payroll': 'จ่ายเงินเดือน',
+  'mix-design': 'Mix Design',
+  'foundry-formula': 'สูตรผลิตโรงหล่อ',
+  'stock': 'คลังวัตถุดิบ',
+  'ledger': 'ลูกหนี้ / เจ้าหนี้',
+  'employees': 'รายชื่อพนักงาน',
+  'expense': 'ค่าใช้จ่ายรายเดือน',
+  'purchase-account': 'บัญชีซื้อวัตถุดิบ',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
 const reportAmount = (r: GeneralReport): number | null =>
-  r.kind === 'commission' ? r.total : r.kind === 'truck-trips' ? r.totals.feeTotal : null
+  r.kind === 'commission' ? r.total
+    : r.kind === 'truck-trips' ? r.totals.feeTotal
+      : r.kind === 'payroll' ? r.totals.net
+        : r.kind === 'ledger' ? r.totals.outstanding
+          : r.kind === 'expense' ? r.grandTotal
+            : r.kind === 'purchase-account' ? r2(r.totals.plant.total + r.totals.foundry.total)
+              : null
 const reportSummary = (r: GeneralReport) =>
   r.kind === 'commission'
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
     : r.kind === 'attendance'
       ? `${r.totals.employees} คน · ${r.totals.days} วัน · OT ${r.totals.otMin} นาที`
-      : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+      : r.kind === 'price-list'
+        ? `${r.totalItems} รายการ · ${r.groups.length} หมวด`
+        : r.kind === 'transport-pricing'
+          ? `${r.fees.length} ระดับการขนส่งไม่เต็มเที่ยว`
+          : r.kind === 'payroll'
+            ? `${r.rows.length} คน · ${r.payMonthLabel}`
+            : r.kind === 'mix-design' || r.kind === 'foundry-formula'
+              ? `${r.rows.length} สูตร`
+              : r.kind === 'stock'
+                ? `${r.rows.length} รายการ · ${r.scopeLabel}`
+                : r.kind === 'ledger'
+                  ? `${r.totals.count} ราย · เลยกำหนด ${r.totals.overdue} ราย · ${r.scopeLabel}`
+                  : r.kind === 'employees'
+                    ? `${r.totals.count} คน · ${r.scopeLabel}`
+                    : r.kind === 'expense'
+                      ? `${r.rows.length} เดือน · ${r.categories.length} ประเภทค่าใช้จ่าย`
+                      : r.kind === 'purchase-account'
+                        ? `${r.rows.length} เดือน · แยกแพล้นปูน/โรงหล่อ`
+                        : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -90,12 +135,32 @@ export function GeneralReports() {
         <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายงาน`} />
       )}
 
-      <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)}>
+      <DocModal open={!!active} title={active?.title ?? ''} onClose={() => setActive(null)} maxWidth={active?.kind === 'payroll' ? 1180 : 820}>
         {active && (active.kind === 'commission'
           ? <CommissionReportDoc report={active} />
           : active.kind === 'attendance'
             ? <AttendanceReportDoc report={active} />
-            : <TruckTripReportDoc report={active} />)}
+            : active.kind === 'price-list'
+              ? <PriceListReportDoc report={active} />
+              : active.kind === 'transport-pricing'
+                ? <TransportPriceReportDoc report={active} />
+                : active.kind === 'payroll'
+                  ? <PayrollReportDoc report={active} />
+                  : active.kind === 'mix-design'
+                    ? <MixDesignReportDoc report={active} />
+                    : active.kind === 'foundry-formula'
+                    ? <FoundryFormulaReportDoc report={active} />
+                    : active.kind === 'stock'
+                      ? <StockReportDoc report={active} />
+                      : active.kind === 'ledger'
+                        ? <LedgerReportDoc report={active} />
+                        : active.kind === 'employees'
+                          ? <EmployeeReportDoc report={active} />
+                          : active.kind === 'expense'
+                            ? <ExpenseReportDoc report={active} />
+                            : active.kind === 'purchase-account'
+                              ? <PurchaseAccountReportDoc report={active} />
+                              : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

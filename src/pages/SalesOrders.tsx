@@ -29,6 +29,12 @@ const itemsSummary = (so: SalesOrder) =>
 
 const orderVolume = (so: SalesOrder) => so.items.reduce((s, it) => s + it.qty, 0)
 
+/* Codes of foundry (โรงหล่อ) products — used to infer a legacy order's SITE. */
+const FOUNDRY_CODES = new Set(PRODUCTS.filter((p) => p.site === 'foundry').map((p) => p.code))
+/** SITE of an order: its stored `site`, else inferred from its product lines. */
+const orderSite = (so: SalesOrder): 'plant' | 'foundry' =>
+  so.site ?? (so.items.some((it) => FOUNDRY_CODES.has(it.code)) ? 'foundry' : 'plant')
+
 export function SalesOrders() {
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -37,11 +43,20 @@ export function SalesOrders() {
   const created = useCreatedDocs()
   const navigate = useNavigate()
 
-  /* Issue a delivery ticket from a sales order: jump to the delivery-tickets
-     page with the create form pre-filled. Delivery tickets are one product
-     each, so we seed the first concrete (non-precast) line; the user can
-     adjust the product/quantity and confirm. */
-  const issueTicket = (so: SalesOrder) => {
+  /* Issue the matching delivery document from a sales order, pre-filling the
+     create form. แพล้นปูน → ใบจ่ายคอนกรีต (one concrete line); โรงหล่อ → ใบส่ง
+     สินค้าโรงหล่อ (all foundry lines). */
+  const issueDoc = (so: SalesOrder) => {
+    const refNote = `อ้างอิงใบสั่งขาย ${so.soNo} · ลูกค้าใช้ ${fmtDate(so.useDate)}${so.note ? ` · ${so.note}` : ''}`
+    if (orderSite(so) === 'foundry') {
+      navigate('/foundry-deliveries', {
+        state: {
+          issueFromSalesOrder: { customer: so.customer, items: so.items.map((it) => ({ code: it.code, qty: it.qty })), note: refNote },
+          salesOrderNo: so.soNo,
+        },
+      })
+      return
+    }
     const firstConcrete = so.items.find((it) => {
       const p = PRODUCTS.find((x) => x.code === it.code)
       return p && p.category !== 'precast'
@@ -51,12 +66,27 @@ export function SalesOrders() {
       customer: so.customer,
       prodCode: firstConcrete?.code,
       m3: firstConcrete ? String(firstConcrete.qty) : undefined,
-      note: `อ้างอิงใบสั่งขาย ${so.soNo} · ลูกค้าใช้ ${fmtDate(so.useDate)}${so.note ? ` · ${so.note}` : ''}`,
+      note: refNote,
     }
     navigate('/delivery-tickets', { state: { issueFromSalesOrder: initial, salesOrderNo: so.soNo } })
   }
 
   const all = created.salesOrders
+
+  /* soNo → linked delivery-ticket number (via the ticket's soNo, or the older
+     "อ้างอิงใบสั่งขาย SOxxxxx" note reference). */
+  const dtBySo = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of created.tickets) {
+      let so = t.soNo
+      if (!so && t.note) {
+        const m = t.note.match(/อ้างอิงใบสั่งขาย\s+(SO\d+)/)
+        if (m) so = m[1]
+      }
+      if (so && !map.has(so)) map.set(so, t.dtNo)
+    }
+    return map
+  }, [created.tickets])
 
   const rows = useMemo(
     () =>
@@ -69,14 +99,15 @@ export function SalesOrders() {
   )
 
   const totalOrders = all.length
-  const totalVolume = all.reduce((s, so) => s + orderVolume(so), 0)
+  /* m³ KPI = concrete (แพล้นปูน) volume only — foundry items are counted in pieces. */
+  const totalVolume = all.filter((so) => orderSite(so) === 'plant').reduce((s, so) => s + orderVolume(so), 0)
   const withAttachment = all.filter((so) => so.attachment).length
 
   const exportExcel = () => {
-    const head = ['เลขที่ใบสั่งขาย', 'วันที่สั่ง', 'วันที่ลูกค้าใช้', 'ลูกค้า', 'รายการสินค้า', 'ปริมาณรวม', 'สถานะ', 'มีไฟล์แนบ', 'หมายเหตุ']
+    const head = ['เลขที่ใบสั่งขาย', 'วันที่สั่ง', 'วันที่ลูกค้าใช้', 'ลูกค้า', 'รายการสินค้า', 'ปริมาณรวม', 'สถานะ', 'เลขที่ใบจ่ายคอนกรีต', 'มีไฟล์แนบ', 'หมายเหตุ']
     const body = rows.map((so) => [
       so.soNo, fmtDate(so.orderDate), fmtDate(so.useDate), so.customer,
-      itemsSummary(so), orderVolume(so), so.status, so.attachment ? 'มี' : '', so.note ?? '',
+      itemsSummary(so), orderVolume(so), so.status, dtBySo.get(so.soNo) ?? '', so.attachment ? 'มี' : '', so.note ?? '',
     ])
     downloadCsv('sales-orders', [head, ...body])
   }
@@ -101,6 +132,16 @@ export function SalesOrders() {
       header: 'สถานะ',
       align: 'center',
       cell: (r) => <Badge tone={STATUS_TONE[r.status]} pip={false} square>{r.status}</Badge>,
+    },
+    {
+      key: 'dt',
+      header: 'เลขที่ใบจ่ายคอนกรีต',
+      cell: (r) => {
+        const dt = dtBySo.get(r.soNo)
+        return dt
+          ? <button type="button" className="mono" onClick={() => navigate('/delivery-tickets', { state: { focusDtNo: dt } })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--kpc-primary)', textDecoration: 'underline', font: 'inherit' }}>{dt}</button>
+          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      },
     },
     {
       key: 'att',
@@ -180,7 +221,7 @@ export function SalesOrders() {
         order={active}
         onClose={() => setActive(null)}
         onEdit={(so) => { setActive(null); setEditing(so) }}
-        onIssueTicket={issueTicket}
+        onIssueTicket={issueDoc}
       />
     </>
   )
@@ -199,12 +240,13 @@ function SalesOrderDetail({ order, onClose, onEdit, onIssueTicket }: { order: Sa
         <>
           <Button variant="secondary" onClick={onClose}>ปิด</Button>
           <Button variant="tonal" onClick={() => onEdit(order)}>แก้ไขรายการ</Button>
-          <Button variant="primary" onClick={() => onIssueTicket(order)}>ออกใบจ่ายคอนกรีต</Button>
+          <Button variant="primary" onClick={() => onIssueTicket(order)}>{orderSite(order) === 'foundry' ? 'ออกใบส่งสินค้าโรงหล่อ' : 'ออกใบจ่ายคอนกรีต'}</Button>
         </>
       }
     >
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row" style={{ marginBottom: 12, gap: 8 }}>
         <Badge tone={STATUS_TONE[order.status]} pip={false} square>{order.status}</Badge>
+        <Badge tone={orderSite(order) === 'foundry' ? 'neutral' : 'info'} pip={false} square>{orderSite(order) === 'foundry' ? 'สินค้าโรงหล่อ' : 'สินค้าแพล้นปูน'}</Badge>
       </div>
       <div className="grid g-2" style={{ gap: 12, marginBottom: 16 }}>
         <Field label="ลูกค้า / หน่วยงาน" value={order.customer} full />
@@ -269,11 +311,20 @@ function SalesOrderDetail({ order, onClose, onEdit, onIssueTicket }: { order: Sa
 }
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const WAITING_COLOR = '#F59E0B' /* amber — matches the 'รอผลิต' badge */
-const PRODUCED_COLOR = '#16A34A' /* green — matches the 'ผลิต' badge */
+/* 4 series: concrete (แพล้นปูน) + foundry (โรงหล่อ), each split รอผลิต / ผลิต. */
+const CONCRETE_WAIT = '#F59E0B' /* amber */
+const CONCRETE_PROD = '#16A34A' /* green */
+const FOUNDRY_WAIT = '#A855F7'  /* purple */
+const FOUNDRY_PROD = '#2563EB'  /* blue */
+const CHART_SERIES = [
+  { key: 'cWait' as const, color: CONCRETE_WAIT, label: 'รอผลิต (คอนกรีต)', unit: 'คิว' },
+  { key: 'cProd' as const, color: CONCRETE_PROD, label: 'ผลิต (คอนกรีต)', unit: 'คิว' },
+  { key: 'fWait' as const, color: FOUNDRY_WAIT, label: 'รอผลิต (โรงหล่อ)', unit: 'ชิ้น' },
+  { key: 'fProd' as const, color: FOUNDRY_PROD, label: 'ผลิต (โรงหล่อ)', unit: 'ชิ้น' },
+]
 
-/** Grouped vertical bar chart: orders per month split by status (รอผลิต vs ผลิต),
-    with a Buddhist-year dropdown. X-axis = Jan…Dec. */
+/** Grouped vertical bar chart: ordered volume per month as 4 bars — คอนกรีต and
+    โรงหล่อ, each split by status (รอผลิต / ผลิต). X-axis = Jan…Dec, ปี dropdown. */
 function MonthlyStatusChart({ orders }: { orders: SalesOrder[] }) {
   /* Buddhist years present in the data (by customer-use date), plus the current
      year, newest first. */
@@ -292,8 +343,8 @@ function MonthlyStatusChart({ orders }: { orders: SalesOrder[] }) {
   const activeYear = years.includes(year) ? year : years[0]
   const gregYear = activeYear - 543
 
-  /* Y-axis = total ordered concrete volume (คิว) per month, split by status.
-     Grouped by the customer-use date (วันที่ลูกค้าใช้). */
+  /* Per month: ordered volume split by SITE × status. Concrete is คิว, foundry
+     is pieces (ชิ้น). Grouped by the customer-use date (วันที่ลูกค้าใช้). */
   const monthly = useMemo(
     () =>
       MONTH_LABELS.map((_, i) => {
@@ -302,20 +353,20 @@ function MonthlyStatusChart({ orders }: { orders: SalesOrder[] }) {
           const m = parseInt(o.useDate.slice(5, 7), 10)
           return g === gregYear && m === i + 1
         })
-        const sumVol = (status: SalesOrderStatus) =>
-          inMonth.filter((o) => o.status === status).reduce((s, o) => s + orderVolume(o), 0)
-        return { waiting: sumVol('รอผลิต'), produced: sumVol('ผลิต') }
+        const vol = (site: 'plant' | 'foundry', status: SalesOrderStatus) =>
+          inMonth.filter((o) => orderSite(o) === site && o.status === status).reduce((s, o) => s + orderVolume(o), 0)
+        return { cWait: vol('plant', 'รอผลิต'), cProd: vol('plant', 'ผลิต'), fWait: vol('foundry', 'รอผลิต'), fProd: vol('foundry', 'ผลิต') }
       }),
     [orders, gregYear],
   )
 
-  const max = Math.max(1, ...monthly.map((m) => Math.max(m.waiting, m.produced)))
+  const max = Math.max(1, ...monthly.flatMap((m) => [m.cWait, m.cProd, m.fWait, m.fProd]))
   const H = 150 /* px height of the tallest bar */
 
   return (
     <ChartCard
-      title="ปริมาณคอนกรีตที่สั่งรายเดือน"
-      meta="ตามวันที่ลูกค้าใช้ · หน่วย: คิว (m³)"
+      title="ปริมาณการสั่งรายเดือน · คอนกรีต + โรงหล่อ"
+      meta="ตามวันที่ลูกค้าใช้ · คอนกรีต = คิว · โรงหล่อ = ชิ้น"
       right={
         <div style={{ width: 150 }}>
           <Select value={String(activeYear)} onChange={(e) => setYear(Number(e.target.value))}>
@@ -325,16 +376,15 @@ function MonthlyStatusChart({ orders }: { orders: SalesOrder[] }) {
       }
     >
       {/* Legend */}
-      <div className="row" style={{ gap: 18, fontSize: 12, color: 'var(--kpc-text-muted)' }}>
-        <span className="row" style={{ gap: 6 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: WAITING_COLOR, display: 'inline-block' }} /> รอผลิต
-        </span>
-        <span className="row" style={{ gap: 6 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: PRODUCED_COLOR, display: 'inline-block' }} /> ผลิต
-        </span>
+      <div className="row wrap" style={{ gap: 14, fontSize: 12, color: 'var(--kpc-text-muted)' }}>
+        {CHART_SERIES.map((s) => (
+          <span key={s.key} className="row" style={{ gap: 6 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, display: 'inline-block' }} /> {s.label}
+          </span>
+        ))}
       </div>
 
-      {/* Y-axis (คิว) + bars */}
+      {/* Y-axis + bars */}
       <div style={{ display: 'flex', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: H, fontSize: 10, color: 'var(--kpc-text-faint)', textAlign: 'right', minWidth: 32 }}>
           <span>{qm(Math.round(max))}</span>
@@ -344,15 +394,14 @@ function MonthlyStatusChart({ orders }: { orders: SalesOrder[] }) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 4, height: H + 4, borderLeft: '1px solid var(--kpc-border)', borderBottom: '1px solid var(--kpc-border)' }}>
           {monthly.map((m, i) => (
             <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 3, height: H }}>
-                <div
-                  style={{ width: 9, height: Math.round((m.waiting / max) * H), minHeight: m.waiting ? 2 : 0, background: WAITING_COLOR, borderRadius: '2px 2px 0 0' }}
-                  title={`${MONTH_LABELS[i]} · รอผลิต ${qm(m.waiting)} คิว`}
-                />
-                <div
-                  style={{ width: 9, height: Math.round((m.produced / max) * H), minHeight: m.produced ? 2 : 0, background: PRODUCED_COLOR, borderRadius: '2px 2px 0 0' }}
-                  title={`${MONTH_LABELS[i]} · ผลิต ${qm(m.produced)} คิว`}
-                />
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: H }}>
+                {CHART_SERIES.map((s) => (
+                  <div
+                    key={s.key}
+                    style={{ width: 7, height: Math.round((m[s.key] / max) * H), minHeight: m[s.key] ? 2 : 0, background: s.color, borderRadius: '2px 2px 0 0' }}
+                    title={`${MONTH_LABELS[i]} · ${s.label} ${qm(m[s.key])} ${s.unit}`}
+                  />
+                ))}
               </div>
               <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>{MONTH_LABELS[i]}</span>
             </div>

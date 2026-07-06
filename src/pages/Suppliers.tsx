@@ -4,7 +4,10 @@ import { Button, Badge, Pill, SearchInput } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
+import { IconPlus } from '../components/icons'
+import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
+import { useCreatedDocs } from '../data/createdDocs'
 import { baht } from '../data/selectors'
 import { downloadCsv } from '../utils/csv'
 
@@ -21,8 +24,11 @@ function creditLimitText(c: Creditor): string {
 export function Suppliers() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
 
-  const list = CREDITOR_MASTER
+  const created = useCreatedDocs()
+  /* User-added suppliers (quick-added from the PO / payment forms) shown on top. */
+  const list = useMemo(() => [...created.suppliersAdded, ...CREDITOR_MASTER], [created.suppliersAdded])
 
   const rows = useMemo(
     () =>
@@ -96,7 +102,12 @@ export function Suppliers() {
       <PageHeader
         title="ทะเบียนซัพพลายเออร์"
         sub={`Supplier · ${list.length} ราย`}
-        actions={<Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
+            <Button variant="primary" onClick={() => setShowAdd(true)}><IconPlus /> เพิ่มซัพพลายเออร์</Button>
+          </>
+        }
       />
 
       <div className="grid g-4" style={{ marginBottom: 24 }}>
@@ -118,6 +129,12 @@ export function Suppliers() {
       </div>
 
       <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ราย`} />
+
+      <NewSupplierForm
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        onCreated={(c) => { setShowAdd(false); setFilter('all'); setQuery(c.name) }}
+      />
     </>
   )
 }

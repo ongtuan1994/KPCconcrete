@@ -209,7 +209,7 @@ function buildCreatedIndex(c: CreatedDocs): SearchHit[] {
     hits.push({
       key: `gp:${gp.gpNo}`,
       category: 'purchasing',
-      group: 'ใบทำจ่ายสินค้า/วัสดุ',
+      group: 'ใบสำคัญจ่าย',
       label: gp.gpNo,
       sub: `${gp.supplier} · ${baht(gp.amount)} · ${gp.payDate}`,
       route: '/goods-payments',

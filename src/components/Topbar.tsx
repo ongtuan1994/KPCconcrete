@@ -4,10 +4,11 @@ import { ROUTE_META } from '../nav'
 import { IconLogout, IconBell, IconMenu } from './icons'
 import { ROLE_LABEL, logout, useCurrentUser, useCanAudit } from '../data/auth'
 import { useAuditItems } from '../data/audit'
+import { useCreatedDocs } from '../data/createdDocs'
 import { useNotiSeen, markNotiSeen } from '../data/notiSeen'
 import { GlobalSearch } from './GlobalSearch'
 
-interface Notice { id: string; title: string; sub: string; route?: string; signature: string }
+interface Notice { id: string; title: string; sub: string; route?: string; signature: string; state?: Record<string, unknown> }
 
 export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const loc = useLocation()
@@ -21,11 +22,58 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   /* Build the notification feed from live app state. */
   const auditItems = useAuditItems()
   const canAudit = useCanAudit()
+  const created = useCreatedDocs()
   const seen = useNotiSeen()
   const allNotices: Notice[] = []
   const pendingAudit = auditItems.filter((i) => !i.verified).length
   if (canAudit && pendingAudit > 0) {
     allNotices.push({ id: 'audit', title: `มีรายการรอตรวจสอบ ${pendingAudit} รายการ`, sub: 'รายงาน Audit', route: '/audit-report', signature: `p:${pendingAudit}` })
+  }
+  /* Board users approve stock reconciliations — alert on pending ones (per scope). */
+  if (user?.role === 'Board') {
+    const pendMat = created.stockReconciles.filter((r) => r.status === 'pending' && (r.scope ?? 'material') === 'material')
+    if (pendMat.length > 0) {
+      allNotices.push({ id: 'stock-reconcile', title: `มีคำขออนุมัติกระทบยอดคลังวัตถุดิบ ${pendMat.length} รายการ`, sub: 'กดเพื่อตรวจสอบและอนุมัติ', route: '/stock-reconcile', signature: `rc:${pendMat.length}:${pendMat[0].id}` })
+    }
+    const pendFdy = created.stockReconciles.filter((r) => r.status === 'pending' && r.scope === 'foundry')
+    if (pendFdy.length > 0) {
+      allNotices.push({ id: 'foundry-reconcile', title: `มีคำขออนุมัติกระทบยอดสต๊อกโรงหล่อ ${pendFdy.length} รายการ`, sub: 'กดเพื่อตรวจสอบและอนุมัติ', route: '/foundry-stock-reconcile', signature: `frc:${pendFdy.length}:${pendFdy[0].id}` })
+    }
+  }
+  /* Board users are alerted when employees are marked สิ้นสภาพ. */
+  if (user?.role === 'Board' && created.terminations.length > 0) {
+    const latest = created.terminations[0]
+    const more = created.terminations.length - 1
+    allNotices.push({
+      id: 'terminations',
+      title: `พนักงานพ้นสภาพ ${created.terminations.length} ราย`,
+      sub: `ล่าสุด: ${latest.empName}${more > 0 ? ` และอีก ${more} ราย` : ''}`,
+      route: '/employees',
+      signature: `term:${created.terminations.length}:${latest.empId}`,
+    })
+  }
+  /* Appointments shared TO me by someone else (the invitee gets notified, not
+     the creator), today onward. */
+  if (user) {
+    const me = user.username
+    const p = (n: number) => String(n).padStart(2, '0')
+    const t = new Date()
+    const todayStr = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`
+    const upcoming = created.appointments
+      .filter((a) => a.owner !== me && a.invitees.includes(me) && a.date >= todayStr)
+      .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')))
+    if (upcoming.length > 0) {
+      const next = upcoming[0]
+      const [y, mo, d] = next.date.split('-').map(Number)
+      allNotices.push({
+        id: 'appointments',
+        title: `มีนัดหมายถึงคุณ ${upcoming.length} รายการ`,
+        sub: `ใกล้สุด: ${next.title} · ${d}/${p(mo)}/${y + 543}${next.time ? ` ${next.time} น.` : ''} (จาก ${next.owner})`,
+        route: '/my-work',
+        signature: `ap:${upcoming.length}:${next.id}:${next.date}`,
+        state: { focusDate: next.date },
+      })
+    }
   }
   /* Accountant receives the audit requests forwarded by the auditor. */
   if (user?.role === 'Accountant') {
@@ -41,7 +89,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const openNotice = (n: Notice) => {
     markNotiSeen(n.id, n.signature)
     setBellOpen(false)
-    if (n.route) navigate(n.route)
+    if (n.route) navigate(n.route, n.state ? { state: n.state } : undefined)
   }
 
   return (

@@ -19,6 +19,61 @@
   font-size: 10px; font-weight: 600; color: #5B616B; letter-spacing: 1px;
   padding: 12px 12px 4px; text-transform: uppercase;
 }
+/* Collapsible section header — same look as .nav-section but a full-width button. */
+button.nav-section-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; background: transparent; border: none; cursor: pointer;
+  font-family: inherit; text-align: left;
+}
+button.nav-section-toggle:hover { color: var(--kpc-neutral-300); }
+/* ===== งานของฉัน · My Work (calendar + to-do) ===== */
+.mywork-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+@media (max-width: 980px) { .mywork-layout { grid-template-columns: 1fr; } }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-head { margin-bottom: 4px; }
+.cal-wd { text-align: center; font-size: 12px; font-weight: 600; color: var(--kpc-text-muted); padding: 4px 0; }
+.cal-cell {
+  min-height: 124px; border: 1px solid var(--kpc-border); border-radius: 8px; padding: 6px 7px;
+  background: var(--kpc-surface, #fff); cursor: pointer; overflow: visible; transition: background .12s, border-color .12s;
+}
+.cal-cell:hover { background: var(--kpc-surface-alt, #f8fafc); border-color: var(--kpc-primary-200, #b4b4fb); }
+.cal-cell.cal-empty { background: transparent; border-color: transparent; cursor: default; }
+/* Sunday — company holiday, tinted grey. */
+.cal-cell.sunday { background: #eceef1; }
+.cal-cell.sunday:hover { background: #e2e5e9; }
+.cal-wd.sunday { color: #9aa0a6; }
+.cal-cell.today { border-color: var(--kpc-primary); box-shadow: inset 0 0 0 1px var(--kpc-primary); }
+.cal-daynum { font-size: 13px; font-weight: 600; color: var(--kpc-text-strong); margin-bottom: 3px; }
+.cal-holiday {
+  font-size: 11px; line-height: 1.3; color: #111; font-weight: 600; margin-bottom: 4px;
+  white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+}
+.cal-cell.today .cal-daynum { color: var(--kpc-primary-ink); }
+.cal-appts { display: flex; flex-direction: column; gap: 3px; }
+.cal-appt {
+  display: block; width: 100%; text-align: left; border: none; cursor: pointer;
+  background: var(--kpc-primary-50); color: var(--kpc-primary-ink);
+  border-left: 3px solid var(--kpc-primary); border-radius: 4px;
+  font-size: 12px; line-height: 1.3; padding: 3px 6px;
+  white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+}
+.cal-appt.shared { background: #fff7ed; color: #9a3412; border-left-color: #f59e0b; }
+.upcoming-item {
+  display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px;
+  width: 100%; text-align: left;
+  cursor: pointer; padding: 7px 10px; border-radius: 7px;
+  background: var(--kpc-primary-50); border: none; border-left: 3px solid var(--kpc-primary);
+}
+.upcoming-item:hover { background: var(--kpc-primary-100, #d8d8fd); }
+.upcoming-item .u-title { color: var(--kpc-primary-ink); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.upcoming-item .u-date { color: #5b616b; flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; white-space: nowrap; text-align: right; }
+.upcoming-item .u-from { font-size: 11px; }
+/* Shared by someone else — match the orange calendar chip. */
+.upcoming-item.shared { background: #fff7ed; border-left-color: #f59e0b; }
+.upcoming-item.shared:hover { background: #ffedd5; }
+.upcoming-item.shared .u-title, .upcoming-item.shared .u-date { color: #9a3412; }
+.cal-appt .t { font-weight: 700; }
+
 .nav-item {
   display: flex; align-items: center; gap: 11px; padding: 10px 12px;
   border-radius: 7px; color: var(--kpc-neutral-300); font-size: 14px;
@@ -94,6 +149,7 @@
 .g-2 { grid-template-columns: repeat(2, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }
 .g-4 { grid-template-columns: repeat(4, 1fr); }
+.g-5 { grid-template-columns: repeat(5, 1fr); }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .row { display: flex; align-items: center; gap: 12px; }
 .wrap { flex-wrap: wrap; }
@@ -166,6 +222,18 @@
 .select-wrap { position: relative; }
 .select { appearance: none; cursor: pointer; padding-right: 38px; }
 .select-wrap .chev { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+
+/* Primary-themed งวดเดือน select (บันทึกใบทำจ่ายเงินเดือน) — blue box, white text. */
+.month-primary .select { background: var(--kpc-primary); color: #fff; font-weight: 600; border-color: var(--kpc-primary); }
+.month-primary .select:focus { border-color: var(--kpc-primary); box-shadow: 0 0 0 3px var(--kpc-primary-50); }
+.month-primary .chev { color: #fff; }
+.month-primary .select option { color: #111; background: #fff; font-weight: 400; }
+
+/* Dark-blue variant (หักจากงวดเดือน · บันทึกเบิกล่วงหน้า). */
+.month-primary-dark .select { background: var(--kpc-primary-ink); color: #fff; font-weight: 600; border-color: var(--kpc-primary-ink); }
+.month-primary-dark .select:focus { border-color: var(--kpc-primary-ink); box-shadow: 0 0 0 3px var(--kpc-primary-50); }
+.month-primary-dark .chev { color: #fff; }
+.month-primary-dark .select option { color: #111; background: #fff; font-weight: 400; }
 .input-icon { position: relative; }
 .input-icon svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); }
 .input-icon .input { padding-left: 38px; }
@@ -257,7 +325,7 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
 .modal { background: #fff; border-radius: var(--kpc-radius); box-shadow: var(--kpc-elev-lg); width: 100%; max-width: 720px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--kpc-border); }
 .modal-title { font-size: 18px; font-weight: 600; color: var(--kpc-text-strong); margin: 0; }
-.modal-body { padding: 24px; }
+.modal-body { padding: 24px; overflow-x: auto; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--kpc-border); background: var(--kpc-surface-alt); border-radius: 0 0 var(--kpc-radius) var(--kpc-radius); }
 .icon-btn { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 6px; display: inline-flex; color: var(--kpc-text-muted); }
 .icon-btn:hover { background: var(--kpc-chip-bg); }
@@ -279,7 +347,7 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
 .sidebar-backdrop { display: none; }
 
 @media (max-width: 1080px) {
-  .g-4 { grid-template-columns: repeat(2, 1fr); }
+  .g-4, .g-5 { grid-template-columns: repeat(2, 1fr); }
   .g-3 { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
@@ -299,7 +367,7 @@ table.data td.date { color: var(--kpc-text-muted); font-family: var(--kpc-font-m
   .menu-btn:hover { background: var(--kpc-neutral-100); }
   .crumbs { display: none; }
 
-  .g-4, .g-2 { grid-template-columns: 1fr; }
+  .g-4, .g-5, .g-2 { grid-template-columns: 1fr; }
   .page { padding: 20px 16px 48px; }
   .topbar { gap: 10px; padding: 0 14px; }
   .topbar-search { width: auto; flex: 1; min-width: 0; }

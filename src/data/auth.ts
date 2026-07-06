@@ -54,39 +54,81 @@ export interface Resource {
   section: string  /* group header (Thai · English) */
 }
 
-/** The functions covered by the permission matrix, grouped like the sidebar. */
+/** The functions covered by the permission matrix, in sidebar order and grouped
+    under the same section headers as the sidebar (see nav.tsx). `/my-work` is
+    intentionally ungated (personal page) and therefore has no row here. */
 export const RESOURCES: Resource[] = [
   { key: 'monthly-report', route: '/monthly-report', label: 'รายงานประจำเดือน / ปี', section: 'รายงาน · Reports' },
   { key: 'tax-reports', route: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', section: 'รายงาน · Reports' },
+  { key: 'general-reports', route: '/general-reports', label: 'รายงานทั่วไป', section: 'รายงาน · Reports' },
+  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
   { key: 'audit-report', route: '/audit-report', label: 'รายงาน Audit', section: 'รายงาน · Reports' },
 
   { key: 'sales-orders', route: '/sales-orders', label: 'ใบสั่งขาย', section: 'การขาย · Sales' },
   { key: 'delivery-tickets', route: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', section: 'การขาย · Sales' },
+  { key: 'foundry-deliveries', route: '/foundry-deliveries', label: 'ใบส่งสินค้าโรงหล่อ', section: 'การขาย · Sales' },
   { key: 'invoices', route: '/invoices', label: 'ใบกำกับภาษี / วางบิล', section: 'การขาย · Sales' },
   { key: 'receipts', route: '/receipts', label: 'ใบเสร็จรับเงิน', section: 'การขาย · Sales' },
 
   { key: 'purchase-orders', route: '/purchase-orders', label: 'ใบสั่งซื้อ', section: 'การซื้อ / การจ่าย · Purchasing' },
-  { key: 'goods-payments', route: '/goods-payments', label: 'ใบทำจ่ายสินค้า/วัสดุ', section: 'การซื้อ / การจ่าย · Purchasing' },
-  { key: 'payroll', route: '/payroll', label: 'ใบเบิก / ทำจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'goods-payments', route: '/goods-payments', label: 'ใบสำคัญจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'payroll', route: '/payroll', label: 'เบิกและจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'truck-trips', route: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'commission', route: '/commission', label: 'บันทึกค่าคอมมิชชั่น', section: 'การซื้อ / การจ่าย · Purchasing' },
 
-  { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ลูกค้า · Customers' },
-  { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ลูกค้า · Customers' },
-  { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'ลูกค้า · Customers' },
+  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
+  { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
 
-  { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบ', section: 'คลัง & ราคา · Inventory' },
-  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า', section: 'คลัง & ราคา · Inventory' },
-  { key: 'transport-pricing', route: '/transport-pricing', label: 'ราคาค่าขนส่ง', section: 'คลัง & ราคา · Inventory' },
+  { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
+  { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ฐานข้อมูล · Database' },
+  { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'ฐานข้อมูล · Database' },
+  { key: 'mix-design', route: '/mix-design', label: 'Mix Design', section: 'ฐานข้อมูล · Database' },
+  { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'ฐานข้อมูล · Database' },
+  { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'ฐานข้อมูล · Database' },
 
-  { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'องค์กร · Organization' },
-  { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'องค์กร · Organization' },
-  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'องค์กร · Organization' },
-
-  { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'องค์กร · Organization' },
+  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'ระบบ · System' },
+  { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'ระบบ · System' },
 ]
 
 /** route → resource key, for guarding the router. */
 export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
+/* Legacy direct วางบิล route shares the ใบกำกับภาษี / วางบิล gate. */
+ROUTE_RESOURCE['/billing'] = 'invoices'
+/* สูตรผลิตโรงหล่อ shares the Mix Design gate (both under ราคาสินค้า / ฐานข้อมูล). */
+ROUTE_RESOURCE['/foundry-formula'] = 'mix-design'
+/* คลังวัตถุดิบโรงหล่อ shares the คลังวัตถุดิบ gate. */
+ROUTE_RESOURCE['/foundry-materials'] = 'stock'
+
+/** Hard per-resource role allowlist — overrides the permission matrix. When a
+    resource key is listed here, ONLY these roles may view it, no matter what the
+    configurable perms say. Used for sensitive pages. */
+const ALL_BUT_MANAGER: Role[] = ['Admin', 'Board', 'Auditor', 'Accountant']
+export const RESOURCE_ROLE_ALLOW: Record<string, Role[]> = {
+  'monthly-report': ['Admin', 'Board', 'Auditor'],
+  'salary-structure': ['Admin', 'Board', 'Auditor'],
+  /* Manager cannot access these sales documents. */
+  'delivery-tickets': ALL_BUT_MANAGER,
+  'foundry-deliveries': ALL_BUT_MANAGER,
+  'invoices': ALL_BUT_MANAGER,
+}
+/** false only when `key` is role-locked and `role` isn't in its allowlist. */
+export function roleAllowsResource(role: Role, key: string): boolean {
+  const allow = RESOURCE_ROLE_ALLOW[key]
+  return !allow || allow.includes(role)
+}
+
+/** Default landing route for a role: the first resource (in sidebar order) it may
+    actually view — so a role locked out of the monthly report doesn't land on the
+    "no access" page. Falls back to the personal ungated page. */
+export function landingRouteFor(role: Role, perms: PermMatrix): string {
+  for (const r of RESOURCES) {
+    const lvl = perms[role]?.[r.key] ?? 'none'
+    if (lvl !== 'none' && roleAllowsResource(role, r.key)) return r.route
+  }
+  return '/my-work'
+}
 
 export type PermMatrix = Record<Role, Record<string, Level>>
 
@@ -102,28 +144,66 @@ function row(levels: Level[]): Record<string, Level> {
   return m
 }
 
-/* Column order for the arrays below — keep in sync with RESOURCES:
-   monthly, tax, audit, SO, delivery, invoice, receipt, PO, goods, payroll,
-   custMaster, suppliers, ledger, stock, pricing, transport, employees,
-   attendance, salaryStruct, settings */
+/* Column order for the arrays below — keep in sync with RESOURCES (sidebar order):
+   Reports:     monthly, tax, general, ledger, audit
+   Sales:       SO, delivery, foundryDelivery, invoice, receipt
+   Purchasing:  PO, goods, payroll, attendance, truckTrips, commission
+   Inventory:   stock, foundryStock
+   Database:    custMaster, suppliers, pricing, mixDesign, transport, employees
+   System:      salaryStruct, settings */
 
 /** Default permission matrix — a sensible reading of the supplied chart.
     Fully editable + persisted from the Settings page, so any cell can be
-    corrected there without touching code. The 3rd column is the Audit report,
-    which only Admin and Auditor may access. */
+    corrected there without touching code. The Audit report (column 5) is
+    restricted to Admin and Auditor. */
 export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
-  Admin: row([E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E]),
+  Admin: row([
+    E, E, E, E, E,          // reports
+    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // purchasing
+    E, E,                   // inventory
+    E, E, E, E, E, E,       // database
+    E, E,                   // system
+  ]),
   /* Board — full access (owner), except audit + system settings. */
-  Board: row([E, E, N, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, E, V]),
+  Board: row([
+    E, E, E, E, N,          // reports (no audit)
+    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // purchasing
+    E, E,                   // inventory
+    E, E, E, E, E, E,       // database
+    E, V,                   // system (settings read-only)
+  ]),
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
-  Auditor: row([V, V, E, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, V, N]),
-  /* Manager — operational: edits sales + customers + time attendance, views
-     the rest, no audit, no purchasing/payments, no settings. */
-  Manager: row([V, V, N, E, E, V, V, N, N, N, E, V, V, V, V, V, V, E, V, N]),
+  Auditor: row([
+    V, V, V, V, E,          // reports (audit edit)
+    V, V, V, V, V,          // sales
+    V, V, V, V, V, V,       // purchasing
+    V, V,                   // inventory
+    V, V, V, V, V, V,       // database
+    V, N,                   // system (no settings)
+  ]),
+  /* Manager — operational: edits sales + customers + time/trip/commission
+     recording, views the rest; no audit, no purchasing/payments, no settings. */
+  Manager: row([
+    V, V, V, V, N,          // reports (no audit)
+    E, E, E, V, V,          // sales (edits orders/deliveries, views invoices/receipts)
+    N, N, N, E, E, E,       // purchasing (records attendance/trips/commission only)
+    V, V,                   // inventory
+    E, V, V, V, V, V,       // database (edits customer master)
+    V, N,                   // system
+  ]),
   /* Accountant — finance: edits all sales/purchasing/customers/reports,
-     views inventory & HR + attendance + the Audit report (read-only), no settings. */
-  Accountant: row([E, E, V, E, E, E, E, E, E, E, E, E, E, E, V, V, V, V, V, N]),
+     views inventory & HR recording + the Audit report (read-only), no settings. */
+  Accountant: row([
+    E, E, E, E, V,          // reports (audit view)
+    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // purchasing (edits PO/payments/payroll + attendance/trips/commission recording)
+    E, E,                   // inventory
+    E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
+    V, N,                   // system
+  ]),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */
@@ -141,6 +221,11 @@ export interface ActivityEntry {
 
 const KEY = 'kpc.auth.v1'
 
+/** Bump when a permission migration must be force-applied to existing stored
+    matrices (localStorage overrides code defaults, so new defaults alone don't
+    reach browsers that already saved a matrix). */
+const PERMS_VERSION = 2
+
 interface AuthState {
   users: User[]
   perms: PermMatrix
@@ -150,9 +235,11 @@ interface AuthState {
   activity: ActivityEntry[]
   /** Id of the open ActivityEntry for the live session (so logout can close it). */
   currentSessionId: string | null
+  /** Version of the last-applied permission migration (see PERMS_VERSION). */
+  permsVersion?: number
 }
 
-const empty: AuthState = { users: SEED_USERS, perms: DEFAULT_PERMS, session: null, activity: [], currentSessionId: null }
+const empty: AuthState = { users: SEED_USERS, perms: DEFAULT_PERMS, session: null, activity: [], currentSessionId: null, permsVersion: PERMS_VERSION }
 
 /** Merge a stored permission matrix onto the defaults so newly-added resources
     (or roles) always have a level even if the stored copy predates them. */
@@ -172,13 +259,26 @@ function read(): AuthState {
     const raw = localStorage.getItem(KEY)
     if (!raw) return empty
     const v = JSON.parse(raw) as Partial<AuthState>
-    return {
+    const perms = mergePerms(v.perms)
+    const storedVersion = v.permsVersion ?? 0
+    /* v2 (2026-07): the Accountant role edits the payroll-entry pages —
+       บันทึกลงเวลางาน / เที่ยวรถโม่ / ค่าคอมมิชชั่น. A stale stored matrix keeps
+       the old "view", so force these cells once (does not re-run after v2). */
+    if (storedVersion < 2 && perms.Accountant) {
+      for (const k of ['attendance', 'truck-trips', 'commission']) perms.Accountant[k] = 'edit'
+    }
+    const next: AuthState = {
       users: v.users?.length ? v.users : SEED_USERS,
-      perms: mergePerms(v.perms),
+      perms,
       session: v.session ?? null,
       activity: v.activity ?? [],
       currentSessionId: v.currentSessionId ?? null,
+      permsVersion: PERMS_VERSION,
     }
+    if (storedVersion < PERMS_VERSION) {
+      try { localStorage.setItem(KEY, JSON.stringify(next)) } catch { /* quota */ }
+    }
+    return next
   } catch {
     return empty
   }

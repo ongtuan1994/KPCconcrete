@@ -49,6 +49,7 @@ export function NewInvoiceForm({
   onIssued,
   createdInvoices,
   initialRefs,
+  initialFdRefs,
 }: {
   open: boolean
   onClose: () => void
@@ -56,6 +57,8 @@ export function NewInvoiceForm({
   createdInvoices: Invoice[]
   /** When set, pre-fill the refs field and auto-pull ticket data on open. */
   initialRefs?: string
+  /** When set, pre-fill the foundry-delivery refs and auto-pull on open. */
+  initialFdRefs?: string
 }) {
   const created = useCreatedDocs()
   const [customer, setCustomer] = useState('')
@@ -63,12 +66,25 @@ export function NewInvoiceForm({
   const [day, setDay] = useState<string>('')
   const [pay, setPay] = useState<string>('เงินสด')
   const [refs, setRefs] = useState<string>('')
+  /* Foundry-delivery-note numbers (รหัสใบส่งสินค้าโรงหล่อ) — a second pull source. */
+  const [fdRefs, setFdRefs] = useState<string>('')
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()])
   const [err, setErr] = useState<string>('')
   const [pullInfo, setPullInfo] = useState<string>('')
+  /* Invoice number — auto-generated but editable. `noDirty` stops the auto-fill
+     once the user types their own (real) number. */
+  const [no, setNo] = useState<string>('')
+  const [noDirty, setNoDirty] = useState(false)
 
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
+
+  /* Keep the auto number in sync with งวด/วันที่ until the user edits it. */
+  useEffect(() => {
+    if (noDirty) return
+    const dnum = parseInt(day, 10)
+    setNo(dnum >= 1 && dnum <= 31 ? nextInvoiceNo(month, dnum, all) : '')
+  }, [month, day, all, noDirty])
 
   /* Prices entered (and in PRODUCTS / TRANSPORT_FEES) are VAT-inclusive.
      For the printed Thai tax invoice we still need line items in pre-VAT form
@@ -98,7 +114,9 @@ export function NewInvoiceForm({
         ...(discountPreVat > 0 ? { discount: discountPreVat } : {}),
       })
       totalInclVat += amountInclVat
-      concreteQty += qty
+      /* Only concrete-delivery products (not foundry precast) count toward the
+         under-load transport surcharge. */
+      if (p.site !== 'foundry') concreteQty += qty
     }
 
     /* Auto-add the under-load transport surcharge when total qty < 3 คิว.
@@ -148,7 +166,8 @@ export function NewInvoiceForm({
 
   const reset = () => {
     setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setPay('เงินสด')
-    setRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
+    setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
+    setNo(''); setNoDirty(false)
   }
 
   /* When opened with initialRefs (from the delivery-tickets page), seed and auto-pull. */
@@ -161,6 +180,17 @@ export function NewInvoiceForm({
       pullFromTickets(initialRefs)
     }
   }, [open, initialRefs]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* When opened from a foundry delivery note, seed รหัสใบส่งสินค้าโรงหล่อ and auto-pull. */
+  const lastInitialFd = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!open) { lastInitialFd.current = undefined; return }
+    if (initialFdRefs && initialFdRefs !== lastInitialFd.current) {
+      lastInitialFd.current = initialFdRefs
+      setFdRefs(initialFdRefs)
+      pullFromFoundry(initialFdRefs)
+    }
+  }, [open, initialFdRefs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Look up tickets by the refs input, then prefill customer / month / day / pay
       and group volumes by product into invoice lines. */
@@ -229,6 +259,66 @@ export function NewInvoiceForm({
     setPullInfo(parts.join(' · '))
   }
 
+  /** Look up foundry delivery notes by their numbers, then prefill customer /
+      month / day and build invoice lines from the foundry items (price filled
+      from the product master, since the delivery note itself carries none). */
+  const pullFromFoundry = (override?: string) => {
+    setErr(''); setPullInfo('')
+    const source = override ?? fdRefs
+    const tokens = source.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)
+    if (tokens.length === 0) {
+      setErr('กรุณาใส่รหัสใบส่งสินค้าโรงหล่อ แล้วกดดึงข้อมูล')
+      return
+    }
+    const matched = []
+    const missed: string[] = []
+    for (const tk of tokens) {
+      const f = created.foundryDeliveries.find((x) => x.fdNo.toUpperCase() === tk.toUpperCase())
+      if (f) matched.push(f); else missed.push(tk)
+    }
+    if (matched.length === 0) {
+      setErr(`ไม่พบใบส่งสินค้าโรงหล่อตามที่ระบุ: ${missed.join(', ')}`)
+      return
+    }
+    const customers = [...new Set(matched.map((f) => f.customer))]
+    if (customers.length > 1) {
+      setErr(`ใบส่งสินค้ามีลูกค้าหลายราย (${customers.join(' / ')}) — กรุณาออกใบกำกับแยกตามลูกค้า`)
+      return
+    }
+
+    const first = matched[0]
+    const [, mStr, dStr] = first.date.split('-')
+    setCustomer(first.customer)
+    setMonth(Number(mStr) || LATEST_MONTH)
+    setDay(String(Number(dStr) || ''))
+
+    /* Group lines by product code + master price (incl VAT). */
+    const byKey = new Map<string, LineDraft>()
+    let priceFilledFromMaster = 0
+    for (const f of matched) {
+      for (const it of f.items) {
+        const prod = PRODUCT_MAP[it.code]
+        const masterPrice = (prod?.pickupPrices && it.pickup)
+          ? prod.pickupPrices[it.pickup]
+          : (prod?.price || 0)
+        const key = `${it.code}__${masterPrice}`
+        const existing = byKey.get(key)
+        if (existing) {
+          existing.qty = String((Number(existing.qty) || 0) + it.qty)
+        } else {
+          if (masterPrice) priceFilledFromMaster += 1
+          byKey.set(key, { code: it.code, qty: String(it.qty), price: masterPrice ? String(masterPrice) : '', discount: '' })
+        }
+      }
+    }
+    setLines([...byKey.values()])
+
+    const parts: string[] = [`ดึงข้อมูลจาก ${matched.length} ใบส่งสินค้าโรงหล่อ`]
+    if (priceFilledFromMaster > 0) parts.push(`เติมราคาจากตารางสินค้า ${priceFilledFromMaster} รายการ`)
+    if (missed.length) parts.push(`ไม่พบ: ${missed.join(', ')}`)
+    setPullInfo(parts.join(' · '))
+  }
+
   const submit = () => {
     setErr('')
     if (!customer.trim()) return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
@@ -236,15 +326,19 @@ export function NewInvoiceForm({
     if (!dnum || dnum < 1 || dnum > 31) return setErr('กรุณาระบุวันที่ (1–31)')
     if (computed.ls.length === 0) return setErr('กรุณากรอกรายการสินค้าอย่างน้อย 1 รายการ (จำนวน + ราคา)')
 
+    const invNo = no.trim()
+    if (!invNo) return setErr('กรุณากรอกเลขที่ใบกำกับ')
+    if (all.some((i) => i.no === invNo)) return setErr(`เลขที่ใบกำกับ ${invNo} ถูกใช้แล้ว`)
+
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const dueDate = plus30(date)
     const paid = pay === 'เงินสด' || pay === 'โอน'
     const status: InvStatus = paid ? 'paid' : month < LATEST_MONTH ? 'overdue' : 'pending'
     const inv: Invoice = {
-      no: nextInvoiceNo(month, dnum, all),
+      no: invNo,
       month, date, dueDate, customer: customer.trim(), pay,
       lines: computed.ls,
-      refs: refs.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean),
+      refs: [...refs.split(/[,\s]+/), ...fdRefs.split(/[,\s]+/)].map((x) => x.trim()).filter(Boolean),
       subtotal: computed.subtotal, vat: computed.vat, total: computed.total,
       status,
     }
@@ -277,10 +371,19 @@ export function NewInvoiceForm({
             <Button variant="tonal" onClick={() => pullFromTickets()}>ดึงข้อมูล</Button>
           </div>
         </Field>
+        <Field label="รหัสใบส่งสินค้าโรงหล่อ (คั่นด้วย , หรือเว้นวรรค)" hint="ดึงลูกค้า / วันที่ / รายการสินค้าจากใบส่งสินค้าโรงหล่อ — เติมราคาจากตารางสินค้าให้" style={{ marginTop: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+            <Input placeholder="เช่น FD-690628-01" value={fdRefs} onChange={(e) => setFdRefs(e.target.value)} />
+            <Button variant="tonal" onClick={() => pullFromFoundry()}>ดึงข้อมูล</Button>
+          </div>
+        </Field>
         {pullInfo && <div style={{ fontSize: 12, color: 'var(--kpc-primary-ink)', marginTop: 8 }}>✓ {pullInfo}</div>}
       </div>
 
       <div className="grid g-2" style={{ marginBottom: 16 }}>
+        <Field label="เลขที่ใบกำกับ" required hint="สร้างอัตโนมัติจากงวด/วันที่ — แก้ไขเป็นเลขจริงได้" style={{ gridColumn: '1 / -1' }}>
+          <Input className="input mono" value={no} onChange={(e) => { setNo(e.target.value); setNoDirty(true) }} placeholder="เช่น IV690621-0001 หรือ 690621-0001" />
+        </Field>
         <Field label="ลูกค้า" required>
           <Input
             list="kpc-customer-list"
@@ -296,6 +399,7 @@ export function NewInvoiceForm({
           <Select value={pay} onChange={(e) => setPay(e.target.value)}>
             <option value="เงินสด">เงินสด</option>
             <option value="โอน">โอน</option>
+            <option value="เช็ค">เช็ค</option>
             <option value="เครดิต">เครดิต</option>
           </Select>
         </Field>

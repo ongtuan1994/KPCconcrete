@@ -4,7 +4,7 @@ import { type DeliveryTicket, PRODUCT_MAP, VEHICLE_MAP } from '../../data/real'
 import { baht, qm, monthLabel } from '../../data/selectors'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
-const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info' }
+const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return (

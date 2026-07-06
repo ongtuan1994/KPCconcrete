@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { Modal } from '../components/Modal'
@@ -8,21 +9,22 @@ import { IconPlus } from '../components/icons'
 import {
   EMPLOYEES,
   DEPARTMENT_LABEL,
+  SITE_LABEL,
+  NATIONALITIES,
   THAI_BANKS,
   yearsOfService,
   type Employee,
   type Department,
+  type Site,
+  type Nationality,
 } from '../data/employees'
-import { useCreatedDocs, addEmployee, updateEmployee, type EmployeeEdit } from '../data/createdDocs'
+import { useCreatedDocs, addEmployee, updateEmployee, removeEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeEdit, type EmployeeReport } from '../data/createdDocs'
+import { useCurrentUser } from '../data/auth'
 import { downloadCsv } from '../utils/csv'
 
-const DEPARTMENT_TONE: Record<Department, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
-  manager: 'info',
-  accounting: 'success',
-  production: 'warning',
-  labor: 'danger',
-  transport: 'neutral',
-  intern: 'info',
+const SITE_TONE: Record<Site, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
+  plant: 'info',
+  foundry: 'warning',
 }
 
 /* Order departments deterministically for both the filter pills and the table
@@ -48,22 +50,29 @@ function nextEmployeeId(existing: Employee[]): string {
 
 export function Employees() {
   const [filter, setFilter] = useState<'all' | Department>('all')
+  const [siteFilter, setSiteFilter] = useState<'all' | Site>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showForm, setShowForm] = useState(false)
   const created = useCreatedDocs()
+  const navigate = useNavigate()
+  const terminatedSet = useMemo(() => new Set(created.terminations.map((t) => t.empId)), [created.terminations])
 
+  const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
   const list = useMemo(
-    () => [...created.employeesAdded, ...EMPLOYEES].map((e) => mergeEmployee(e, created.employeeEdits)),
-    [created.employeeEdits, created.employeesAdded],
+    () => [...created.employeesAdded, ...EMPLOYEES]
+      .filter((e) => !hiddenEmp.has(e.id))
+      .map((e) => mergeEmployee(e, created.employeeEdits)),
+    [created.employeeEdits, created.employeesAdded, hiddenEmp],
   )
 
   const rows = useMemo(() => {
     const base = list.filter((e) => {
       if (filter !== 'all' && e.department !== filter) return false
+      if (siteFilter !== 'all' && e.site !== siteFilter) return false
       if (query) {
         const q = query.toLowerCase()
-        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
+        const hay = `${e.id} ${e.name} ${e.nickname ?? ''} ${e.role} ${e.site ? SITE_LABEL[e.site].th : ''} ${e.nationality ?? ''} ${e.phone ?? ''} ${e.bankName ?? ''} ${e.bankAccount ?? ''}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -73,17 +82,55 @@ export function Employees() {
       const db = DEPARTMENT_ORDER.indexOf(b.department)
       return da - db || a.id.localeCompare(b.id)
     })
-  }, [list, filter, query])
+  }, [list, filter, siteFilter, query])
 
   const cnt = (d: Department) => list.filter((e) => e.department === d).length
+  const siteCnt = (s: Site) => list.filter((e) => e.site === s).length
   const total = list.length
   const hasStart = list.filter((e) => !!e.startDate).length
   const hasPhone = list.filter((e) => !!e.phone).length
 
+  const scopeLabel = filter === 'all' ? 'ทั้งหมด' : DEPARTMENT_LABEL[filter].th
+
+  /* Snapshot the current roster view → รายงานทั่วไป (kept as a PDF). */
+  const createReport = () => {
+    const reportRows = rows.map((e) => ({
+      id: e.id,
+      name: e.name,
+      nickname: e.nickname,
+      role: e.role,
+      department: DEPARTMENT_LABEL[e.department].th,
+      site: e.site ? SITE_LABEL[e.site].th : undefined,
+      nationality: e.nationality,
+      phone: e.phone,
+      bankName: e.bankName,
+      bankAccount: e.bankAccount,
+      startDate: e.startDate,
+      years: yearsOfService(e.startDate) ?? undefined,
+      terminated: terminatedSet.has(e.id),
+    }))
+    const terminated = reportRows.filter((r) => r.terminated).length
+    const report: EmployeeReport = {
+      id: `gr_${Date.now()}`,
+      kind: 'employees',
+      title: `รายชื่อพนักงาน · ${scopeLabel}`,
+      fromLabel: scopeLabel,
+      toLabel: 'ณ ปัจจุบัน',
+      scopeLabel,
+      rows: reportRows,
+      totals: { count: reportRows.length, active: reportRows.length - terminated, terminated },
+      createdAt: new Date().toISOString(),
+    }
+    addGeneralReport(report)
+    if (confirm(`สร้างรายงาน "${report.title}" เก็บไว้ในเมนูรายงานทั่วไปแล้ว\n\nไปที่หน้ารายงานทั่วไปเลยไหม?`)) {
+      navigate('/general-reports')
+    }
+  }
+
   const exportExcel = () => {
-    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
+    const head = ['รหัส', 'ชื่อ-สกุล', 'ชื่อเล่น', 'ตำแหน่ง', 'ฝ่าย', 'Site', 'สัญชาติ', 'เบอร์ติดต่อ', 'ธนาคาร', 'เลขที่บัญชี', 'วันเริ่มงาน', 'อายุงาน']
     const body = rows.map((e) => [
-      e.id, e.name, e.nickname ?? '', e.role, DEPARTMENT_LABEL[e.department].th,
+      e.id, e.name, e.nickname ?? '', e.role, DEPARTMENT_LABEL[e.department].th, e.site ? SITE_LABEL[e.site].th : '', e.nationality ?? '',
       e.phone ?? '', e.bankName ?? '', e.bankAccount ?? '', e.startDate ?? '', yearsOfService(e.startDate) ?? '',
     ])
     downloadCsv('employees', [head, ...body])
@@ -96,17 +143,32 @@ export function Employees() {
       header: 'ชื่อ-สกุล',
       cell: (r) => (
         <div className="stack" style={{ gap: 2 }}>
-          <span className="th" style={{ color: 'var(--kpc-text-strong)', fontWeight: 600 }}>{r.name}</span>
+          <span className="th" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--kpc-text-strong)', fontWeight: 600 }}>
+            {r.name}
+            {terminatedSet.has(r.id) && <Badge tone="danger" pip={false} square>พ้นสภาพ</Badge>}
+          </span>
           {r.nickname && <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>({r.nickname})</span>}
         </div>
       ),
     },
-    { key: 'role', header: 'ตำแหน่ง', cell: (r) => r.role },
+    /* ตำแหน่ง ซ่อนจากตาราง (ยังเก็บข้อมูล + แก้ไข/ส่งออก/ค้นหาได้) */
     {
       key: 'dept',
       header: 'ฝ่าย',
+      cell: (r) => DEPARTMENT_LABEL[r.department].th,
+    },
+    {
+      key: 'site',
+      header: 'Site',
       align: 'center',
-      cell: (r) => <Badge tone={DEPARTMENT_TONE[r.department]} pip={false} square>{DEPARTMENT_LABEL[r.department].th}</Badge>,
+      cell: (r) => r.site
+        ? <Badge tone={SITE_TONE[r.site]} pip={false} square>{SITE_LABEL[r.site].th}</Badge>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
+    },
+    {
+      key: 'nationality',
+      header: 'สัญชาติ',
+      cell: (r) => r.nationality ?? '—',
     },
     {
       key: 'phone',
@@ -115,26 +177,7 @@ export function Employees() {
         ? <span className="mono">{r.phone}</span>
         : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
     },
-    {
-      key: 'bank',
-      header: 'บัญชีธนาคาร',
-      cell: (r) => (r.bankName || r.bankAccount)
-        ? (
-          <div className="stack" style={{ gap: 2 }}>
-            {r.bankName && <span style={{ fontSize: 13 }}>{r.bankName}</span>}
-            {r.bankAccount && <span className="mono" style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{r.bankAccount}</span>}
-          </div>
-        )
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
-    },
-    {
-      key: 'start',
-      header: 'วันเริ่มงาน',
-      cell: (r) => r.startDate
-        ? <span className="mono">{r.startDate}</span>
-        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
-      className: 'date',
-    },
+    /* บัญชีธนาคาร + วันเริ่มงาน ซ่อนจากตาราง (ยังเก็บข้อมูล + แก้ไข/ส่งออกได้) */
     {
       key: 'years',
       header: 'อายุงาน',
@@ -162,6 +205,7 @@ export function Employees() {
         sub={`Employee List · ${total} คน`}
         actions={
           <>
+            <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             <Button variant="secondary" onClick={exportExcel}>ส่งออก Excel</Button>
             <Button variant="primary" onClick={() => setShowForm(true)}>
               <IconPlus /> เพิ่มพนักงาน
@@ -188,6 +232,15 @@ export function Employees() {
         </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="ชื่อ / ชื่อเล่น / ตำแหน่ง / เบอร์" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="row wrap" style={{ alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>Site:</span>
+        <div className="pills">
+          <Pill active={siteFilter === 'all'} onClick={() => setSiteFilter('all')}>ทั้งหมด {total}</Pill>
+          <Pill active={siteFilter === 'plant'} onClick={() => setSiteFilter('plant')}>{SITE_LABEL.plant.th} {siteCnt('plant')}</Pill>
+          <Pill active={siteFilter === 'foundry'} onClick={() => setSiteFilter('foundry')}>{SITE_LABEL.foundry.th} {siteCnt('foundry')}</Pill>
         </div>
       </div>
 
@@ -229,6 +282,8 @@ function NewEmployeeForm({
   const [nickname, setNickname] = useState('')
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
+  const [site, setSite] = useState<Site>('plant')
+  const [nationality, setNationality] = useState<Nationality>('ไทย')
   const [phone, setPhone] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
@@ -237,7 +292,7 @@ function NewEmployeeForm({
 
   useEffect(() => {
     if (!open) return
-    setName(''); setNickname(''); setRole(''); setDepartment('production')
+    setName(''); setNickname(''); setRole(''); setDepartment('production'); setSite('plant'); setNationality('ไทย')
     setPhone(''); setBankName(''); setBankAccount(''); setStartDate(''); setErr('')
   }, [open])
 
@@ -256,6 +311,8 @@ function NewEmployeeForm({
       nickname: nickname.trim() || undefined,
       role: trimmedRole,
       department,
+      site,
+      nationality,
       phone: phone.trim() || undefined,
       bankName: bankName.trim() || undefined,
       bankAccount: bankAccount.trim() || undefined,
@@ -292,6 +349,18 @@ function NewEmployeeForm({
             ))}
           </Select>
         </Field>
+        <Field label="Site" required>
+          <Select value={site} onChange={(e) => setSite(e.target.value as Site)}>
+            {(Object.keys(SITE_LABEL) as Site[]).map((s) => (
+              <option key={s} value={s}>{SITE_LABEL[s].th}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="สัญชาติ" required>
+          <Select value={nationality} onChange={(e) => setNationality(e.target.value as Nationality)}>
+            {NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}
+          </Select>
+        </Field>
         <Field label="เบอร์ติดต่อ" hint="เช่น 081-234-5678">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="—" />
         </Field>
@@ -316,16 +385,22 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
   const [nickname, setNickname] = useState('')
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
+  const [site, setSite] = useState<Site>('plant')
+  const [nationality, setNationality] = useState<Nationality>('ไทย')
   const [phone, setPhone] = useState('')
   const [bankName, setBankName] = useState('')
   const [bankAccount, setBankAccount] = useState('')
   const [startDate, setStartDate] = useState('')
+  const created = useCreatedDocs()
+  const isAdmin = useCurrentUser()?.role === 'Admin'
 
   useEffect(() => {
     if (!employee) return
     setNickname(employee.nickname ?? '')
     setRole(employee.role)
     setDepartment(employee.department)
+    setSite(employee.site ?? 'plant')
+    setNationality(employee.nationality ?? 'ไทย')
     setPhone(employee.phone ?? '')
     setBankName(employee.bankName ?? '')
     setBankAccount(employee.bankAccount ?? '')
@@ -334,16 +409,36 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
 
   if (!employee) return null
 
+  const terminated = created.terminations.some((t) => t.empId === employee.id)
+
   const save = () => {
     updateEmployee(employee.id, {
       nickname: nickname.trim() || undefined,
       role: role.trim() || employee.role,
       department,
+      site,
+      nationality,
       phone: phone.trim() || undefined,
       bankName: bankName.trim() || undefined,
       bankAccount: bankAccount.trim() || undefined,
       startDate: startDate.trim() || undefined,
     })
+    onClose()
+  }
+
+  const terminate = () => {
+    if (!confirm(`ยืนยัน “พ้นสภาพ” ${employee.name}?\n\nระบบจะแจ้งเตือนผู้บริหาร (Board)`)) return
+    addEmployeeTermination(employee.id, employee.name)
+    onClose()
+  }
+  const undoTerminate = () => {
+    if (!confirm(`ยกเลิกสถานะพ้นสภาพของ ${employee.name}?`)) return
+    removeEmployeeTermination(employee.id)
+    onClose()
+  }
+  const del = () => {
+    if (!confirm(`ลบพนักงาน ${employee.name} (${employee.id}) ออกจากรายชื่อถาวร?\n\nการลบนี้ไม่สามารถกู้คืนได้`)) return
+    removeEmployee(employee.id)
     onClose()
   }
 
@@ -353,10 +448,26 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
       title={`แก้ไขข้อมูลพนักงาน · ${employee.id}`}
       onClose={onClose}
       maxWidth={560}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
+      footer={
+        <>
+          <div style={{ marginRight: 'auto', display: 'flex', gap: 10 }}>
+            {terminated ? (
+              <Button variant="secondary" onClick={undoTerminate} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกพ้นสภาพ</Button>
+            ) : (
+              <Button variant="secondary" onClick={terminate} style={{ background: 'var(--kpc-danger)', borderColor: 'var(--kpc-danger)', color: '#fff' }}>พ้นสภาพ</Button>
+            )}
+            {isAdmin && <Button variant="ghost" onClick={del} style={{ color: 'var(--kpc-danger)' }} title="เฉพาะ Admin">ลบพนักงาน</Button>}
+          </div>
+          <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
+          <Button variant="primary" onClick={save}>บันทึก</Button>
+        </>
+      }
     >
       <div className="stack" style={{ gap: 4, marginBottom: 12 }}>
-        <span style={{ fontSize: 16, fontWeight: 600 }}>{employee.name}</span>
+        <span style={{ fontSize: 16, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {employee.name}
+          {terminated && <Badge tone="danger" pip={false} square>พ้นสภาพแล้ว</Badge>}
+        </span>
         <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
           ชื่อ-สกุลและรหัสไม่สามารถแก้ไขได้ — ฟิลด์อื่นแก้ไขแล้วบันทึกลง localStorage
         </span>
@@ -374,6 +485,18 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
             {(Object.keys(DEPARTMENT_LABEL) as Department[]).map((d) => (
               <option key={d} value={d}>{DEPARTMENT_LABEL[d].th}</option>
             ))}
+          </Select>
+        </Field>
+        <Field label="Site" required>
+          <Select value={site} onChange={(e) => setSite(e.target.value as Site)}>
+            {(Object.keys(SITE_LABEL) as Site[]).map((s) => (
+              <option key={s} value={s}>{SITE_LABEL[s].th}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="สัญชาติ" required>
+          <Select value={nationality} onChange={(e) => setNationality(e.target.value as Nationality)}>
+            {NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}
           </Select>
         </Field>
         <Field label="เบอร์ติดต่อ" hint="เช่น 081-234-5678">
