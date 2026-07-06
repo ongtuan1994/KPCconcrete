@@ -32,6 +32,7 @@ import { MixDesign } from './pages/MixDesign'
 import { FoundryFormula } from './pages/FoundryFormula'
 import { Pricing } from './pages/Pricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
+import { PlantOperation } from './pages/PlantOperation'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
 import { LeaveRecords } from './pages/LeaveRecords'
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="/foundry-formula" element={<FoundryFormula />} />
         <Route path="/transport-pricing" element={<TruckFleet />} />
         <Route path="/plant" element={<PlantMonitoring />} />
+        <Route path="/plant-operation" element={<PlantOperation />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
         <Route path="/leave-records" element={<LeaveRecords />} />

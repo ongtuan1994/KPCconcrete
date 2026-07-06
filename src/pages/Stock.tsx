@@ -1,44 +1,21 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
-import { STOCK_MATERIALS, type StockMaterial, type DeliveryTicket } from '../data/real'
+import { STOCK_MATERIALS, type StockMaterial } from '../data/real'
 import { CREDITOR_MASTER } from '../data/creditors'
-import { MIX_BY_CODE } from '../data/mixDesign'
 import { baht, qm, prodShort } from '../data/selectors'
+import { MIX_PER_M3, ticketConsumption, stockStatus as status } from '../data/plantStock'
 import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'low' | 'out'
 
-/* Estimated raw-material consumption per 1 m³ of concrete (ตัน). Used to auto-
-   issue stock when a ใบจ่ายคอนกรีต is created. Admixtures vary by mix and are
-   not auto-deducted. Cement is charged to SCG or ดอกบัว by the product code. */
-const MIX_PER_M3 = { cement: 0.32, SAN: 0.80, AGG: 1.05 } as const
 const MAT_BY_CODE = Object.fromEntries(STOCK_MATERIALS.map((m) => [m.code, m]))
-/** R2/P2 = ปูนดอกบัว (CEM-2) ; RO/PO = ปูน SCG (CEM-1). */
-const cementCodeOf = (prod: string): 'CEM-1' | 'CEM-2' => (/^KPC[RP]2/.test(prod) ? 'CEM-2' : 'CEM-1')
-
-const r2 = (n: number) => Math.round(n * 100) / 100
-/** Raw-material lines consumed by one delivery ticket — uses the real mix design
-    for the product when available (kg → ตัน), else the per-m³ estimate. */
-function ticketConsumption(t: DeliveryTicket): { code: string; qty: number }[] {
-  const m3 = t.m3 || 0
-  if (m3 <= 0) return []
-  const mix = MIX_BY_CODE[t.prod]
-  const lines = [
-    { code: cementCodeOf(t.prod), qty: r2(m3 * (mix ? mix.cement / 1000 : MIX_PER_M3.cement)) },
-    { code: 'SAN', qty: r2(m3 * (mix ? mix.sand / 1000 : MIX_PER_M3.SAN)) },
-    { code: 'AGG', qty: r2(m3 * (mix ? mix.aggregate / 1000 : MIX_PER_M3.AGG)) },
-  ]
-  if (mix?.plastomix) lines.push({ code: 'ADM-D', qty: r2(m3 * mix.plastomix) })
-  if (mix?.pce) lines.push({ code: 'ADM-F', qty: r2(m3 * mix.pce) })
-  return lines
-}
 
 /** One stock movement row (รับเข้า / จ่ายออก) for the combined history table. */
 interface Movement {
@@ -78,12 +55,6 @@ function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   if (!y || !m || !d) return iso
   return `${d}/${m}/${Number(y) + 543}`
-}
-
-function status(m: StockMaterial): { th: string; en: string; tone: Tone } {
-  if (m.balance <= 0) return { th: 'ติดลบ / หมด', en: 'Out', tone: 'danger' }
-  if (m.balance < m.reorder) return { th: 'ใกล้หมด', en: 'Low', tone: 'warning' }
-  return { th: 'พอเพียง', en: 'In stock', tone: 'success' }
 }
 
 export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {}) {

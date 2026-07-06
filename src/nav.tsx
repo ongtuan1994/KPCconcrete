@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock, IconCalendar } from './components/icons'
+import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock, IconCalendar, IconPlant } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -20,6 +20,7 @@ export const NAV: NavGroup[] = [
   {
     items: [
       { to: '/my-work', label: 'งานของฉัน', en: 'My Work', icon: <IconCalendar /> },
+      { to: '/plant-operation', label: 'Today Operation', en: 'การดำเนินงานวันนี้', icon: <IconPlant /> },
     ],
   },
   {

@@ -100,6 +100,8 @@ ROUTE_RESOURCE['/billing'] = 'invoices'
 ROUTE_RESOURCE['/foundry-formula'] = 'mix-design'
 /* คลังวัตถุดิบโรงหล่อ shares the คลังวัตถุดิบ gate. */
 ROUTE_RESOURCE['/foundry-materials'] = 'stock'
+/* ภาพรวมการทำงานแพล้นปูน reads plant stock — shares the คลังวัตถุดิบ gate. */
+ROUTE_RESOURCE['/plant-operation'] = 'stock'
 
 /** Hard per-resource role allowlist — overrides the permission matrix. When a
     resource key is listed here, ONLY these roles may view it, no matter what the
