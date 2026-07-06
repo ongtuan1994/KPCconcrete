@@ -1,0 +1,34 @@
+# Development stack for the KPC web app.
+#
+#   docker compose up            # build + start the Vite dev server
+#   docker compose up --build    # rebuild after changing package.json
+#
+# App:  http://localhost:5173/
+#
+# This app's only backend is HOSTED Supabase, reached over its REST/realtime API
+# using the VITE_SUPABASE_* vars in .env.local (Vite loads that file from the
+# bind-mounted source automatically). Leave those vars empty to run the app in
+# localStorage-only mode — no external services required.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # Live-mount source for hot reload...
+      - .:/app
+      # ...but keep node_modules as a container-only volume so the host's
+      # (Windows/OneDrive) copy never shadows the Linux one built in the image.
+      - /app/node_modules
+    environment:
+      # Reliable file-change detection for HMR across the Windows bind mount.
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=300
+      # vite.config.ts has open:true (nice for local runs); inside a headless
+      # container there's no browser, so tell Vite not to try to open one.
+      - BROWSER=none
+    # Keep STDIN open so Vite's interactive dev server stays healthy.
+    stdin_open: true
+    tty: true
