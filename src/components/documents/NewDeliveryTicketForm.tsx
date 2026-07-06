@@ -117,9 +117,13 @@ export function NewDeliveryTicketForm({
     if (!customer.trim() && type === 'ขายลูกค้า') return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     const q = Number(m3)
     if (!q || q <= 0) return setErr('กรุณาระบุปริมาณ (คิว)')
-    if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
-    const v = VEHICLE_MAP[vehicle]
-    if (v && q > v.maxM3) return setErr(`รถ ${v.id} ขนได้สูงสุด ${v.maxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
+    /* หมายเลขรถ + พนักงานจัดส่ง ใช้เฉพาะงานขายลูกค้า — โรงหล่อ/ใช้เอง ข้ามได้. */
+    const isCustomerSale = type === 'ขายลูกค้า'
+    if (isCustomerSale) {
+      if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
+      const v = VEHICLE_MAP[vehicle]
+      if (v && q > v.maxM3) return setErr(`รถ ${v.id} ขนได้สูงสุด ${v.maxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
+    }
     if (!issuer) return setErr('กรุณาเลือกผู้จ่ายสินค้า')
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
@@ -132,12 +136,13 @@ export function NewDeliveryTicketForm({
       customer: customer.trim() || (type === 'โรงหล่อ' ? 'โรงหล่อ' : type),
       prod: prodCode,
       m3: q,
-      pay: (type === 'ขายลูกค้า' ? pay : '') as PayMethod,
+      pay: (isCustomerSale ? pay : '') as PayMethod,
       note: note.trim(),
-      vehicle,
-      /* Snapshot the driver name from the vehicle master so the ticket stays
+      /* Vehicle + driver only for customer deliveries; blank for โรงหล่อ/ใช้เอง.
+         Driver is snapshotted from the vehicle master so the ticket stays
          accurate even if the driver assignment changes later. */
-      driver: VEHICLE_MAP[vehicle]?.driver || '',
+      vehicle: isCustomerSale ? vehicle : '',
+      driver: isCustomerSale ? (VEHICLE_MAP[vehicle]?.driver || '') : '',
       issuer,
       receiver: receiver.trim() || undefined,
       ref,
@@ -265,31 +270,36 @@ export function NewDeliveryTicketForm({
           </Select>
         </Field>
 
-        <Field label="หมายเลขรถ" required hint={(() => {
-          const v = VEHICLE_MAP[vehicle]; if (!v) return ''
-          const q = Number(m3)
-          if (q && q > v.maxM3) return `เกินพิกัด ${v.maxM3} คิว`
-          return `ขนได้สูงสุด ${v.maxM3} คิว`
-        })()} error={(() => {
-          const v = VEHICLE_MAP[vehicle]; const q = Number(m3)
-          return !!(v && q && q > v.maxM3)
-        })()}>
-          <Select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
-            {VEHICLES.map((v) => (
-              <option key={v.id} value={v.id}>รถ {v.id} (สูงสุด {v.maxM3} คิว)</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="พนักงานจัดส่ง" hint="ดึงจากหมายเลขรถอัตโนมัติ">
-          {(() => {
-            const driver = VEHICLE_MAP[vehicle]?.driver
-            return (
-              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', color: driver ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
-                {driver || 'ยังไม่ได้ระบุพนักงาน'}
-              </div>
-            )
-          })()}
-        </Field>
+        {/* หมายเลขรถ + พนักงานจัดส่ง แสดงเฉพาะงานขายลูกค้า (โรงหล่อ/ใช้เอง ไม่ต้องเลือก). */}
+        {type === 'ขายลูกค้า' && (
+          <>
+            <Field label="หมายเลขรถ" required hint={(() => {
+              const v = VEHICLE_MAP[vehicle]; if (!v) return ''
+              const q = Number(m3)
+              if (q && q > v.maxM3) return `เกินพิกัด ${v.maxM3} คิว`
+              return `ขนได้สูงสุด ${v.maxM3} คิว`
+            })()} error={(() => {
+              const v = VEHICLE_MAP[vehicle]; const q = Number(m3)
+              return !!(v && q && q > v.maxM3)
+            })()}>
+              <Select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
+                {VEHICLES.map((v) => (
+                  <option key={v.id} value={v.id}>รถ {v.id} (สูงสุด {v.maxM3} คิว)</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="พนักงานจัดส่ง" hint="ดึงจากหมายเลขรถอัตโนมัติ">
+              {(() => {
+                const driver = VEHICLE_MAP[vehicle]?.driver
+                return (
+                  <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', color: driver ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
+                    {driver || 'ยังไม่ได้ระบุพนักงาน'}
+                  </div>
+                )
+              })()}
+            </Field>
+          </>
+        )}
         <Field label="ผู้จ่ายสินค้า" required hint="พนักงานที่กรอกใบจ่ายนี้">
           <Select value={issuer} onChange={(e) => setIssuer(e.target.value)}>
             {ISSUERS.map((name) => (
