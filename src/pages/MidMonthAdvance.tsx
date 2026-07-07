@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
 import { Button, Card, Field, Input, Select } from '../components/ui'
@@ -62,18 +62,29 @@ function sortPlant(a: Employee, b: Employee): number {
   return a.id.localeCompare(b.id)
 }
 
-/** Members of each sheet, derived from the roster:
-    - แพล้นปูน: Thai plant staff (interns excluded)
+/** Which sheet each employee belongs to (based on their live site/สัญชาติ).
+    Interns / terminated staff are already filtered out of the roster upstream.
+    - แพล้นปูน: Thai plant staff
     - โรงหล่อ (คนไทย): Thai foundry staff
     - โรงหล่อ (คนงานพม่า): Burmese foundry workers */
-const PLANT_EMPS = EMPLOYEES.filter((e) => e.site === 'plant' && e.nationality === 'ไทย' && e.department !== 'intern').sort(sortPlant)
-const FOUNDRY_TH_EMPS = EMPLOYEES.filter((e) => e.site === 'foundry' && e.nationality === 'ไทย').sort(sortPlant)
-const FOUNDRY_MM_EMPS = EMPLOYEES.filter((e) => e.site === 'foundry' && e.nationality === 'พม่า').sort((a, b) => a.id.localeCompare(b.id))
+const isPlantThai = (e: Employee) => e.site === 'plant' && e.nationality === 'ไทย'
+const isFoundryThai = (e: Employee) => e.site === 'foundry' && e.nationality === 'ไทย'
+const isFoundryBurmese = (e: Employee) => e.site === 'foundry' && e.nationality === 'พม่า'
 
 interface Draft { employeeId: string; name: string; nickname?: string; role: string; amount: string }
 
-const buildDrafts = (emps: Employee[], defaultAmount: string): Draft[] =>
-  emps.map((e) => ({ employeeId: e.id, name: e.name, nickname: e.nickname, role: shortRole(e), amount: defaultAmount }))
+/** Merge the current member list into existing drafts: keep amounts/roles the
+    user already typed, add newly-hired employees with defaults, drop removed
+    ones, and follow the members' order. */
+const reconcileDrafts = (prev: Draft[], members: Employee[], defaultAmount: string): Draft[] => {
+  const byId = new Map(prev.map((d) => [d.employeeId, d]))
+  return members.map((e) => {
+    const ex = byId.get(e.id)
+    return ex
+      ? { ...ex, name: e.name, nickname: e.nickname }
+      : { employeeId: e.id, name: e.name, nickname: e.nickname, role: shortRole(e), amount: defaultAmount }
+  })
+}
 
 const sumAmount = (rows: Draft[]) => rows.reduce((s, r) => s + (Math.max(0, Number(r.amount) || 0)), 0)
 
@@ -175,10 +186,40 @@ export function MidMonthAdvance() {
   const created = useCreatedDocs()
   const [month, setMonth] = useState<number>(CURRENT_MONTH)
   const [day, setDay] = useState<string>(String(DEFAULT_DAY))
-  const [plant, setPlant] = useState<Draft[]>(() => buildDrafts(PLANT_EMPS, ''))
-  const [foundryTh, setFoundryTh] = useState<Draft[]>(() => buildDrafts(FOUNDRY_TH_EMPS, ''))
-  const [foundry, setFoundry] = useState<Draft[]>(() => buildDrafts(FOUNDRY_MM_EMPS, String(FOUNDRY_DEFAULT_AMOUNT)))
+  const [plant, setPlant] = useState<Draft[]>([])
+  const [foundryTh, setFoundryTh] = useState<Draft[]>([])
+  const [foundry, setFoundry] = useState<Draft[]>([])
   const [err, setErr] = useState<string>('')
+
+  /* Live roster = added employees + static seed, with per-employee edits applied.
+     Excludes anyone who is hidden, พ้นสภาพ (สิ้นสภาพ), or an เด็กฝึกงาน (intern) —
+     none of whom take a mid-month advance. New hires show up here immediately. */
+  const liveEmployees = useMemo(() => {
+    const hidden = new Set(created.hidden.employees)
+    const terminated = new Set(created.terminations.map((t) => t.empId))
+    const seen = new Set<string>()
+    const out: Employee[] = []
+    for (const base of [...created.employeesAdded, ...EMPLOYEES]) {
+      if (seen.has(base.id)) continue
+      seen.add(base.id)
+      if (hidden.has(base.id) || terminated.has(base.id)) continue
+      const edit = created.employeeEdits[base.id]
+      const e = edit ? { ...base, ...edit } : base
+      if (e.department === 'intern') continue
+      out.push(e)
+    }
+    return out
+  }, [created.employeesAdded, created.employeeEdits, created.hidden.employees, created.terminations])
+
+  const plantMembers = useMemo(() => liveEmployees.filter(isPlantThai).sort(sortPlant), [liveEmployees])
+  const foundryThMembers = useMemo(() => liveEmployees.filter(isFoundryThai).sort(sortPlant), [liveEmployees])
+  const foundryMmMembers = useMemo(() => liveEmployees.filter(isFoundryBurmese).sort((a, b) => a.id.localeCompare(b.id)), [liveEmployees])
+
+  /* Keep the editable rows in sync with the roster (adds new hires, drops
+     removed, preserves what's already typed). */
+  useEffect(() => { setPlant((prev) => reconcileDrafts(prev, plantMembers, '')) }, [plantMembers])
+  useEffect(() => { setFoundryTh((prev) => reconcileDrafts(prev, foundryThMembers, '')) }, [foundryThMembers])
+  useEffect(() => { setFoundry((prev) => reconcileDrafts(prev, foundryMmMembers, String(FOUNDRY_DEFAULT_AMOUNT))) }, [foundryMmMembers])
   const [preview, setPreview] = useState<MidMonthAdvanceReport | null>(null)
   const [savedId, setSavedId] = useState<string>('')
 
@@ -203,7 +244,7 @@ export function MidMonthAdvance() {
      คนอื่น = เงินเดือนของตัวเอง. What can still be withdrawn this งวด =
      เพดาน − เบิกไปแล้ว. */
   const limitFor = (employeeId: string) => {
-    const emp = EMPLOYEES.find((e) => e.id === employeeId)
+    const emp = liveEmployees.find((e) => e.id === employeeId)
     const st = salaryStructureFor(employeeId, created.salaryStructures)
     const isLabor = emp?.department === 'labor' || st.dailyWage > 0
     return isLabor ? LABOR_ADVANCE_CAP : st.baseSalary
