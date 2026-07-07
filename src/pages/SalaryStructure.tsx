@@ -191,9 +191,9 @@ function StructureEditForm({ employee, current, onClose }: { employee: Employee 
 
   if (!employee) return null
 
-  /* OT rate is derived live from the wage inputs (เงินรายวัน → ÷480×1.5,
-     or เงินเดือน÷30 when no daily wage). */
-  const derivedOt = computeOtRate({ dailyWage: Number(dailyWage) || 0, baseSalary: Number(baseSalary) || 0 })
+  /* OT rate is derived live from the wage inputs (เงินรายวัน → ÷480×1.5, or
+     (เงินเดือน + ค่าประสบการณ์) ÷ 30 for monthly staff when no daily wage). */
+  const derivedOt = computeOtRate({ dailyWage: Number(dailyWage) || 0, baseSalary: Number(baseSalary) || 0, experiencePay: Number(experiencePay) || 0 })
 
   const save = () => {
     const next: SalaryStructure = {
