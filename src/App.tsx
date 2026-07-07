@@ -29,7 +29,6 @@ import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
 import { FoundryStock } from './pages/FoundryStock'
 import { StockReconcileHistory } from './pages/StockReconcileHistory'
-import { MixDesign } from './pages/MixDesign'
 import { FoundryFormula } from './pages/FoundryFormula'
 import { Pricing } from './pages/Pricing'
 import { PlantMonitoring } from './pages/PlantMonitoring'
@@ -114,7 +113,8 @@ export default function App() {
         <Route path="/foundry-materials-reconcile" element={<StockReconcileHistory scope="foundry-material" />} />
         <Route path="/pricing" element={<Pricing />} />
         {/* ราคาค่าขนส่ง now lives inside /pricing; this route is the รถขนส่งปูน fleet page. */}
-        <Route path="/mix-design" element={<MixDesign />} />
+        {/* Mix Design merged into ราคาสินค้า — keep the path as a redirect for old links. */}
+        <Route path="/mix-design" element={<Navigate to="/pricing" replace />} />
         <Route path="/foundry-formula" element={<FoundryFormula />} />
         <Route path="/transport-pricing" element={<TruckFleet />} />
         <Route path="/plant" element={<PlantMonitoring />} />

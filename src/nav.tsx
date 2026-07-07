@@ -82,7 +82,6 @@ export const NAV: NavGroup[] = [
       {
         to: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', en: 'Price List / Transport', icon: <IconTag />,
         children: [
-          { to: '/mix-design', label: 'Mix Design', en: 'Mix Design', icon: <IconTag /> },
           { to: '/foundry-formula', label: 'สูตรผลิตโรงหล่อ', en: 'Foundry Formula', icon: <IconTag /> },
           { to: '/transport-pricing', label: 'รถขนส่งปูน', en: 'Truck Fleet', icon: <IconTruck /> },
         ],

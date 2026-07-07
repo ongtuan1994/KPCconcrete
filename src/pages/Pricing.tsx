@@ -4,9 +4,8 @@ import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, Field, Input, Select, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
-import { PRODUCTS, PRODUCT_MAP, type Product, type ProductSite, type FoundryKind } from '../data/real'
-import { MIX_DESIGNS, buildMixFormulaNos, DEFAULT_WATER_L, type MixDesign } from '../data/mixDesign'
-import { buildFoundryFormulaNos } from '../data/foundryFormula'
+import { PRODUCTS, type Product, type ProductSite, type FoundryKind } from '../data/real'
+import { MIX_DESIGNS, DEFAULT_WATER_L, type MixDesign } from '../data/mixDesign'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
 import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, addMixDesign, updateMixDesign, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -124,10 +123,10 @@ function ProductPricing() {
   const [type, setType] = useState<'all' | string>('all')
   const [zone, setZone] = useState<'all' | ZoneId>('all')
   const [brand, setBrand] = useState<'all' | BrandId>('all')
-  /* สูตรการผลิต filter — all / มีสูตร / ไม่มีสูตร. */
-  const [formula, setFormula] = useState<'all' | 'has' | 'none'>('all')
-  /* Free-text search across รหัส / ชื่อรายการ / เลขที่สูตร. */
+  /* Free-text search across รหัส / ชื่อรายการ. */
   const [search, setSearch] = useState('')
+  /* Sort order for the product list. */
+  const [sortBy, setSortBy] = useState<'default' | 'strength-asc' | 'strength-desc' | 'code' | 'price-asc' | 'price-desc'>('default')
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -151,40 +150,14 @@ function ProductPricing() {
   /* Every code in use — for the เพิ่มสินค้า uniqueness check. */
   const existingCodes = useMemo(() => new Set(products.map((p) => p.code)), [products])
 
-  /* Foundry production-formula numbers (FFxx-xxx) — numbered per kind, oldest first. */
-  const productByCode = useMemo(() => new Map(products.map((p) => [p.code, p])), [products])
-  const foundryFormulaNos = useMemo(
-    () => buildFoundryFormulaNos(created.foundryFormulas.slice().reverse().map((f) => ({ code: f.code, kind: productByCode.get(f.code)?.kind }))),
-    [created.foundryFormulas, productByCode],
-  )
-  /* Concrete-formula numbers over the LIVE mix-design list (seed + user-added +
-     edits) so สูตร added on the Mix Design page show up here too — with any
-     manual เลขที่สูตร override applied. */
+  /* Mix design for a product code (its own, or a legacy formulaCode link) — for
+     the inline สูตรวัตถุดิบ in the product form and the price-list report materials. */
   const mixList = useMemo(() => {
     const added = created.mixDesignsAdded.slice().reverse()
     return [...MIX_DESIGNS, ...added].map((m) => (created.mixDesignEdits[m.code] ? { ...m, ...created.mixDesignEdits[m.code] } : m))
   }, [created.mixDesignsAdded, created.mixDesignEdits])
-  const mixFormulaNos = useMemo(() => buildMixFormulaNos(mixList), [mixList])
-  const formulaNoOf = (code: string) => mixFormulaNos.get(code) ?? ''
-  /* Mix design for a product code (its own, or the one it links to) — for the
-     inline สูตรวัตถุดิบ in the product form and the price-list report. */
   const mixByCode = useMemo(() => new Map(mixList.map((m) => [m.code, m])), [mixList])
   const mixForProduct = (p: Product): MixDesign | undefined => mixByCode.get(p.formulaCode || p.code)
-
-  /** สูตรการผลิต for a product: foundry → FFxx-xxx (links to /foundry-formula),
-      otherwise the concrete formula CFx-xxx (links to /mix-design). */
-  const formulaInfo = (p: Product): { no: string; href: string } => {
-    if (productSite(p) === 'foundry') return { no: foundryFormulaNos.get(p.code) ?? '', href: '/foundry-formula' }
-    const fCode = p.formulaCode || p.code
-    return { no: formulaNoOf(fCode), href: `/mix-design?code=${encodeURIComponent(fCode)}` }
-  }
-
-  /* สูตรการผลิต options for the edit form (all mix designs, grouped by cement brand). */
-  const formulaOptions = useMemo(
-    () => mixList.map((m) => ({ code: m.code, no: mixFormulaNos.get(m.code) ?? '', name: cleanName(productByCode.get(m.code)?.name ?? PRODUCT_MAP[m.code]?.name ?? m.code) }))
-      .sort((a, b) => a.no.localeCompare(b.no)),
-    [mixList, mixFormulaNos, productByCode],
-  )
 
   const rows = products.filter((p) => {
     if (site !== 'all' && productSite(p) !== site) return false
@@ -197,24 +170,31 @@ function ProductPricing() {
       const b = cementBrandOf(p)
       if (!b || b.id !== brand) return false
     }
-    if (formula !== 'all') {
-      const hasFormula = formulaInfo(p).no !== ''
-      if (formula === 'has' && !hasFormula) return false
-      if (formula === 'none' && hasFormula) return false
-    }
     const q = search.trim().toLowerCase()
     if (q) {
-      const hay = `${p.code} ${cleanName(p.name)} ${formulaInfo(p).no}`.toLowerCase()
+      const hay = `${p.code} ${cleanName(p.name)}`.toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true
   })
 
+  /* Apply the chosen sort (default keeps the natural added-then-seed order). */
+  const sortedRows = useMemo(() => {
+    if (sortBy === 'default') return rows
+    const rs = rows.slice()
+    switch (sortBy) {
+      case 'strength-asc': return rs.sort((a, b) => (a.strengthKsc || 0) - (b.strengthKsc || 0))
+      case 'strength-desc': return rs.sort((a, b) => (b.strengthKsc || 0) - (a.strengthKsc || 0))
+      case 'code': return rs.sort((a, b) => a.code.localeCompare(b.code))
+      case 'price-asc': return rs.sort((a, b) => (a.price || 0) - (b.price || 0))
+      case 'price-desc': return rs.sort((a, b) => (b.price || 0) - (a.price || 0))
+      default: return rs
+    }
+  }, [rows, sortBy])
+
   const zoneCount = (id: ZoneId) => PRODUCTS.filter((p) => deliveryZone(p.code)?.id === id).length
   const brandCount = (id: BrandId) => products.filter((p) => cementBrandOf(p)?.id === id).length
   const siteCount = (id: ProductSite) => PRODUCTS.filter((p) => productSite(p) === id).length
-  /* How many products have / lack a สูตรการผลิต (over the merged list, incl. added). */
-  const formulaCount = (has: boolean) => products.filter((p) => (formulaInfo(p).no !== '') === has).length
 
   /* ประเภท options — distinct prodType labels within the selected SITE, in first-
      seen order, each with its product count. Resets to "all" when SITE changes. */
@@ -231,23 +211,6 @@ function ProductPricing() {
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
-    {
-      key: 'formula', header: 'สูตรการผลิต', align: 'center', className: 'docno',
-      cell: (r) => {
-        /* Foundry → FF (โรงหล่อ); plant → CF, honouring any formulaCode override. */
-        const { no, href } = formulaInfo(r)
-        if (!no) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
-        return (
-          <a
-            href={href}
-            onClick={(e) => { e.preventDefault(); navigate(href) }}
-            className="mono"
-            style={{ color: 'var(--kpc-primary, #0E0EE6)', fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}
-            title={productSite(r) === 'foundry' ? 'ดูสูตรผลิตโรงหล่อ' : 'ดูสูตรส่วนผสมในหน้า Mix Design'}
-          >{no}</a>
-        )
-      },
-    },
     { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{cleanName(r.name)}</span> },
     {
       key: 'brand',
@@ -314,7 +277,6 @@ function ProductPricing() {
       const z = deliveryZone(p.code)
       const m = productSite(p) !== 'foundry' ? mixForProduct(p) : undefined
       arr.push({
-        formulaNo: formulaInfo(p).no || undefined,
         code: p.code,
         name: cleanName(p.name),
         brand: cementBrandOf(p)?.label,
@@ -356,9 +318,9 @@ function ProductPricing() {
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัสสินค้า', 'สูตรการผลิต', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
-              const body = rows.map((p) => [
-                p.code, formulaInfo(p).no, cleanName(p.name),
+              const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
+              const body = sortedRows.map((p) => [
+                p.code, cleanName(p.name),
                 cementBrandOf(p)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
@@ -373,15 +335,24 @@ function ProductPricing() {
         }
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-        <div className="row wrap" style={{ gap: 10 }}>
+        <div className="row wrap" style={{ gap: 10, alignItems: 'center' }}>
           <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ค้นหา</span>
           <Input
-            placeholder="ค้นหา รหัสสินค้า / ชื่อรายการ / เลขที่สูตร"
+            placeholder="ค้นหา รหัสสินค้า / ชื่อรายการ"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ maxWidth: 360 }}
+            style={{ maxWidth: 300 }}
           />
           {search && <Button variant="ghost" size="sm" onClick={() => setSearch('')}>ล้าง</Button>}
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', marginLeft: 8 }}>เรียงตาม</span>
+          <Select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ maxWidth: 220 }}>
+            <option value="default">ค่าเริ่มต้น</option>
+            <option value="strength-asc">กำลังอัด (น้อย → มาก)</option>
+            <option value="strength-desc">กำลังอัด (มาก → น้อย)</option>
+            <option value="code">รหัสสินค้า (A → Z)</option>
+            <option value="price-asc">ราคา (น้อย → มาก)</option>
+            <option value="price-desc">ราคา (มาก → น้อย)</option>
+          </Select>
         </div>
         <div className="row wrap" style={{ gap: 10 }}>
           <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>SITE</span>
@@ -427,16 +398,8 @@ function ProductPricing() {
             ))}
           </div>
         </div>
-        <div className="row wrap" style={{ gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>สูตรการผลิต</span>
-          <div className="pills">
-            <Pill active={formula === 'all'} onClick={() => setFormula('all')}>ทั้งหมด</Pill>
-            <Pill active={formula === 'has'} onClick={() => setFormula('has')}>มีสูตร {formulaCount(true)}</Pill>
-            <Pill active={formula === 'none'} onClick={() => setFormula('none')}>ไม่มีสูตร {formulaCount(false)}</Pill>
-          </div>
-        </div>
       </div>
-      <DataTable columns={columns} rows={rows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
+      <DataTable columns={columns} rows={sortedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
       <p className="page-sub" style={{ marginTop: 14 }}>
         * ราคา/หน่วยทุกรายการเป็น <strong>ราคารวม VAT 7% แล้ว</strong> · ปูนซีเมนต์/ระยะส่งอ่านจากรหัสสินค้า (R2/P2 = ดอกบัว, RO/PO = SCG · OS00 / OV21 / OV31 / OV41)
       </p>
@@ -460,7 +423,7 @@ function ProductPricing() {
       </div>
 
       <PriceAdjustModal open={open} products={products} onClose={() => setOpen(false)} />
-      <ProductFormModal open={adding} mode="add" existingCodes={existingCodes} formulaOptions={formulaOptions} onClose={() => setAdding(false)} />
+      <ProductFormModal open={adding} mode="add" existingCodes={existingCodes} onClose={() => setAdding(false)} />
       <ProductFormModal
         key={editing?.code ?? 'edit'}
         open={!!editing}
@@ -468,7 +431,6 @@ function ProductPricing() {
         initial={editing ?? undefined}
         initialMix={editing ? mixByCode.get(editing.code) : undefined}
         existingCodes={existingCodes}
-        formulaOptions={formulaOptions}
         onClose={() => setEditing(null)}
       />
     </>
@@ -746,7 +708,6 @@ function ProductFormModal({
   initial,
   initialMix,
   existingCodes,
-  formulaOptions,
   onClose,
 }: {
   open: boolean
@@ -754,7 +715,6 @@ function ProductFormModal({
   initial?: Product
   initialMix?: MixDesign
   existingCodes: Set<string>
-  formulaOptions: { code: string; no: string; name: string }[]
   onClose: () => void
 }) {
   const [site, setSite] = useState<ProductSite | null>(null)
@@ -771,7 +731,6 @@ function ProductFormModal({
   const [priceSelf, setPriceSelf] = useState('')
   const [priceDeliver, setPriceDeliver] = useState('')
   const [pickup, setPickup] = useState<'รับเอง' | 'จัดส่ง'>('รับเอง')
-  const [formulaCode, setFormulaCode] = useState('')
   const [codeDirty, setCodeDirty] = useState(false)
   const [nameDirty, setNameDirty] = useState(false)
   const [err, setErr] = useState('')
@@ -811,7 +770,6 @@ function ProductFormModal({
       setPriceSelf(initial.pickupPrices ? String(initial.pickupPrices['รับเอง']) : '')
       setPriceDeliver(initial.pickupPrices ? String(initial.pickupPrices['จัดส่ง']) : '')
       setPickup(initial.pickup ?? 'รับเอง')
-      setFormulaCode(initial.formulaCode ?? '')
       const s = (n?: number) => (n ? String(n) : '')
       setMixCement(s(initialMix?.cement)); setMixSand(s(initialMix?.sand)); setMixAggregate(s(initialMix?.aggregate))
       setMixWater(String(initialMix?.water ?? DEFAULT_WATER_L))
@@ -822,7 +780,7 @@ function ProductFormModal({
       setSite(null)
       setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank'); setCustomType('')
       setCode(''); setName(''); setUnit('คิว'); setStrength(''); setPrice('')
-      setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง'); setFormulaCode('')
+      setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง')
       setMixCement(''); setMixSand(''); setMixAggregate(''); setMixWater(String(DEFAULT_WATER_L))
       setMixPlastomix(''); setMixSikament(''); setMixPce(''); setMixAccelerator(''); setMixWaterproof('')
       setCodeDirty(false); setNameDirty(false)
@@ -880,30 +838,24 @@ function ProductFormModal({
       const pr = Number(price)
       if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       const strengthKsc = category === 'lean' ? 0 : Number(strength)
-      /* Store a formula link only when it differs from the auto match on the code. */
-      const fc = formulaCode && formulaCode !== c ? formulaCode : ''
-      /* Own สูตรวัตถุดิบ (Mix Design) — required unless the product SHARES an
-         existing formula via the สูตรการผลิต dropdown. */
-      let mix: MixDesign | null = null
-      if (!fc) {
-        const mc = Number(mixCement), ms = Number(mixSand), ma = Number(mixAggregate)
-        if (!(mc > 0) || !(ms > 0) || !(ma > 0)) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
-        const r2n = (n: number) => Math.round(n * 100) / 100
-        const optN = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n > 0 ? r2n(n) : undefined }
-        const w = Number(mixWater)
-        mix = {
-          code: c, cement: r2n(mc), sand: r2n(ms), aggregate: r2n(ma),
-          water: Number.isFinite(w) && w > 0 ? r2n(w) : DEFAULT_WATER_L,
-          plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
-        }
+      /* Own สูตรวัตถุดิบ (Mix Design) — every plant product carries its own now. */
+      const mc = Number(mixCement), ms = Number(mixSand), ma = Number(mixAggregate)
+      if (!(mc > 0) || !(ms > 0) || !(ma > 0)) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
+      const r2n = (n: number) => Math.round(n * 100) / 100
+      const optN = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n > 0 ? r2n(n) : undefined }
+      const w = Number(mixWater)
+      const mix: MixDesign = {
+        code: c, cement: r2n(mc), sand: r2n(ms), aggregate: r2n(ma),
+        water: Number.isFinite(w) && w > 0 ? r2n(w) : DEFAULT_WATER_L,
+        plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
       }
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, ...(fc ? { formulaCode: fc } : {}) })
+        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand })
       } else {
-        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc, cementBrand: brand })
+        /* Clear any legacy formula link — the product uses its own mix now. */
+        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand })
       }
-      /* Persist the mix: update the existing สูตร, or create a new one. */
-      if (mix) { if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix) }
+      if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix)
     } else if (isCustom) {
       /* Brand-new foundry type — user supplies the type name, unit and a single price. */
       const t = customType.trim()
@@ -950,8 +902,6 @@ function ProductFormModal({
     }
   }
 
-  const scgFormulas = formulaOptions.filter((f) => f.no.startsWith('CF0'))
-  const dokbuaFormulas = formulaOptions.filter((f) => f.no.startsWith('CF2'))
 
   const title = mode === 'edit'
     ? `แก้ไขสินค้า ${initial?.code ?? ''}`
@@ -1037,44 +987,25 @@ function ProductFormModal({
               <Field label="รายการสินค้า" required>
                 <Input value={name} onChange={(e) => { setName(e.target.value); setNameDirty(true) }} placeholder="เช่น คอนกรีตกำลังอัด 240 กก./ตร.ซม. (ปูน SCG)" />
               </Field>
-              <div className="grid g-2" style={{ gap: 12 }}>
-                <Field label="ราคา/หน่วย (รวม VAT)" required>
-                  <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 2400" />
-                </Field>
-                <Field label="สูตรการผลิต" hint="เว้นว่าง = สร้างสูตรของสินค้านี้เอง (กรอกส่วนผสมด้านล่าง) · เลือก = ใช้สูตรร่วมกับสินค้าอื่น">
-                  <Select value={formulaCode} onChange={(e) => setFormulaCode(e.target.value)}>
-                    <option value="">— สร้างสูตรของสินค้านี้เอง —</option>
-                    <optgroup label="ปูน SCG">
-                      {scgFormulas.map((f) => <option key={f.code} value={f.code}>{f.no} · {f.name}</option>)}
-                    </optgroup>
-                    <optgroup label="ปูนดอกบัว">
-                      {dokbuaFormulas.map((f) => <option key={f.code} value={f.code}>{f.no} · {f.name}</option>)}
-                    </optgroup>
-                  </Select>
-                </Field>
-              </div>
+              <Field label="ราคา/หน่วย (รวม VAT)" required>
+                <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 2400" />
+              </Field>
 
-              {/* Inline สูตรวัตถุดิบ (Mix Design) — hidden when sharing an existing formula. */}
-              {formulaCode ? (
-                <div style={{ fontSize: 12.5, color: 'var(--kpc-text-muted)', background: 'var(--kpc-surface-alt)', borderRadius: 8, padding: '10px 12px' }}>
-                  ใช้สูตรวัตถุดิบร่วมกับ <strong className="mono">{formulaCode}</strong> — ไม่ต้องกรอกส่วนผสมซ้ำ
+              {/* สูตรวัตถุดิบ (Mix Design) ต่อ 1 คิว — เก็บในตัวสินค้าเอง (ไม่มีการผูกสูตรร่วมแล้ว). */}
+              <div style={{ border: '1px solid var(--kpc-border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--kpc-primary-ink)' }}>ส่วนผสมวัตถุดิบ (Mix Design) ต่อ 1 คิว</div>
+                <div className="grid g-2" style={{ gap: 12 }}>
+                  <Field label="ปูน (กก.)" required><Input type="number" min={0} value={mixCement} onChange={(e) => setMixCement(e.target.value)} placeholder="เช่น 280" /></Field>
+                  <Field label="น้ำ (ล.)" required hint="ค่าเริ่มต้น 165 ล./คิว"><Input type="number" min={0} value={mixWater} onChange={(e) => setMixWater(e.target.value)} /></Field>
+                  <Field label="ทราย (กก.)" required><Input type="number" min={0} value={mixSand} onChange={(e) => setMixSand(e.target.value)} placeholder="เช่น 830" /></Field>
+                  <Field label={'หิน 3/4" (กก.)'} required><Input type="number" min={0} value={mixAggregate} onChange={(e) => setMixAggregate(e.target.value)} placeholder="เช่น 1140" /></Field>
                 </div>
-              ) : (
-                <div style={{ border: '1px solid var(--kpc-border)', borderRadius: 8, padding: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--kpc-primary-ink)' }}>ส่วนผสมวัตถุดิบ (Mix Design) ต่อ 1 คิว</div>
-                  <div className="grid g-2" style={{ gap: 12 }}>
-                    <Field label="ปูน (กก.)" required><Input type="number" min={0} value={mixCement} onChange={(e) => setMixCement(e.target.value)} placeholder="เช่น 280" /></Field>
-                    <Field label="น้ำ (ล.)" required hint="ค่าเริ่มต้น 165 ล./คิว"><Input type="number" min={0} value={mixWater} onChange={(e) => setMixWater(e.target.value)} /></Field>
-                    <Field label="ทราย (กก.)" required><Input type="number" min={0} value={mixSand} onChange={(e) => setMixSand(e.target.value)} placeholder="เช่น 830" /></Field>
-                    <Field label={'หิน 3/4" (กก.)'} required><Input type="number" min={0} value={mixAggregate} onChange={(e) => setMixAggregate(e.target.value)} placeholder="เช่น 1140" /></Field>
-                  </div>
-                  <div className="grid g-3" style={{ gap: 12, marginTop: 12 }}>
-                    <Field label="น้ำยาหน่วง (ล.)" hint="Plastomix-704 · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixPlastomix} onChange={(e) => setMixPlastomix(e.target.value)} placeholder="เช่น 1.38" /></Field>
-                    <Field label="น้ำยาเร่ง (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixAccelerator} onChange={(e) => setMixAccelerator(e.target.value)} placeholder="—" /></Field>
-                    <Field label="กันซึม (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixWaterproof} onChange={(e) => setMixWaterproof(e.target.value)} placeholder="—" /></Field>
-                  </div>
+                <div className="grid g-3" style={{ gap: 12, marginTop: 12 }}>
+                  <Field label="น้ำยาหน่วง (ล.)" hint="Plastomix-704 · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixPlastomix} onChange={(e) => setMixPlastomix(e.target.value)} placeholder="เช่น 1.38" /></Field>
+                  <Field label="น้ำยาเร่ง (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixAccelerator} onChange={(e) => setMixAccelerator(e.target.value)} placeholder="—" /></Field>
+                  <Field label="กันซึม (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixWaterproof} onChange={(e) => setMixWaterproof(e.target.value)} placeholder="—" /></Field>
                 </div>
-              )}
+              </div>
             </>
           ) : (
             <>
