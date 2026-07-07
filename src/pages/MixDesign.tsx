@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Badge, Pill, SearchInput, Button, Field, Input, Select } from '../components/ui'
+import { Badge, Pill, SearchInput, Button, Field, Input } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { KpiCard } from '../components/charts'
 import { MIX_DESIGNS, buildMixFormulaNos, type MixDesign } from '../data/mixDesign'
 import { PRODUCTS, type Product } from '../data/real'
 import { prodName, cleanProductName as cleanName } from '../data/selectors'
-import { addGeneralReport, addMixDesign, updateMixDesign, removeMixDesign, isAddedMixDesign, useCreatedDocs, type MixDesignReport } from '../data/createdDocs'
+import { addGeneralReport, addMixDesign, updateMixDesign, removeMixDesign, isAddedMixDesign, updateProduct, useCreatedDocs, type MixDesignReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type BrandFilter = 'all' | 'scg' | 'dokbua'
@@ -47,6 +47,15 @@ export function MixDesign() {
   }, [created.productsAdded, created.productEdits])
   const nameOf = (code: string) => nameByCode.get(code) ?? prodName(code)
 
+  /* เลขที่สูตร a plant product currently resolves to — its own สูตร, or the สูตร
+     it is linked to via formulaCode — or '' when it has none yet. */
+  const formulaOfProduct = (p: Product): string => {
+    const own = formulaNo(p.code)
+    if (own) return own
+    const fc = created.productEdits[p.code]?.formulaCode || p.formulaCode
+    return fc ? formulaNo(fc) : ''
+  }
+
   const rows = useMemo(
     () => mixList.filter((m) => {
       if (brand === 'scg' && isDokbua(m.code)) return false
@@ -71,9 +80,6 @@ export function MixDesign() {
     if (brand === 'dokbua' && !isDokbua(p.code)) return false
     return true
   })
-  /* Plant products without a formula yet — the only ones a new สูตร can be added for. */
-  const usedCodes = useMemo(() => new Set(mixList.map((m) => m.code)), [mixList])
-  const addableProducts = useMemo(() => allPlantProducts.filter((p) => !usedCodes.has(p.code)), [allPlantProducts, usedCodes])
 
   const createReport = () => {
     if (rows.length === 0) { alert('ไม่มีสูตรให้สร้างรายงาน'); return }
@@ -151,13 +157,14 @@ export function MixDesign() {
         * ปริมาณต่อ 1 คิว — ปูน/ทราย/หิน เป็นกิโลกรัม · น้ำยาเป็นลิตร · ใช้คำนวณการจ่ายออกวัตถุดิบเมื่อออกใบจ่ายคอนกรีต
       </p>
 
-      <MixFormulaModal open={adding} mode="add" addableProducts={addableProducts} nameOf={nameOf} onClose={() => setAdding(false)} />
+      <MixFormulaModal open={adding} mode="add" plantProducts={allPlantProducts} formulaOfProduct={formulaOfProduct} nameOf={nameOf} onClose={() => setAdding(false)} />
       <MixFormulaModal
         key={editing?.code ?? 'edit'}
         open={!!editing}
         mode="edit"
         initial={editing ?? undefined}
-        addableProducts={addableProducts}
+        plantProducts={allPlantProducts}
+        formulaOfProduct={formulaOfProduct}
         nameOf={nameOf}
         onClose={() => setEditing(null)}
       />
@@ -171,18 +178,21 @@ function MixFormulaModal({
   open,
   mode,
   initial,
-  addableProducts,
+  plantProducts,
+  formulaOfProduct,
   nameOf,
   onClose,
 }: {
   open: boolean
   mode: 'add' | 'edit'
   initial?: MixDesign
-  addableProducts: Product[]
+  plantProducts: Product[]
+  formulaOfProduct: (p: Product) => string
   nameOf: (code: string) => string
   onClose: () => void
 }) {
-  const [code, setCode] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [formulaNo, setFormulaNo] = useState('')
   const [cement, setCement] = useState('')
   const [sand, setSand] = useState('')
   const [aggregate, setAggregate] = useState('')
@@ -196,17 +206,33 @@ function MixFormulaModal({
     setErr('')
     const s = (n?: number) => (n ? String(n) : '')
     if (mode === 'edit' && initial) {
-      setCode(initial.code)
+      setSelected(new Set([initial.code]))
+      setFormulaNo(initial.formulaNo ?? '')
       setCement(s(initial.cement)); setSand(s(initial.sand)); setAggregate(s(initial.aggregate))
       setPlastomix(s(initial.plastomix)); setSikament(s(initial.sikament)); setPce(s(initial.pce))
     } else {
-      setCode(''); setCement(''); setSand(''); setAggregate(''); setPlastomix(''); setSikament(''); setPce('')
+      setSelected(new Set()); setFormulaNo('')
+      setCement(''); setSand(''); setAggregate(''); setPlastomix(''); setSikament(''); setPce('')
     }
   }, [open, mode, initial])
 
+  const toggle = (c: string) => setSelected((prev) => {
+    const next = new Set(prev)
+    if (next.has(c)) next.delete(c); else next.add(c)
+    return next
+  })
+
+  /* Owner code = the สูตร owner (edit: fixed; add: first ticked in list order). */
+  const ownerCode = mode === 'edit'
+    ? (initial?.code ?? '')
+    : (plantProducts.find((p) => selected.has(p.code))?.code ?? '')
+
   const submit = () => {
     setErr('')
-    if (!code) return setErr('กรุณาเลือกสินค้าแพล้นปูนก่อน')
+    const codes = mode === 'edit'
+      ? [initial!.code]
+      : plantProducts.filter((p) => selected.has(p.code)).map((p) => p.code)
+    if (codes.length === 0) return setErr('กรุณาเลือกสินค้าแพล้นปูนอย่างน้อย 1 รายการ')
     const req = (label: string, v: string): number | null => {
       const n = Number(v)
       if (!Number.isFinite(n) || n <= 0) { setErr(`กรุณากรอก${label}ให้ถูกต้อง`); return null }
@@ -219,9 +245,16 @@ function MixFormulaModal({
       const n = Number(v)
       return v.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : undefined
     }
-    const m: MixDesign = { code, cement: c, sand: sd, aggregate: ag, plastomix: opt(plastomix), sikament: opt(sikament), pce: opt(pce) }
-    if (mode === 'add') addMixDesign(m)
-    else updateMixDesign(initial!.code, m)
+    const fno = formulaNo.trim() || undefined
+    const owner = codes[0]
+    const m: MixDesign = { code: owner, cement: c, sand: sd, aggregate: ag, plastomix: opt(plastomix), sikament: opt(sikament), pce: opt(pce), formulaNo: fno }
+    if (mode === 'add') {
+      addMixDesign(m)
+      /* The remaining picks SHARE this สูตร via a formulaCode link to the owner. */
+      for (const cc of codes.slice(1)) updateProduct(cc, { formulaCode: owner })
+    } else {
+      updateMixDesign(initial!.code, m)
+    }
     onClose()
   }
 
@@ -230,7 +263,7 @@ function MixFormulaModal({
     if (initial && confirm(`ลบสูตร ${initial.code} — ${nameOf(initial.code)} ?`)) { removeMixDesign(initial.code); onClose() }
   }
 
-  const selBrand = code ? (isDokbua(code) ? 'ดอกบัว (CF2-xxx)' : 'SCG (CF0-xxx)') : ''
+  const selBrand = ownerCode ? (isDokbua(ownerCode) ? 'ดอกบัว (CF2-xxx)' : 'SCG (CF0-xxx)') : ''
 
   return (
     <Modal
@@ -249,23 +282,30 @@ function MixFormulaModal({
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="stack" style={{ gap: 12 }}>
-        <Field label="สินค้าแพล้นปูน" required hint={mode === 'edit' ? undefined : 'เลือกได้เฉพาะสินค้าที่ยังไม่มีสูตร'}>
+        <Field label="สินค้าแพล้นปูน" required hint={mode === 'edit' ? undefined : 'ติ๊กเลือกได้หลายรายการ — ทุกตัวจะใช้สูตรนี้ร่วมกัน · รายการที่มีสูตรแล้วจะแสดงเลขที่สูตรและเลือกไม่ได้'}>
           {mode === 'edit' ? (
-            <Input value={`${code} · ${nameOf(code)}`} readOnly className="input mono" />
+            <Input value={`${initial?.code ?? ''} · ${nameOf(initial?.code ?? '')}`} readOnly className="input mono" />
           ) : (
-            <Select value={code} onChange={(e) => setCode(e.target.value)}>
-              <option value="">— เลือกสินค้าแพล้นปูน —</option>
-              {addableProducts.map((p) => (
-                <option key={p.code} value={p.code}>{p.code} · {cleanName(p.name)}</option>
-              ))}
-            </Select>
+            <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--kpc-border)', borderRadius: 8, padding: 6 }}>
+              {plantProducts.map((p) => {
+                const fno = formulaOfProduct(p)
+                const has = fno !== ''
+                return (
+                  <label key={p.code} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 6, cursor: has ? 'not-allowed' : 'pointer', opacity: has ? 0.55 : 1 }}>
+                    <input type="checkbox" checked={selected.has(p.code)} disabled={has} onChange={() => toggle(p.code)} />
+                    <span className="mono" style={{ fontSize: 12.5 }}>{p.code}</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--kpc-text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cleanName(p.name)}</span>
+                    {has && <Badge tone="neutral" pip={false} square>{fno}</Badge>}
+                  </label>
+                )
+              })}
+            </div>
           )}
         </Field>
-        {code && (
-          <div style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: -4 }}>
-            ปูนซีเมนต์: <strong>{selBrand}</strong> · เลขที่สูตรจะออกให้อัตโนมัติ
-          </div>
-        )}
+
+        <Field label="เลขที่สูตร" hint={`เว้นว่าง = ออกเลขอัตโนมัติ${selBrand ? ` · ${selBrand}` : ''}`}>
+          <Input className="input mono" value={formulaNo} onChange={(e) => setFormulaNo(e.target.value)} placeholder="เช่น CF0-012 (เว้นว่าง = อัตโนมัติ)" />
+        </Field>
 
         <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--kpc-text)', marginTop: 4 }}>ส่วนผสมต่อ 1 คิว</div>
         <div className="grid g-3" style={{ gap: 12 }}>

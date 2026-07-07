@@ -119,6 +119,8 @@ function ProductPricing() {
   const [brand, setBrand] = useState<'all' | BrandId>('all')
   /* สูตรการผลิต filter — all / มีสูตร / ไม่มีสูตร. */
   const [formula, setFormula] = useState<'all' | 'has' | 'none'>('all')
+  /* Free-text search across รหัส / ชื่อรายการ / เลขที่สูตร. */
+  const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -177,6 +179,11 @@ function ProductPricing() {
       const hasFormula = formulaInfo(p).no !== ''
       if (formula === 'has' && !hasFormula) return false
       if (formula === 'none' && hasFormula) return false
+    }
+    const q = search.trim().toLowerCase()
+    if (q) {
+      const hay = `${p.code} ${cleanName(p.name)} ${formulaInfo(p).no}`.toLowerCase()
+      if (!hay.includes(q)) return false
     }
     return true
   })
@@ -339,6 +346,16 @@ function ProductPricing() {
         }
       />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ค้นหา</span>
+          <Input
+            placeholder="ค้นหา รหัสสินค้า / ชื่อรายการ / เลขที่สูตร"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 360 }}
+          />
+          {search && <Button variant="ghost" size="sm" onClick={() => setSearch('')}>ล้าง</Button>}
+        </div>
         <div className="row wrap" style={{ gap: 10 }}>
           <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>SITE</span>
           <div className="pills">
@@ -788,7 +805,13 @@ function ProductFormModal({
   const submit = () => {
     setErr('')
     if (!site) return setErr('กรุณาเลือก SITE ก่อน (แพล้นปูน หรือ โรงหล่อ)')
-    const c = code.trim()
+    /* The plant product code ENCODES the cement brand (KPCR2… = ดอกบัว, KPCR… =
+       SCG). When it was auto-generated (not hand-edited), re-derive it from the
+       CURRENT ยี่ห้อปูน/ระยะส่ง/ประเภท/กำลังอัด at submit time so a late brand
+       change can't leave a stale code that saves the wrong cement. */
+    const c = (mode === 'add' && site === 'plant' && !codeDirty)
+      ? genPlantCode(brand, zone, category, strength)
+      : code.trim()
     const nm = name.trim()
     if (!c) return setErr('กรุณากรอกรหัสสินค้า')
     if (!nm) return setErr('กรุณากรอกชื่อรายการสินค้า')

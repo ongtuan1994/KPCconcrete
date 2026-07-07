@@ -13,6 +13,9 @@ export interface MixDesign {
   plastomix?: number   /* Plastomix 704 (Type D) ลิตร/m³ */
   sikament?: number    /* Sikament F2 (Type F) ลิตร/m³ */
   pce?: number         /* PCE-1 ลิตร/m³ */
+  /** Manual เลขที่สูตร override. Blank/undefined → the auto CF0-xxx / CF2-xxx
+      number (by brand + list order) is used instead. */
+  formulaNo?: string
 }
 
 export const MIX_DESIGNS: MixDesign[] = [
@@ -75,8 +78,11 @@ export function buildMixFormulaNos(list: MixDesign[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const m of list) {
     const db = isDokbuaCode(m.code)
+    /* Always advance the auto sequence (so a manual override on one formula
+       doesn't shift everyone else's numbers), then prefer the manual override. */
     const n = db ? (seq.dokbua += 1) : (seq.scg += 1)
-    map.set(m.code, `CF${db ? '2' : '0'}-${String(n).padStart(3, '0')}`)
+    const auto = `CF${db ? '2' : '0'}-${String(n).padStart(3, '0')}`
+    map.set(m.code, m.formulaNo?.trim() ? m.formulaNo.trim() : auto)
   }
   return map
 }
