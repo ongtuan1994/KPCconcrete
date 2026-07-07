@@ -5,10 +5,10 @@ import { Button, Badge, Pill, Field, Input, Select, type Tone } from '../compone
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, PRODUCT_MAP, type Product, type ProductSite, type FoundryKind } from '../data/real'
-import { MIX_DESIGNS, mixFormulaNo } from '../data/mixDesign'
+import { MIX_DESIGNS, buildMixFormulaNos } from '../data/mixDesign'
 import { buildFoundryFormulaNos } from '../data/foundryFormula'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
-import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, isAddedProduct, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
+import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 /** Today as DD/MM/พ.ศ. for report labels. */
@@ -140,12 +140,13 @@ function ProductPricing() {
   /* Merge, in order: user-added products first, then seed → per-product edits
      (productEdits) → the latest price-adjustment override (which always wins). */
   const products = useMemo(() => {
-    const base = [...created.productsAdded, ...PRODUCTS]
+    const hidden = new Set(created.hidden.products)
+    const base = [...created.productsAdded, ...PRODUCTS].filter((p) => !hidden.has(p.code))
     return base.map((p) => {
       const withEdit = created.productEdits[p.code] ? { ...p, ...created.productEdits[p.code] } : p
       return currentOverrides[p.code] !== undefined ? { ...withEdit, price: currentOverrides[p.code] } : withEdit
     })
-  }, [created.productsAdded, created.productEdits, currentOverrides])
+  }, [created.productsAdded, created.productEdits, currentOverrides, created.hidden.products])
 
   /* Every code in use — for the เพิ่มสินค้า uniqueness check. */
   const existingCodes = useMemo(() => new Set(products.map((p) => p.code)), [products])
@@ -156,19 +157,29 @@ function ProductPricing() {
     () => buildFoundryFormulaNos(created.foundryFormulas.slice().reverse().map((f) => ({ code: f.code, kind: productByCode.get(f.code)?.kind }))),
     [created.foundryFormulas, productByCode],
   )
+  /* Concrete-formula numbers over the LIVE mix-design list (seed + user-added +
+     edits) so สูตร added on the Mix Design page show up here too — with any
+     manual เลขที่สูตร override applied. */
+  const mixList = useMemo(() => {
+    const added = created.mixDesignsAdded.slice().reverse()
+    return [...MIX_DESIGNS, ...added].map((m) => (created.mixDesignEdits[m.code] ? { ...m, ...created.mixDesignEdits[m.code] } : m))
+  }, [created.mixDesignsAdded, created.mixDesignEdits])
+  const mixFormulaNos = useMemo(() => buildMixFormulaNos(mixList), [mixList])
+  const formulaNoOf = (code: string) => mixFormulaNos.get(code) ?? ''
+
   /** สูตรการผลิต for a product: foundry → FFxx-xxx (links to /foundry-formula),
       otherwise the concrete formula CFx-xxx (links to /mix-design). */
   const formulaInfo = (p: Product): { no: string; href: string } => {
     if (productSite(p) === 'foundry') return { no: foundryFormulaNos.get(p.code) ?? '', href: '/foundry-formula' }
     const fCode = p.formulaCode || p.code
-    return { no: mixFormulaNo(fCode) ?? '', href: `/mix-design?code=${encodeURIComponent(fCode)}` }
+    return { no: formulaNoOf(fCode), href: `/mix-design?code=${encodeURIComponent(fCode)}` }
   }
 
   /* สูตรการผลิต options for the edit form (all mix designs, grouped by cement brand). */
   const formulaOptions = useMemo(
-    () => MIX_DESIGNS.map((m) => ({ code: m.code, no: mixFormulaNo(m.code) ?? '', name: cleanName(PRODUCT_MAP[m.code]?.name ?? m.code) }))
+    () => mixList.map((m) => ({ code: m.code, no: mixFormulaNos.get(m.code) ?? '', name: cleanName(productByCode.get(m.code)?.name ?? PRODUCT_MAP[m.code]?.name ?? m.code) }))
       .sort((a, b) => a.no.localeCompare(b.no)),
-    [],
+    [mixList, mixFormulaNos, productByCode],
   )
 
   const rows = products.filter((p) => {
@@ -753,7 +764,10 @@ function ProductFormModal({
   const [nameDirty, setNameDirty] = useState(false)
   const [err, setErr] = useState('')
 
-  const readOnlyStructure = mode === 'edit' /* code/site/brand/zone are fixed once created */
+  const readOnlyStructure = mode === 'edit' /* site/zone/category are fixed once created */
+  /* The code may be renamed while adding, or while editing a USER-ADDED product
+     (references get updated). Seed products keep their code. */
+  const codeLocked = mode === 'edit' && !isAddedProduct(initial?.code ?? '')
   const isCustom = kind === CUSTOM_KIND /* custom foundry type — single price, manual unit */
 
   /* Reset the form whenever it opens (edit → prefill from the row, add → blank). */
@@ -820,6 +834,13 @@ function ProductFormModal({
     if (!c) return setErr('กรุณากรอกรหัสสินค้า')
     if (!nm) return setErr('กรุณากรอกชื่อรายการสินค้า')
     if (mode === 'add' && existingCodes.has(c)) return setErr(`รหัสสินค้า ${c} มีอยู่แล้ว`)
+    /* Renaming the code in edit mode — only user-added products; references are
+       updated by renameProduct. Run it first, then updateProduct on the new code. */
+    if (mode === 'edit' && c !== initial!.code) {
+      if (!isAddedProduct(initial!.code)) return setErr('เปลี่ยนรหัสได้เฉพาะสินค้าที่เพิ่มเอง — สินค้าตั้งต้นให้ลบแล้วสร้างใหม่')
+      if (existingCodes.has(c)) return setErr(`รหัสสินค้า ${c} มีอยู่แล้ว`)
+      renameProduct(initial!.code, c)
+    }
     const u = unit.trim()
 
     if (site === 'plant') {
@@ -835,7 +856,7 @@ function ProductFormModal({
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, ...(fc ? { formulaCode: fc } : {}) })
       } else {
-        updateProduct(initial!.code, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc, cementBrand: brand })
+        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc, cementBrand: brand })
       }
     } else if (isCustom) {
       /* Brand-new foundry type — user supplies the type name, unit and a single price. */
@@ -847,7 +868,7 @@ function ProductFormModal({
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: pr })
       } else {
-        updateProduct(initial!.code, { name: nm, unit: u, price: pr })
+        updateProduct(c, { name: nm, unit: u, price: pr })
       }
     } else if (kind === 'ipole') {
       const ps = Number(priceSelf), pd = Number(priceDeliver)
@@ -855,7 +876,7 @@ function ProductFormModal({
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'ต้น', category: 'precast', site: 'foundry', kind, pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
       } else {
-        updateProduct(initial!.code, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
+        updateProduct(c, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
       }
     } else {
       const pr = Number(price)
@@ -864,15 +885,20 @@ function ProductFormModal({
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind: kind as FoundryKind, price: pr, ...(isWall ? { pickup } : {}) })
       } else {
-        updateProduct(initial!.code, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}) })
+        updateProduct(c, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}) })
       }
     }
     onClose()
   }
 
-  const canDelete = mode === 'edit' && !!initial && isAddedProduct(initial.code)
+  const canDelete = mode === 'edit' && !!initial
   const del = () => {
-    if (initial && confirm(`ลบสินค้า ${initial.code} — ${cleanName(initial.name)} ?`)) {
+    if (!initial) return
+    const seed = !isAddedProduct(initial.code)
+    const warn = seed
+      ? `ลบสินค้า ${initial.code} — ${cleanName(initial.name)} ?\n\n(สินค้าตั้งต้นจะถูกซ่อนจากรายการ — กู้คืนได้ที่ ตั้งค่า → กู้คืนรายการที่ซ่อน)`
+      : `ลบสินค้า ${initial.code} — ${cleanName(initial.name)} ?`
+    if (confirm(warn)) {
       removeProduct(initial.code)
       onClose()
     }
@@ -954,8 +980,8 @@ function ProductFormModal({
                 )}
               </div>
               <div className="grid g-2" style={{ gap: 12 }}>
-                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจากตัวเลือกด้านบน — แก้ไขเองได้ (ยี่ห้อปูนยึดตามที่เลือกไว้ ไม่ใช่จากรหัส)' : undefined}>
-                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
+                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจากตัวเลือกด้านบน — แก้ไขเองได้ (ยี่ห้อปูนยึดตามที่เลือกไว้ ไม่ใช่จากรหัส)' : (codeLocked ? undefined : 'แก้ไขรหัสได้ — ระบบจะอัปเดตการอ้างอิงในเอกสาร/สูตรให้')}>
+                  <Input className="input mono" value={code} readOnly={codeLocked}
                     onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} />
                 </Field>
                 <Field label="หน่วย" required>
@@ -999,8 +1025,8 @@ function ProductFormModal({
                 <Field label="หน่วย" required hint={isCustom ? 'สินค้าประเภทใหม่ต้องระบุหน่วยเอง' : undefined}>
                   <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={isCustom ? 'เช่น ต้น / อัน / ชุด' : 'แผ่น / ต้น'} />
                 </Field>
-                <Field label="รหัสสินค้า" required>
-                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
+                <Field label="รหัสสินค้า" required hint={mode === 'edit' && !codeLocked ? 'แก้ไขรหัสได้ — ระบบจะอัปเดตการอ้างอิงให้' : undefined}>
+                  <Input className="input mono" value={code} readOnly={codeLocked}
                     onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} placeholder="เช่น KPCFDPL200" />
                 </Field>
                 {!isCustom && kind === 'wallpanel' && (

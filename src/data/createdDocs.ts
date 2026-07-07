@@ -787,6 +787,9 @@ interface Hidden {
   /** Employee ids deleted from the roster (hides seed employees; added ones are
       removed from employeesAdded outright). */
   employees: string[]
+  /** Product codes deleted from the price list (hides seed products; added ones
+      are removed from productsAdded outright). */
+  products: string[]
 }
 
 /** A deleted ใบจ่ายคอนกรีต kept for the audit-history table — the full ticket
@@ -881,7 +884,7 @@ export interface CreatedDocs {
   deletedGoodsPayments: DeletedGoodsPayment[]
 }
 
-const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [] }
+const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
 const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
@@ -1375,16 +1378,63 @@ export function updateProduct(code: string, edit: ProductEdit) {
   else next[code] = merged
   commit({ ...state, productEdits: next })
 }
-/** Delete a user-added product and drop any edit overlay on it. Seed products
-    (defined in code) are not removable here. */
+/** Delete a product from the price list. User-added products are removed
+    outright (+ their edit overlay dropped); seed products (defined in code)
+    can't be removed from the array, so they're hidden by code instead. Restore
+    via ตั้งค่า → กู้คืนรายการที่ซ่อน. */
 export function removeProduct(code: string) {
+  const wasAdded = state.productsAdded.some((p) => p.code === code)
   const nextEdits = { ...state.productEdits }
   delete nextEdits[code]
-  commit({ ...state, productsAdded: state.productsAdded.filter((p) => p.code !== code), productEdits: nextEdits })
+  commit({
+    ...state,
+    productsAdded: state.productsAdded.filter((p) => p.code !== code),
+    productEdits: nextEdits,
+    hidden: wasAdded ? state.hidden : { ...state.hidden, products: [...state.hidden.products, code] },
+  })
 }
 /** True when a product code belongs to a user-added product (vs a seed product). */
 export function isAddedProduct(code: string): boolean {
   return state.productsAdded.some((p) => p.code === code)
+}
+
+/** Rename a USER-ADDED product's code, updating every reference across created
+    data: the edit overlay, formulaCode links, price adjustments, mix designs,
+    foundry formulas, and the user's tickets / invoices / sales orders / foundry
+    deliveries. Seed products keep their code (delete + re-add instead). No-op if
+    oldCode isn't user-added, newCode is taken, or the codes are equal. */
+export function renameProduct(oldCode: string, newCode: string) {
+  if (oldCode === newCode || !newCode) return
+  if (!state.productsAdded.some((p) => p.code === oldCode)) return
+  if (state.productsAdded.some((p) => p.code === newCode)) return
+
+  const productsAdded = state.productsAdded.map((p) => {
+    let np = p.code === oldCode ? { ...p, code: newCode } : p
+    if (np.formulaCode === oldCode) np = { ...np, formulaCode: newCode }
+    return np
+  })
+  const productEdits: Record<string, ProductEdit> = {}
+  for (const [k, e] of Object.entries(state.productEdits)) {
+    productEdits[k === oldCode ? newCode : k] = e.formulaCode === oldCode ? { ...e, formulaCode: newCode } : e
+  }
+  const priceAdjustments = state.priceAdjustments.map((adj) => {
+    if (!adj.prices || adj.prices[oldCode] === undefined) return adj
+    const prices = { ...adj.prices }; prices[newCode] = prices[oldCode]; delete prices[oldCode]
+    return { ...adj, prices }
+  })
+  const mixDesignsAdded = state.mixDesignsAdded.map((m) => (m.code === oldCode ? { ...m, code: newCode } : m))
+  const mixDesignEdits: Record<string, Partial<MixDesign>> = {}
+  for (const [k, v] of Object.entries(state.mixDesignEdits)) mixDesignEdits[k === oldCode ? newCode : k] = v
+  const foundryFormulas = state.foundryFormulas.map((f) => (f.code === oldCode ? { ...f, code: newCode } : f))
+  const tickets = state.tickets.map((t) => (t.prod === oldCode ? { ...t, prod: newCode } : t))
+  const invoices = state.invoices.map((inv) =>
+    inv.lines.some((l) => l.code === oldCode) ? { ...inv, lines: inv.lines.map((l) => (l.code === oldCode ? { ...l, code: newCode } : l)) } : inv)
+  const salesOrders = state.salesOrders.map((so) =>
+    so.items.some((it) => it.code === oldCode) ? { ...so, items: so.items.map((it) => (it.code === oldCode ? { ...it, code: newCode } : it)) } : so)
+  const foundryDeliveries = state.foundryDeliveries.map((fd) =>
+    fd.items.some((it) => it.code === oldCode) ? { ...fd, items: fd.items.map((it) => (it.code === oldCode ? { ...it, code: newCode } : it)) } : fd)
+
+  commit({ ...state, productsAdded, productEdits, priceAdjustments, mixDesignsAdded, mixDesignEdits, foundryFormulas, tickets, invoices, salesOrders, foundryDeliveries })
 }
 
 /* ───────── Mix designs (สูตรส่วนผสมคอนกรีต · Mix Design) ───────── */
