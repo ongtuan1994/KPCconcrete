@@ -244,10 +244,14 @@ export function NewDeliveryTicketForm({
           <Input type="number" min={1} max={31} placeholder="เช่น 21" value={day} onChange={(e) => setDay(e.target.value)} />
         </Field>
         <Field label="ประเภท" required>
-          <Select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="ขายลูกค้า">ขายลูกค้า</option>
-            <option value="โรงหล่อ">โรงหล่อ</option>
-            <option value="ใช้เอง">ใช้เอง</option>
+          <Select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            style={{ background: 'var(--kpc-primary)', color: '#fff', fontWeight: 600, borderColor: 'var(--kpc-primary)' }}
+          >
+            <option style={{ background: '#fff', color: 'var(--kpc-text-strong)' }} value="ขายลูกค้า">ขายลูกค้า</option>
+            <option style={{ background: '#fff', color: 'var(--kpc-text-strong)' }} value="โรงหล่อ">โรงหล่อ</option>
+            <option style={{ background: '#fff', color: 'var(--kpc-text-strong)' }} value="ใช้เอง">ใช้เอง</option>
           </Select>
         </Field>
 
@@ -257,17 +261,17 @@ export function NewDeliveryTicketForm({
           <Field
             label="การรับของ"
             required
-            hint={pickup === 'รับเอง' ? `ลูกค้ามารับเอง — หัก ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ตอนออกใบกำกับ` : 'บริษัทจัดส่งด้วยรถของโรงงาน'}
-            style={{ gridColumn: '1 / -1' }}
+            hint={pickup === 'รับเอง' ? `หัก ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ตอนออกใบกำกับ` : 'บริษัทจัดส่งด้วยรถโรงงาน'}
+            style={{ gridColumn: 'span 1' }}
           >
             <Select value={pickup} onChange={(e) => setPickup(e.target.value as ProductPickup)}>
               <option value="จัดส่ง">บริษัทจัดส่ง</option>
-              <option value="รับเอง">ลูกค้ามารับเอง (หัก {SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว)</option>
+              <option value="รับเอง">ลูกค้ามารับเอง</option>
             </Select>
           </Field>
         )}
 
-        <Field label="ลูกค้า / หน่วยงาน" required={type === 'ขายลูกค้า'} style={{ gridColumn: '1 / -1' }}>
+        <Field label="ลูกค้า / หน่วยงาน" required={type === 'ขายลูกค้า'} style={{ gridColumn: type === 'ขายลูกค้า' ? 'span 2' : '1 / -1' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Input
               list="kpc-customer-list-dt"
@@ -284,10 +288,6 @@ export function NewDeliveryTicketForm({
             {created.customersAdded.map((c) => <option key={c.id} value={c.name} />)}
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
-        </Field>
-
-        <Field label="ผู้รับสินค้า" hint="ชื่อผู้รับของหน้างาน (ไม่บังคับ)" style={{ gridColumn: '1 / -1' }}>
-          <Input placeholder="เช่น สมชาย / หัวหน้าช่าง / —" value={receiver} onChange={(e) => setReceiver(e.target.value)} />
         </Field>
 
         <Field label="สินค้า" required style={{ gridColumn: '1 / -1' }}>
@@ -335,8 +335,13 @@ export function NewDeliveryTicketForm({
           </Select>
         </Field>
 
-        <Field label="ปริมาณ (คิว)" required>
+        {/* ปริมาณ | ผู้รับสินค้า | วิธีชำระ อยู่แถวเดียวกัน — บังคับ ปริมาณ ขึ้นคอลัมน์แรก
+            เพื่อให้เรียงตรงเสมอ ไม่ว่าจะมีช่องรถ/พนักงานจัดส่งหรือไม่. */}
+        <Field label="ปริมาณ (คิว)" required style={{ gridColumn: '1 / span 1' }}>
           <Input type="number" step="0.01" placeholder="เช่น 3.0" value={m3} onChange={(e) => setM3(e.target.value)} />
+        </Field>
+        <Field label="ผู้รับสินค้า" hint="ชื่อผู้รับของหน้างาน (ไม่บังคับ)">
+          <Input placeholder="เช่น สมชาย / หัวหน้าช่าง / —" value={receiver} onChange={(e) => setReceiver(e.target.value)} />
         </Field>
         <Field label="วิธีชำระ (เบื้องต้น)" hint={type !== 'ขายลูกค้า' ? 'ไม่ใช้กับงานภายใน' : 'กำหนดราคาตอนออกใบกำกับภาษี'}>
           <Select value={pay} onChange={(e) => setPay(e.target.value as PayMethod)} disabled={type !== 'ขายลูกค้า'}>

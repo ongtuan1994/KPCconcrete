@@ -117,6 +117,8 @@ function ProductPricing() {
   const [type, setType] = useState<'all' | string>('all')
   const [zone, setZone] = useState<'all' | ZoneId>('all')
   const [brand, setBrand] = useState<'all' | BrandId>('all')
+  /* สูตรการผลิต filter — all / มีสูตร / ไม่มีสูตร. */
+  const [formula, setFormula] = useState<'all' | 'has' | 'none'>('all')
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -171,12 +173,19 @@ function ProductPricing() {
       const b = cementBrand(p.code)
       if (!b || b.id !== brand) return false
     }
+    if (formula !== 'all') {
+      const hasFormula = formulaInfo(p).no !== ''
+      if (formula === 'has' && !hasFormula) return false
+      if (formula === 'none' && hasFormula) return false
+    }
     return true
   })
 
   const zoneCount = (id: ZoneId) => PRODUCTS.filter((p) => deliveryZone(p.code)?.id === id).length
   const brandCount = (id: BrandId) => PRODUCTS.filter((p) => cementBrand(p.code)?.id === id).length
   const siteCount = (id: ProductSite) => PRODUCTS.filter((p) => productSite(p) === id).length
+  /* How many products have / lack a สูตรการผลิต (over the merged list, incl. added). */
+  const formulaCount = (has: boolean) => products.filter((p) => (formulaInfo(p).no !== '') === has).length
 
   /* ประเภท options — distinct prodType labels within the selected SITE, in first-
      seen order, each with its product count. Resets to "all" when SITE changes. */
@@ -244,14 +253,6 @@ function ProductPricing() {
     },
     { key: 'unit', header: 'หน่วย', align: 'center', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>{r.unit}</span> },
     { key: 'cat', header: 'ประเภท', align: 'center', cell: (r) => { const t = prodType(r); return <Badge tone={t.tone} pip={false} square>{t.th}</Badge> } },
-    {
-      key: 'pickup', header: 'การรับของ', align: 'center',
-      cell: (r) => r.pickupPrices
-        ? <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>รับเอง / จัดส่ง</span>
-        : r.pickup
-          ? <Badge tone={r.pickup === 'จัดส่ง' ? 'info' : 'neutral'} pip={false} square>{r.pickup}</Badge>
-          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>,
-    },
     {
       key: 'price', header: 'ราคา/หน่วย (รวม VAT)', align: 'right', className: 'amt',
       cell: (r) => r.pickupPrices
@@ -380,6 +381,14 @@ function ProductPricing() {
                 {z.label} ({z.range}) {zoneCount(z.id)}
               </Pill>
             ))}
+          </div>
+        </div>
+        <div className="row wrap" style={{ gap: 10 }}>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>สูตรการผลิต</span>
+          <div className="pills">
+            <Pill active={formula === 'all'} onClick={() => setFormula('all')}>ทั้งหมด</Pill>
+            <Pill active={formula === 'has'} onClick={() => setFormula('has')}>มีสูตร {formulaCount(true)}</Pill>
+            <Pill active={formula === 'none'} onClick={() => setFormula('none')}>ไม่มีสูตร {formulaCount(false)}</Pill>
           </div>
         </div>
       </div>
