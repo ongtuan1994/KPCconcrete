@@ -96,6 +96,13 @@ function cementBrand(code: string): Brand | null {
   if (tail.startsWith('RO') || tail.startsWith('PO')) return BRAND_MAP.SCG
   return null
 }
+/** A product's cement brand: the explicitly-chosen ยี่ห้อ (stored at creation)
+    wins; otherwise fall back to guessing from the code. Lets a hand-typed code
+    keep the brand the user selected. */
+function cementBrandOf(p: Product): Brand | null {
+  if (p.cementBrand) return BRAND_MAP[p.cementBrand]
+  return cementBrand(p.code)
+}
 
 /* Build a plant product code from its parts, matching the seed encoding:
    KPC + R (SCG) / R2 (ดอกบัว) + zone marker (OS00 / OV21 / OV31 / OV41) + 3-digit ksc.
@@ -172,7 +179,7 @@ function ProductPricing() {
       if (!z || z.id !== zone) return false
     }
     if (brand !== 'all') {
-      const b = cementBrand(p.code)
+      const b = cementBrandOf(p)
       if (!b || b.id !== brand) return false
     }
     if (formula !== 'all') {
@@ -189,7 +196,7 @@ function ProductPricing() {
   })
 
   const zoneCount = (id: ZoneId) => PRODUCTS.filter((p) => deliveryZone(p.code)?.id === id).length
-  const brandCount = (id: BrandId) => PRODUCTS.filter((p) => cementBrand(p.code)?.id === id).length
+  const brandCount = (id: BrandId) => products.filter((p) => cementBrandOf(p)?.id === id).length
   const siteCount = (id: ProductSite) => PRODUCTS.filter((p) => productSite(p) === id).length
   /* How many products have / lack a สูตรการผลิต (over the merged list, incl. added). */
   const formulaCount = (has: boolean) => products.filter((p) => (formulaInfo(p).no !== '') === has).length
@@ -232,7 +239,7 @@ function ProductPricing() {
       header: 'ปูนซีเมนต์',
       align: 'center',
       cell: (r) => {
-        const b = cementBrand(r.code)
+        const b = cementBrandOf(r)
         if (!b) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
         return (
           <span style={{ display: 'inline-block', minWidth: 96, background: BRAND_BG[b.id], color: '#fff', padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}>
@@ -292,7 +299,7 @@ function ProductPricing() {
         formulaNo: formulaInfo(p).no || undefined,
         code: p.code,
         name: cleanName(p.name),
-        brand: cementBrand(p.code)?.label,
+        brand: cementBrandOf(p)?.label,
         zone: z ? `${z.label} (${z.range})` : undefined,
         unit: p.unit,
         pickup: p.pickup,
@@ -332,7 +339,7 @@ function ProductPricing() {
               const head = ['รหัสสินค้า', 'สูตรการผลิต', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
               const body = rows.map((p) => [
                 p.code, formulaInfo(p).no, cleanName(p.name),
-                cementBrand(p.code)?.label ?? '',
+                cementBrandOf(p)?.label ?? '',
                 p.strengthKsc || '',
                 deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
                 p.unit, prodType(p).th, p.pickup ?? '', p.price || '',
@@ -755,7 +762,7 @@ function ProductFormModal({
     setErr('')
     if (mode === 'edit' && initial) {
       setSite(productSite(initial))
-      setBrand(cementBrand(initial.code)?.id ?? 'SCG')
+      setBrand(cementBrandOf(initial)?.id ?? 'SCG')
       setCategory(initial.category === 'lean' ? 'lean' : 'concrete')
       setZone(deliveryZone(initial.code)?.id ?? 'OS')
       setKind(initial.typeLabel ? CUSTOM_KIND : (initial.kind ?? 'plank'))
@@ -805,14 +812,10 @@ function ProductFormModal({
   const submit = () => {
     setErr('')
     if (!site) return setErr('กรุณาเลือก SITE ก่อน (แพล้นปูน หรือ โรงหล่อ)')
-    /* The plant product code ENCODES the cement brand (KPCR2… = ดอกบัว, KPCR… =
-       SCG), and everything downstream reads the brand back FROM the code. So for
-       a new plant product the code is ALWAYS derived from the selected ยี่ห้อปูน/
-       ระยะส่ง/ประเภท/กำลังอัด — the dropdown is the source of truth, never a
-       stale/mismatched code. (Foundry codes stay hand-entered.) */
-    const c = (mode === 'add' && site === 'plant')
-      ? genPlantCode(brand, zone, category, strength)
-      : code.trim()
+    /* The code is taken as-is (auto-filled but hand-editable). The cement brand
+       no longer relies on it — it is stored explicitly from the ยี่ห้อปูน
+       selection below (see cementBrand on addProduct/updateProduct). */
+    const c = code.trim()
     const nm = name.trim()
     if (!c) return setErr('กรุณากรอกรหัสสินค้า')
     if (!nm) return setErr('กรุณากรอกชื่อรายการสินค้า')
@@ -830,9 +833,9 @@ function ProductFormModal({
       /* Store a formula link only when it differs from the auto match on the code. */
       const fc = formulaCode && formulaCode !== c ? formulaCode : ''
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, ...(fc ? { formulaCode: fc } : {}) })
+        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, ...(fc ? { formulaCode: fc } : {}) })
       } else {
-        updateProduct(initial!.code, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc })
+        updateProduct(initial!.code, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc, cementBrand: brand })
       }
     } else if (isCustom) {
       /* Brand-new foundry type — user supplies the type name, unit and a single price. */
@@ -928,8 +931,8 @@ function ProductFormModal({
           {site === 'plant' ? (
             <>
               <div className="grid g-2" style={{ gap: 12 }}>
-                <Field label="ยี่ห้อปูนซีเมนต์" required>
-                  <Select value={brand} disabled={readOnlyStructure} onChange={(e) => setBrand(e.target.value as BrandId)}>
+                <Field label="ยี่ห้อปูนซีเมนต์" required hint={readOnlyStructure ? 'แก้ไขยี่ห้อปูนได้ (ไม่กระทบรหัสสินค้า)' : undefined}>
+                  <Select value={brand} onChange={(e) => setBrand(e.target.value as BrandId)}>
                     {BRANDS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
                   </Select>
                 </Field>
@@ -951,8 +954,9 @@ function ProductFormModal({
                 )}
               </div>
               <div className="grid g-2" style={{ gap: 12 }}>
-                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจาก ยี่ห้อปูน / ระยะส่ง / ประเภท / กำลังอัด' : undefined}>
-                  <Input className="input mono" value={code} readOnly />
+                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจากตัวเลือกด้านบน — แก้ไขเองได้ (ยี่ห้อปูนยึดตามที่เลือกไว้ ไม่ใช่จากรหัส)' : undefined}>
+                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
+                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} />
                 </Field>
                 <Field label="หน่วย" required>
                   <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="คิว" />

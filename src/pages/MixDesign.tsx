@@ -81,6 +81,43 @@ export function MixDesign() {
     return true
   })
 
+  /* Plant products with per-product edits applied (formulaCode + cementBrand). */
+  const productByCode = useMemo(() => {
+    const m = new Map<string, Product>()
+    for (const p of allPlantProducts) m.set(p.code, created.productEdits[p.code] ? { ...p, ...created.productEdits[p.code] } : p)
+    return m
+  }, [allPlantProducts, created.productEdits])
+
+  /* formula-owner code → products linked to it via formulaCode. */
+  const linkedByOwner = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const p of productByCode.values()) {
+      if (!p.formulaCode) continue
+      const a = m.get(p.formulaCode) ?? []
+      if (!a.includes(p.code)) a.push(p.code)
+      m.set(p.formulaCode, a)
+    }
+    return m
+  }, [productByCode])
+
+  /* Every product code that USES a formula: the owner itself + all linked. */
+  const codesForFormula = (owner: string): string[] => [owner, ...(linkedByOwner.get(owner) ?? []).filter((c) => c !== owner)]
+  /* Distinct product names across a formula's products — identical names collapse
+     to one (e.g. same รายการ under two ยี่ห้อ shows a single line). */
+  const namesForFormula = (owner: string): string[] => [...new Set(codesForFormula(owner).map(nameOf))]
+  /* A product's ยี่ห้อ — the explicit stored brand wins, else guess from code. */
+  const brandTh = (code: string): 'ดอกบัว' | 'SCG' => {
+    const p = productByCode.get(code)
+    if (p?.cementBrand) return p.cementBrand === 'DOKBUA' ? 'ดอกบัว' : 'SCG'
+    return isDokbua(code) ? 'ดอกบัว' : 'SCG'
+  }
+  /* Distinct ยี่ห้อ across all products sharing a formula (both, when mixed). */
+  const brandsForFormula = (owner: string): ('ดอกบัว' | 'SCG')[] => {
+    const seen = new Set<string>(); const out: ('ดอกบัว' | 'SCG')[] = []
+    for (const c of codesForFormula(owner)) { const b = brandTh(c); if (!seen.has(b)) { seen.add(b); out.push(b) } }
+    return out
+  }
+
   const createReport = () => {
     if (rows.length === 0) { alert('ไม่มีสูตรให้สร้างรายงาน'); return }
     const report: MixDesignReport = {
@@ -92,7 +129,7 @@ export function MixDesign() {
       scopeLabel,
       rows: rows.map((r) => ({
         formulaNo: formulaNo(r.code),
-        code: r.code, name: nameOf(r.code), brand: isDokbua(r.code) ? 'ดอกบัว' : 'SCG',
+        code: codesForFormula(r.code).join(' / '), name: namesForFormula(r.code).join(' / '), brand: brandsForFormula(r.code).join(' / '),
         cement: r.cement, sand: r.sand, aggregate: r.aggregate,
         plastomix: r.plastomix, sikament: r.sikament, pce: r.pce,
       })),
@@ -106,9 +143,25 @@ export function MixDesign() {
 
   const columns: Column<MixDesign>[] = [
     { key: 'formulaNo', header: 'เลขที่สูตร', cell: (r) => formulaNo(r.code), className: 'docno' },
-    { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
-    { key: 'name', header: 'รายการ', cell: (r) => <span className="th">{nameOf(r.code)}</span> },
-    { key: 'brand', header: 'ปูนซีเมนต์', align: 'center', cell: (r) => <Badge tone={isDokbua(r.code) ? 'success' : 'danger'} pip={false} square>{isDokbua(r.code) ? 'ดอกบัว' : 'SCG'}</Badge> },
+    {
+      key: 'code', header: 'รหัสสินค้า', className: 'docno',
+      cell: (r) => {
+        const codes = codesForFormula(r.code)
+        return codes.length === 1 ? codes[0] : <div className="stack" style={{ gap: 2 }}>{codes.map((c) => <span key={c}>{c}</span>)}</div>
+      },
+    },
+    {
+      key: 'name', header: 'รายการ',
+      cell: (r) => <div className="stack" style={{ gap: 2 }}>{namesForFormula(r.code).map((nm, i) => <span key={i} className="th">{nm}</span>)}</div>,
+    },
+    {
+      key: 'brand', header: 'ปูนซีเมนต์', align: 'center',
+      cell: (r) => (
+        <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {brandsForFormula(r.code).map((b) => <Badge key={b} tone={b === 'ดอกบัว' ? 'success' : 'danger'} pip={false} square>{b}</Badge>)}
+        </span>
+      ),
+    },
     { key: 'cement', header: 'ปูน (กก.)', align: 'right', cell: (r) => num(r.cement) },
     { key: 'sand', header: 'ทราย (กก.)', align: 'right', cell: (r) => num(r.sand) },
     { key: 'agg', header: 'หิน 3/4" (กก.)', align: 'right', cell: (r) => num(r.aggregate) },
@@ -127,7 +180,7 @@ export function MixDesign() {
           <>
             <Button variant="secondary" onClick={() => {
               const head = ['เลขที่สูตร', 'รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'ปูน (กก./คิว)', 'ทราย (กก./คิว)', 'หิน (กก./คิว)', 'Plastomix-704 (ล./คิว)', 'Sikament F2 (ล./คิว)', 'PCE-1 (ล./คิว)']
-              const body = rows.map((r) => [formulaNo(r.code), r.code, nameOf(r.code), isDokbua(r.code) ? 'ดอกบัว' : 'SCG', r.cement, r.sand, r.aggregate, r.plastomix ?? '', r.sikament ?? '', r.pce ?? ''])
+              const body = rows.map((r) => { const codes = codesForFormula(r.code); return [formulaNo(r.code), codes.join(' / '), namesForFormula(r.code).join(' / '), brandsForFormula(r.code).join(' / '), r.cement, r.sand, r.aggregate, r.plastomix ?? '', r.sikament ?? '', r.pce ?? ''] })
               downloadCsv('mix-design', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>

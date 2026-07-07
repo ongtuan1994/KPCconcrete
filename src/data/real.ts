@@ -41,6 +41,10 @@ export interface Product {
   /** เลขที่สูตรการผลิต override — the MIX_DESIGNS code this product's สูตรการผลิต links to.
       Unset ⇒ the formula is matched by the product's own code (see mixFormulaNo). */
   formulaCode?: string
+  /** ยี่ห้อปูนซีเมนต์ (plant products) chosen explicitly at creation. When set it
+      WINS over the code-based guess, so a hand-typed code can't force the wrong
+      cement. Unset (seed) ⇒ derived from the code (KPCR2… = ดอกบัว, else SCG). */
+  cementBrand?: 'DOKBUA' | 'SCG'
   price: number
 }
 export const PRODUCTS: Product[] = [

@@ -38,7 +38,7 @@ export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'departm
 /** Editable subset of Product fields merged on top of PRODUCTS (and productsAdded).
     Keyed by product code. Covers everything the เพิ่ม/แก้ไขสินค้า form can change
     except the code/site/category, which are fixed by the code itself. */
-export type ProductEdit = Partial<Pick<Product, 'name' | 'unit' | 'price' | 'pickup' | 'pickupPrices' | 'strengthKsc' | 'formulaCode'>>
+export type ProductEdit = Partial<Pick<Product, 'name' | 'unit' | 'price' | 'pickup' | 'pickupPrices' | 'strengthKsc' | 'formulaCode' | 'cementBrand'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */
