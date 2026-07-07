@@ -806,10 +806,11 @@ function ProductFormModal({
     setErr('')
     if (!site) return setErr('กรุณาเลือก SITE ก่อน (แพล้นปูน หรือ โรงหล่อ)')
     /* The plant product code ENCODES the cement brand (KPCR2… = ดอกบัว, KPCR… =
-       SCG). When it was auto-generated (not hand-edited), re-derive it from the
-       CURRENT ยี่ห้อปูน/ระยะส่ง/ประเภท/กำลังอัด at submit time so a late brand
-       change can't leave a stale code that saves the wrong cement. */
-    const c = (mode === 'add' && site === 'plant' && !codeDirty)
+       SCG), and everything downstream reads the brand back FROM the code. So for
+       a new plant product the code is ALWAYS derived from the selected ยี่ห้อปูน/
+       ระยะส่ง/ประเภท/กำลังอัด — the dropdown is the source of truth, never a
+       stale/mismatched code. (Foundry codes stay hand-entered.) */
+    const c = (mode === 'add' && site === 'plant')
       ? genPlantCode(brand, zone, category, strength)
       : code.trim()
     const nm = name.trim()
@@ -950,9 +951,8 @@ function ProductFormModal({
                 )}
               </div>
               <div className="grid g-2" style={{ gap: 12 }}>
-                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจากตัวเลือกด้านบน — แก้ไขได้' : undefined}>
-                  <Input className="input mono" value={code} readOnly={readOnlyStructure}
-                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} />
+                <Field label="รหัสสินค้า" required hint={mode === 'add' ? 'สร้างอัตโนมัติจาก ยี่ห้อปูน / ระยะส่ง / ประเภท / กำลังอัด' : undefined}>
+                  <Input className="input mono" value={code} readOnly />
                 </Field>
                 <Field label="หน่วย" required>
                   <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="คิว" />
