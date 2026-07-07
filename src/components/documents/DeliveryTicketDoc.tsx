@@ -23,6 +23,9 @@ export function DeliveryTicketDoc({ ticket }: { ticket: DeliveryTicket }) {
         <MetaRow k="งวด :" v={monthLabel(ticket.month)} />
         <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="ประเภท :" v={ticket.type} />
+        {ticket.type === 'ขายลูกค้า' && (
+          <MetaRow k="การรับของ :" v={ticket.pickup === 'รับเอง' ? 'ลูกค้ามารับเอง' : 'บริษัทจัดส่ง'} />
+        )}
         <MetaRow k="หมายเลขรถ :" v={vehicle ? <span className="mono">รถ {vehicle.id} (สูงสุด {vehicle.maxM3} คิว)</span> : '—'} />
         <MetaRow k="พนักงานจัดส่ง :" v={driver || '—'} />
       </div>

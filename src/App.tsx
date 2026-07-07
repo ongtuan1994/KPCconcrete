@@ -13,6 +13,7 @@ import { FoundryDeliveries } from './pages/FoundryDeliveries'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
 import { Payroll } from './pages/Payroll'
+import { MidMonthAdvance } from './pages/MidMonthAdvance'
 import { InvoicesHub } from './pages/InvoicesHub'
 import { BillingNotes } from './pages/BillingNotes'
 import { Receipts } from './pages/Receipts'
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/advances" element={<Payroll />} />
+        <Route path="/mid-month-advance" element={<MidMonthAdvance />} />
         <Route path="/delivery-tickets" element={<DeliveryTickets />} />
         <Route path="/foundry-deliveries" element={<FoundryDeliveries />} />
         <Route path="/truck-trips" element={<TruckTrips />} />

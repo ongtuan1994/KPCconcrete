@@ -516,4 +516,68 @@
   }
 }
 
+/* Mid-month advance report (เบิกเงินกลางเดือน) — mirrors the company's Excel
+   sheet: centered heading, ประจำเดือน line, a full-grid table with a รวม row.
+   Each work group (แพล้นปูน / โรงหล่อ) prints on its own sheet of paper. */
+.trip-report-sheet.advance-report { font-size: 14px; }
+.trip-report-sheet.advance-report .adv-head {
+  display: flex; align-items: flex-start; gap: 14px;
+  border-bottom: 2.5px solid var(--kpc-primary); padding-bottom: 10px; margin-bottom: 16px;
+}
+.trip-report-sheet.advance-report .adv-logo { width: 76px; height: auto; object-fit: contain; flex: none; }
+.trip-report-sheet.advance-report .adv-co-name { font-size: 16px; font-weight: 700; color: var(--kpc-primary-ink); }
+.trip-report-sheet.advance-report .adv-co-line { font-size: 11.5px; color: #444; }
+.trip-report-sheet.advance-report .adv-title {
+  text-align: center; font-size: 18px; font-weight: 700; text-decoration: underline;
+  text-underline-offset: 4px; margin-bottom: 14px;
+}
+.trip-report-sheet.advance-report .adv-month {
+  text-align: center; font-size: 15px; font-weight: 700; text-decoration: underline;
+  text-underline-offset: 3px; margin-bottom: 18px;
+}
+.trip-report-sheet.advance-report table.adv-table {
+  width: 100%; border-collapse: collapse; font-size: 13.5px;
+}
+.trip-report-sheet.advance-report table.adv-table th,
+.trip-report-sheet.advance-report table.adv-table td {
+  border: 1px solid #333; padding: 8px 8px; text-align: left; vertical-align: middle;
+  white-space: nowrap;
+}
+.trip-report-sheet.advance-report table.adv-table th { font-weight: 700; text-align: center; }
+.trip-report-sheet.advance-report table.adv-table td.c,
+.trip-report-sheet.advance-report table.adv-table th.c { text-align: center; }
+.trip-report-sheet.advance-report table.adv-table td.r,
+.trip-report-sheet.advance-report table.adv-table th.r { text-align: right; }
+.trip-report-sheet.advance-report table.adv-table td.mono { font-family: var(--kpc-font-mono); }
+.trip-report-sheet.advance-report table.adv-table tr.adv-total td { font-weight: 700; }
+.trip-report-sheet.advance-report .adv-sign { margin-top: 46px; font-size: 14px; }
+
+@media print {
+  /* Zero the @page margin and bake the four-side paper margins into each page's
+     own padding instead (same approach as .doc-sheet — reliable across the
+     print-dialog "Margins" setting, unlike named-@page margins). Every work
+     group is its own padded A4 sheet. */
+  @page advanceReport { size: A4 portrait; margin: 0; }
+  .trip-report-sheet.advance-report { page: advanceReport; padding: 0 !important; font-size: 13px; }
+  .trip-report-sheet.advance-report table.adv-table { font-size: 12.5px; }
+  .trip-report-sheet.advance-report table.adv-table tr { break-inside: avoid; }
+  .trip-report-sheet.advance-report .advance-page-sheet {
+    box-sizing: border-box !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    padding: 16mm 5mm 16mm 5mm !important;   /* บน ขวา ล่าง ซ้าย */
+    margin: 0 auto !important;
+    border-top: none !important;
+  }
+  /* Each group after the first starts on a fresh sheet of paper. */
+  .trip-report-sheet.advance-report .advance-break {
+    break-before: page;
+    page-break-before: always;
+  }
+}
+/* On screen, separate the pages with a dashed rule to hint the page break. */
+.trip-report-sheet.advance-report .advance-break {
+  margin-top: 30px; padding-top: 20px; border-top: 2px dashed #c4c4c4;
+}
+
 /* Price-list report (รายงานราคาสินค้า) uses the default @page margins above. */

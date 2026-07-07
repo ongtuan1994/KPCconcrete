@@ -102,6 +102,8 @@ ROUTE_RESOURCE['/foundry-formula'] = 'mix-design'
 ROUTE_RESOURCE['/foundry-materials'] = 'stock'
 /* ภาพรวมการทำงานแพล้นปูน reads plant stock — shares the คลังวัตถุดิบ gate. */
 ROUTE_RESOURCE['/plant-operation'] = 'stock'
+/* เบิกเงินกลางเดือน shares the เบิกและจ่ายเงินเดือน (payroll) gate. */
+ROUTE_RESOURCE['/mid-month-advance'] = 'payroll'
 
 /** Hard per-resource role allowlist — overrides the permission matrix. When a
     resource key is listed here, ONLY these roles may view it, no matter what the

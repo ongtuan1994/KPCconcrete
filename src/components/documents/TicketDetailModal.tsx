@@ -47,6 +47,11 @@ export function TicketDetailModal({
         <Row k="วันที่" v={<span className="mono">{ticket.date}</span>} />
         <Row k="งวด" v={monthLabel(ticket.month)} />
         <Row k="ประเภท" v={<Badge tone={TYPE_TONE[ticket.type] ?? 'neutral'} square pip={false}>{ticket.type}</Badge>} />
+        {ticket.type === 'ขายลูกค้า' && (
+          <Row k="การรับของ" v={ticket.pickup === 'รับเอง'
+            ? <Badge tone="warning" square pip={false}>ลูกค้ามารับเอง · หัก 100/คิว</Badge>
+            : <Badge tone="neutral" square pip={false}>บริษัทจัดส่ง</Badge>} />
+        )}
         <Row k="ลูกค้า / หน่วยงาน" v={ticket.customer} />
         <Row k="สินค้า" v={<>
           <span className="mono">{ticket.prod}</span>{prod && <span style={{ color: 'var(--kpc-text-muted)', marginLeft: 8 }}>— {prod.name}</span>}

@@ -513,12 +513,23 @@ export function transportSurchargeForM3(m3: number, ratePreVat: number = TRANSPO
     this list as new staff join; the form defaults to the first entry. */
 export const ISSUERS: string[] = ['พีช', 'บลิ้ง']
 
+/** Discount (บาท/คิว, VAT-inclusive) given on customer-sale concrete when the
+    customer collects it themselves (pickup = 'รับเอง') instead of the company
+    delivering — applied as a per-unit discount at tax-invoice time. e.g. 3 คิว
+    ⇒ หัก 300. */
+export const SELF_PICKUP_DISCOUNT_PER_M3 = 100
+
 export interface DeliveryTicket {
   month: number; date: string; dtNo: string; ref: string; type: string; customer: string
   prod: string; m3: number; price: number; amount: number
   invoice: string; billing: string; pay: PayMethod; note: string
   vehicle?: string
   driver?: string
+  /** How the customer receives the concrete on a ขายลูกค้า ticket:
+      'จัดส่ง' (company delivers, the default) or 'รับเอง' (customer picks up —
+      no truck/driver, and gets the SELF_PICKUP_DISCOUNT_PER_M3 at invoice time).
+      Undefined on non-sale/seed/imported tickets ⇒ treated as 'จัดส่ง'. */
+  pickup?: ProductPickup
   /** Linked sales order (ใบสั่งขาย) — set when issued from / auto-created for one. */
   soNo?: string
   /** Staff who issued the ticket (snapshot from ISSUERS at creation time). */

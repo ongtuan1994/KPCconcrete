@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, type DeliveryTicket } from '../../data/real'
+import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket } from '../../data/real'
 import { INVOICES, baht, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
 
-interface LineDraft { code: string; qty: string; price: string; discount: string }
+/** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
+    per-คิว pickup discount and is excluded from the under-load transport
+    surcharge (no company delivery). */
+interface LineDraft { code: string; qty: string; price: string; discount: string; selfPickup?: boolean }
 
 const emptyLine = (): LineDraft => ({ code: PRODUCTS[0]?.code ?? '', qty: '', price: '', discount: '' })
 
@@ -114,9 +117,10 @@ export function NewInvoiceForm({
         ...(discountPreVat > 0 ? { discount: discountPreVat } : {}),
       })
       totalInclVat += amountInclVat
-      /* Only concrete-delivery products (not foundry precast) count toward the
-         under-load transport surcharge. */
-      if (p.site !== 'foundry') concreteQty += qty
+      /* Only concrete the company actually delivers counts toward the under-load
+         transport surcharge — exclude foundry precast and ลูกค้ามารับเอง lines
+         (self-pickup ⇒ no delivery ⇒ no transport charge). */
+      if (p.site !== 'foundry' && !ld.selfPickup) concreteQty += qty
     }
 
     /* Auto-add the under-load transport surcharge when total qty < 3 คิว.
@@ -234,20 +238,26 @@ export function NewInvoiceForm({
        3) blank — falls through if the product code is unknown */
     const byKey = new Map<string, LineDraft>()
     let priceFilledFromMaster = 0
+    let selfPickupLines = 0
     for (const t of matched) {
       const masterPrice = PRODUCT_MAP[t.prod]?.price || 0
       const effPrice = t.price || masterPrice
-      const key = `${t.prod}__${effPrice}`
+      const isSelfPickup = t.pickup === 'รับเอง'
+      /* Self-pickup lines get the per-คิว pickup discount and must not merge with
+         delivered lines of the same product/price — key on pickup too. */
+      const key = `${t.prod}__${effPrice}__${isSelfPickup ? 'self' : 'deliv'}`
       const existing = byKey.get(key)
       if (existing) {
         existing.qty = String((Number(existing.qty) || 0) + t.m3)
       } else {
         if (!t.price && masterPrice) priceFilledFromMaster += 1
+        if (isSelfPickup) selfPickupLines += 1
         byKey.set(key, {
           code: t.prod,
           qty: String(t.m3),
           price: effPrice ? String(effPrice) : '',
-          discount: '',
+          discount: isSelfPickup ? String(SELF_PICKUP_DISCOUNT_PER_M3) : '',
+          ...(isSelfPickup ? { selfPickup: true } : {}),
         })
       }
     }
@@ -255,6 +265,7 @@ export function NewInvoiceForm({
 
     const parts: string[] = [`ดึงข้อมูลจาก ${matched.length} ใบจ่าย`]
     if (priceFilledFromMaster > 0) parts.push(`เติมราคาจากตารางสินค้า ${priceFilledFromMaster} รายการ`)
+    if (selfPickupLines > 0) parts.push(`หักส่วนลดลูกค้ามารับเอง ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ${selfPickupLines} รายการ`)
     if (missed.length) parts.push(`ไม่พบ: ${missed.join(', ')}`)
     setPullInfo(parts.join(' · '))
   }

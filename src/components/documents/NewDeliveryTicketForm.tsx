@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, type DeliveryTicket, type PayMethod } from '../../data/real'
+import { CUSTOMER_MASTER, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type PayMethod, type ProductPickup } from '../../data/real'
 import { monthLabel } from '../../data/selectors'
 import { addTicket, updateTicket, useCreatedDocs } from '../../data/createdDocs'
 import { NewCustomerForm } from './NewCustomerForm'
@@ -51,6 +51,9 @@ export function NewDeliveryTicketForm({
   const [customer, setCustomer] = useState<string>('')
   const [prodCode, setProdCode] = useState<string>(SELECTABLE_PRODUCTS[0]?.code ?? '')
   const [m3, setM3] = useState<string>('')
+  /* การรับของ (customer sales only): 'จัดส่ง' = บริษัทจัดส่ง (default) หรือ
+     'รับเอง' = ลูกค้ามารับเอง (หัก 100 บาท/คิว ตอนออกใบกำกับ, ไม่ต้องมีรถ/คนขับ). */
+  const [pickup, setPickup] = useState<ProductPickup>('จัดส่ง')
   const [vehicle, setVehicle] = useState<string>(VEHICLES[0]?.id ?? '')
   const [pay, setPay] = useState<PayMethod>('เครดิต')
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -72,6 +75,7 @@ export function NewDeliveryTicketForm({
     setCustomer(editTicket.customer)
     setProdCode(editTicket.prod)
     setM3(String(editTicket.m3))
+    setPickup(editTicket.pickup || 'จัดส่ง')
     setVehicle(editTicket.vehicle || VEHICLES[0]?.id || '')
     setPay((editTicket.pay || 'เครดิต') as PayMethod)
     setIssuer(editTicket.issuer || ISSUERS[0] || '')
@@ -102,6 +106,7 @@ export function NewDeliveryTicketForm({
     setDtNoDigits('')
     setMonth(CURRENT_MONTH); setDay(String(new Date().getDate())); setType('ขายลูกค้า'); setCustomer('')
     setProdCode(SELECTABLE_PRODUCTS[0]?.code ?? ''); setM3('')
+    setPickup('จัดส่ง')
     setVehicle(VEHICLES[0]?.id ?? ''); setPay('เครดิต')
     setIssuer(ISSUERS[0] ?? ''); setReceiver(''); setNote(''); setErr('')
   }
@@ -117,9 +122,11 @@ export function NewDeliveryTicketForm({
     if (!customer.trim() && type === 'ขายลูกค้า') return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     const q = Number(m3)
     if (!q || q <= 0) return setErr('กรุณาระบุปริมาณ (คิว)')
-    /* หมายเลขรถ + พนักงานจัดส่ง ใช้เฉพาะงานขายลูกค้า — โรงหล่อ/ใช้เอง ข้ามได้. */
+    /* หมายเลขรถ + พนักงานจัดส่ง ใช้เฉพาะงานขายลูกค้า "แบบบริษัทจัดส่ง" —
+       โรงหล่อ/ใช้เอง และ "ลูกค้ามารับเอง" ข้ามได้ (ลูกค้าใช้รถตัวเอง). */
     const isCustomerSale = type === 'ขายลูกค้า'
-    if (isCustomerSale) {
+    const needsVehicle = isCustomerSale && pickup === 'จัดส่ง'
+    if (needsVehicle) {
       if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
       const v = VEHICLE_MAP[vehicle]
       if (v && q > v.maxM3) return setErr(`รถ ${v.id} ขนได้สูงสุด ${v.maxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
@@ -138,11 +145,14 @@ export function NewDeliveryTicketForm({
       m3: q,
       pay: (isCustomerSale ? pay : '') as PayMethod,
       note: note.trim(),
-      /* Vehicle + driver only for customer deliveries; blank for โรงหล่อ/ใช้เอง.
+      /* การรับของ: บันทึกเฉพาะงานขายลูกค้า (undefined สำหรับโรงหล่อ/ใช้เอง ⇒ ถือเป็นจัดส่ง). */
+      pickup: isCustomerSale ? pickup : undefined,
+      /* Vehicle + driver only when the company delivers (ขายลูกค้า + จัดส่ง);
+         blank for โรงหล่อ/ใช้เอง and for ลูกค้ามารับเอง (customer's own vehicle).
          Driver is snapshotted from the vehicle master so the ticket stays
          accurate even if the driver assignment changes later. */
-      vehicle: isCustomerSale ? vehicle : '',
-      driver: isCustomerSale ? (VEHICLE_MAP[vehicle]?.driver || '') : '',
+      vehicle: needsVehicle ? vehicle : '',
+      driver: needsVehicle ? (VEHICLE_MAP[vehicle]?.driver || '') : '',
       issuer,
       receiver: receiver.trim() || undefined,
       ref,
@@ -241,6 +251,22 @@ export function NewDeliveryTicketForm({
           </Select>
         </Field>
 
+        {/* การรับของ — เฉพาะงานขายลูกค้า. ลูกค้ามารับเอง = หัก 100 บาท/คิว ตอนออกใบกำกับ
+            และไม่ต้องระบุรถ/พนักงานจัดส่ง. */}
+        {type === 'ขายลูกค้า' && (
+          <Field
+            label="การรับของ"
+            required
+            hint={pickup === 'รับเอง' ? `ลูกค้ามารับเอง — หัก ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ตอนออกใบกำกับ` : 'บริษัทจัดส่งด้วยรถของโรงงาน'}
+            style={{ gridColumn: '1 / -1' }}
+          >
+            <Select value={pickup} onChange={(e) => setPickup(e.target.value as ProductPickup)}>
+              <option value="จัดส่ง">บริษัทจัดส่ง</option>
+              <option value="รับเอง">ลูกค้ามารับเอง (หัก {SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว)</option>
+            </Select>
+          </Field>
+        )}
+
         <Field label="ลูกค้า / หน่วยงาน" required={type === 'ขายลูกค้า'} style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <Input
@@ -270,8 +296,9 @@ export function NewDeliveryTicketForm({
           </Select>
         </Field>
 
-        {/* หมายเลขรถ + พนักงานจัดส่ง แสดงเฉพาะงานขายลูกค้า (โรงหล่อ/ใช้เอง ไม่ต้องเลือก). */}
-        {type === 'ขายลูกค้า' && (
+        {/* หมายเลขรถ + พนักงานจัดส่ง แสดงเฉพาะงานขายลูกค้าแบบบริษัทจัดส่ง
+            (โรงหล่อ/ใช้เอง และลูกค้ามารับเอง ไม่ต้องเลือก). */}
+        {type === 'ขายลูกค้า' && pickup === 'จัดส่ง' && (
           <>
             <Field label="หมายเลขรถ" required hint={(() => {
               const v = VEHICLE_MAP[vehicle]; if (!v) return ''

@@ -748,7 +748,34 @@ export interface PurchaseAccountReport extends GeneralReportBase {
   totals: { plant: PurchaseSiteAmount; foundry: PurchaseSiteAmount }
 }
 
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport | ExpenseReport | PurchaseAccountReport
+/** One employee's line on a mid-month advance sheet (เบิกเงินกลางเดือน). */
+export interface MidMonthAdvanceRow {
+  employeeId: string
+  date: string        /* DD/MM/พ.ศ.(2 หลัก) — e.g. "15/06/69" */
+  name: string        /* ชื่อ-สกุล */
+  nickname?: string   /* ชื่อเล่น */
+  role: string        /* "พนักงาน" column — short role label, e.g. "พจส." / "ผลิต" / "คนงาน" */
+  amount: number      /* จำนวนเงินที่เบิก (0 พิมพ์เป็น "-") */
+  receiver?: string   /* ผู้รับเงิน (ปกติเว้นไว้ให้เซ็น) */
+}
+/** One page of the mid-month advance report (แพล้นปูน หรือ โรงหล่อคนพม่า). */
+export interface MidMonthAdvanceSection {
+  key: 'plant' | 'foundry-thai' | 'foundry'
+  heading: string     /* หัวข้อบนหน้ากระดาษ เช่น "เงินเบิกกลางเดือนแพล้นปูน" */
+  rows: MidMonthAdvanceRow[]
+  total: number
+}
+/** Mid-month salary-advance report (เบิกเงินกลางเดือน) — one report per เดือน,
+    two pages: แพล้นปูน (คนไทย) + โรงหล่อ (คนงานพม่า). */
+export interface MidMonthAdvanceReport extends GeneralReportBase {
+  kind: 'mid-month-advance'
+  monthLabel: string  /* "มิถุนายน 2569" */
+  payer?: string      /* ผู้จ่าย (ไม่บังคับ) */
+  sections: MidMonthAdvanceSection[]
+  totals: { amount: number }  /* รวมทั้งสองหน้า */
+}
+
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport | ExpenseReport | PurchaseAccountReport | MidMonthAdvanceReport
 
 const KEY = 'kpc.createdDocs.v1'
 
