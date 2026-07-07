@@ -580,4 +580,36 @@
   margin-top: 30px; padding-top: 20px; border-top: 2px dashed #c4c4c4;
 }
 
-/* Price-list report (รายงานราคาสินค้า) uses the default @page margins above. */
+/* Price-list report — each product row on ONE line (on screen too, so the modal
+   preview matches print); long รายการ is truncated with an ellipsis. */
+.trip-report-sheet.price-list-report table.trr-table { table-layout: fixed; width: 100%; }
+.trip-report-sheet.price-list-report table.trr-table td {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Price-list report (รายงานราคาสินค้า) prints landscape so the wide product
+   table fits without squeezing. Margins live on the @page box so they repeat on
+   EVERY page (top/bottom included); a หมวดย่อย table is kept whole (break-inside:
+   avoid) so it moves to a fresh page instead of splitting across pages. */
+@media print {
+  /* Top/bottom margins come from the @page box (repeat on every page); left/right
+     margins are baked into the sheet padding so they show even when the wide
+     table would otherwise bleed to the paper edge. */
+  @page priceListReport { size: A4 landscape; margin: 14mm 0; }
+  .trip-report-sheet.price-list-report {
+    page: priceListReport;
+    padding: 0 12mm !important;
+    box-sizing: border-box !important;
+  }
+  /* Constrain the wide table to the content box so it can't overflow the L/R margin. */
+  .trip-report-sheet.price-list-report table.trr-table { table-layout: fixed; width: 100%; }
+  /* Each product row on a single line (long รายการ ตัดด้วย …); headers may wrap. */
+  .trip-report-sheet.price-list-report table.trr-table td {
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .trip-report-sheet.price-list-report table.trr-table th { overflow: hidden; word-break: break-word; }
+  /* Keep a หมวดย่อย (ชื่อ + ตาราง) together — move the whole block, name and all,
+     to a fresh page rather than orphaning the name or splitting the table. */
+  .trip-report-sheet.price-list-report .plr-block { break-inside: avoid; page-break-inside: avoid; }
+  .trip-report-sheet.price-list-report table.trr-table thead { display: table-header-group; }
+}

@@ -5,10 +5,10 @@ import { Button, Badge, Pill, Field, Input, Select, type Tone } from '../compone
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, PRODUCT_MAP, type Product, type ProductSite, type FoundryKind } from '../data/real'
-import { MIX_DESIGNS, buildMixFormulaNos } from '../data/mixDesign'
+import { MIX_DESIGNS, buildMixFormulaNos, DEFAULT_WATER_L, type MixDesign } from '../data/mixDesign'
 import { buildFoundryFormulaNos } from '../data/foundryFormula'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
-import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
+import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, addMixDesign, updateMixDesign, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 /** Today as DD/MM/พ.ศ. for report labels. */
@@ -166,6 +166,10 @@ function ProductPricing() {
   }, [created.mixDesignsAdded, created.mixDesignEdits])
   const mixFormulaNos = useMemo(() => buildMixFormulaNos(mixList), [mixList])
   const formulaNoOf = (code: string) => mixFormulaNos.get(code) ?? ''
+  /* Mix design for a product code (its own, or the one it links to) — for the
+     inline สูตรวัตถุดิบ in the product form and the price-list report. */
+  const mixByCode = useMemo(() => new Map(mixList.map((m) => [m.code, m])), [mixList])
+  const mixForProduct = (p: Product): MixDesign | undefined => mixByCode.get(p.formulaCode || p.code)
 
   /** สูตรการผลิต for a product: foundry → FFxx-xxx (links to /foundry-formula),
       otherwise the concrete formula CFx-xxx (links to /mix-design). */
@@ -303,19 +307,24 @@ function ProductPricing() {
     if (rows.length === 0) { alert('ไม่มีรายการสินค้าให้สร้างรายงาน'); return }
     const groupsMap = new Map<string, PriceListReport['groups'][number]['rows']>()
     for (const p of rows) {
-      const label = prodType(p).th
+      /* Lean joins the คอนกรีตผสมเสร็จ group so it lands in the distance/brand
+         sub-tables (sorted first as the lowest strength), not its own category. */
+      const label = p.category === 'lean' ? CAT.concrete.th : prodType(p).th
       const arr = groupsMap.get(label) ?? []
       const z = deliveryZone(p.code)
+      const m = productSite(p) !== 'foundry' ? mixForProduct(p) : undefined
       arr.push({
         formulaNo: formulaInfo(p).no || undefined,
         code: p.code,
         name: cleanName(p.name),
         brand: cementBrandOf(p)?.label,
         zone: z ? `${z.label} (${z.range})` : undefined,
+        strengthKsc: p.strengthKsc,
         unit: p.unit,
         pickup: p.pickup,
         pickupPrices: p.pickupPrices,
         price: p.price,
+        ...(m ? { mix: { cement: m.cement, sand: m.sand, aggregate: m.aggregate, water: m.water ?? DEFAULT_WATER_L, plastomix: m.plastomix, sikament: m.sikament, pce: m.pce, accelerator: m.accelerator, waterproof: m.waterproof } } : {}),
       })
       groupsMap.set(label, arr)
     }
@@ -457,6 +466,7 @@ function ProductPricing() {
         open={!!editing}
         mode="edit"
         initial={editing ?? undefined}
+        initialMix={editing ? mixByCode.get(editing.code) : undefined}
         existingCodes={existingCodes}
         formulaOptions={formulaOptions}
         onClose={() => setEditing(null)}
@@ -734,6 +744,7 @@ function ProductFormModal({
   open,
   mode,
   initial,
+  initialMix,
   existingCodes,
   formulaOptions,
   onClose,
@@ -741,6 +752,7 @@ function ProductFormModal({
   open: boolean
   mode: 'add' | 'edit'
   initial?: Product
+  initialMix?: MixDesign
   existingCodes: Set<string>
   formulaOptions: { code: string; no: string; name: string }[]
   onClose: () => void
@@ -763,6 +775,16 @@ function ProductFormModal({
   const [codeDirty, setCodeDirty] = useState(false)
   const [nameDirty, setNameDirty] = useState(false)
   const [err, setErr] = useState('')
+  /* Inline Mix Design (ส่วนผสมวัตถุดิบ ต่อ 1 คิว) for plant products — น้ำ ตั้งต้น 165 ล. */
+  const [mixCement, setMixCement] = useState('')
+  const [mixSand, setMixSand] = useState('')
+  const [mixAggregate, setMixAggregate] = useState('')
+  const [mixWater, setMixWater] = useState(String(DEFAULT_WATER_L))
+  const [mixPlastomix, setMixPlastomix] = useState('')
+  const [mixSikament, setMixSikament] = useState('')
+  const [mixPce, setMixPce] = useState('')
+  const [mixAccelerator, setMixAccelerator] = useState('')
+  const [mixWaterproof, setMixWaterproof] = useState('')
 
   const readOnlyStructure = mode === 'edit' /* site/zone/category are fixed once created */
   /* The code may be renamed while adding, or while editing a USER-ADDED product
@@ -790,15 +812,22 @@ function ProductFormModal({
       setPriceDeliver(initial.pickupPrices ? String(initial.pickupPrices['จัดส่ง']) : '')
       setPickup(initial.pickup ?? 'รับเอง')
       setFormulaCode(initial.formulaCode ?? '')
+      const s = (n?: number) => (n ? String(n) : '')
+      setMixCement(s(initialMix?.cement)); setMixSand(s(initialMix?.sand)); setMixAggregate(s(initialMix?.aggregate))
+      setMixWater(String(initialMix?.water ?? DEFAULT_WATER_L))
+      setMixPlastomix(s(initialMix?.plastomix)); setMixSikament(s(initialMix?.sikament)); setMixPce(s(initialMix?.pce))
+      setMixAccelerator(s(initialMix?.accelerator)); setMixWaterproof(s(initialMix?.waterproof))
       setCodeDirty(true); setNameDirty(true)
     } else {
       setSite(null)
       setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank'); setCustomType('')
       setCode(''); setName(''); setUnit('คิว'); setStrength(''); setPrice('')
       setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง'); setFormulaCode('')
+      setMixCement(''); setMixSand(''); setMixAggregate(''); setMixWater(String(DEFAULT_WATER_L))
+      setMixPlastomix(''); setMixSikament(''); setMixPce(''); setMixAccelerator(''); setMixWaterproof('')
       setCodeDirty(false); setNameDirty(false)
     }
-  }, [open, mode, initial])
+  }, [open, mode, initial, initialMix])
 
   /* Auto-fill code + name from the plant drivers while adding, until the user
      types their own value in either field. */
@@ -853,11 +882,28 @@ function ProductFormModal({
       const strengthKsc = category === 'lean' ? 0 : Number(strength)
       /* Store a formula link only when it differs from the auto match on the code. */
       const fc = formulaCode && formulaCode !== c ? formulaCode : ''
+      /* Own สูตรวัตถุดิบ (Mix Design) — required unless the product SHARES an
+         existing formula via the สูตรการผลิต dropdown. */
+      let mix: MixDesign | null = null
+      if (!fc) {
+        const mc = Number(mixCement), ms = Number(mixSand), ma = Number(mixAggregate)
+        if (!(mc > 0) || !(ms > 0) || !(ma > 0)) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
+        const r2n = (n: number) => Math.round(n * 100) / 100
+        const optN = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n > 0 ? r2n(n) : undefined }
+        const w = Number(mixWater)
+        mix = {
+          code: c, cement: r2n(mc), sand: r2n(ms), aggregate: r2n(ma),
+          water: Number.isFinite(w) && w > 0 ? r2n(w) : DEFAULT_WATER_L,
+          plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
+        }
+      }
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, ...(fc ? { formulaCode: fc } : {}) })
       } else {
         updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: fc, cementBrand: brand })
       }
+      /* Persist the mix: update the existing สูตร, or create a new one. */
+      if (mix) { if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix) }
     } else if (isCustom) {
       /* Brand-new foundry type — user supplies the type name, unit and a single price. */
       const t = customType.trim()
@@ -995,9 +1041,9 @@ function ProductFormModal({
                 <Field label="ราคา/หน่วย (รวม VAT)" required>
                   <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 2400" />
                 </Field>
-                <Field label="สูตรการผลิต" hint="ผูกกับเลขที่สูตร (Mix Design) — เว้นว่าง = จับคู่อัตโนมัติจากรหัส">
+                <Field label="สูตรการผลิต" hint="เว้นว่าง = สร้างสูตรของสินค้านี้เอง (กรอกส่วนผสมด้านล่าง) · เลือก = ใช้สูตรร่วมกับสินค้าอื่น">
                   <Select value={formulaCode} onChange={(e) => setFormulaCode(e.target.value)}>
-                    <option value="">— ไม่ระบุ (จับคู่อัตโนมัติ) —</option>
+                    <option value="">— สร้างสูตรของสินค้านี้เอง —</option>
                     <optgroup label="ปูน SCG">
                       {scgFormulas.map((f) => <option key={f.code} value={f.code}>{f.no} · {f.name}</option>)}
                     </optgroup>
@@ -1007,6 +1053,28 @@ function ProductFormModal({
                   </Select>
                 </Field>
               </div>
+
+              {/* Inline สูตรวัตถุดิบ (Mix Design) — hidden when sharing an existing formula. */}
+              {formulaCode ? (
+                <div style={{ fontSize: 12.5, color: 'var(--kpc-text-muted)', background: 'var(--kpc-surface-alt)', borderRadius: 8, padding: '10px 12px' }}>
+                  ใช้สูตรวัตถุดิบร่วมกับ <strong className="mono">{formulaCode}</strong> — ไม่ต้องกรอกส่วนผสมซ้ำ
+                </div>
+              ) : (
+                <div style={{ border: '1px solid var(--kpc-border)', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--kpc-primary-ink)' }}>ส่วนผสมวัตถุดิบ (Mix Design) ต่อ 1 คิว</div>
+                  <div className="grid g-2" style={{ gap: 12 }}>
+                    <Field label="ปูน (กก.)" required><Input type="number" min={0} value={mixCement} onChange={(e) => setMixCement(e.target.value)} placeholder="เช่น 280" /></Field>
+                    <Field label="น้ำ (ล.)" required hint="ค่าเริ่มต้น 165 ล./คิว"><Input type="number" min={0} value={mixWater} onChange={(e) => setMixWater(e.target.value)} /></Field>
+                    <Field label="ทราย (กก.)" required><Input type="number" min={0} value={mixSand} onChange={(e) => setMixSand(e.target.value)} placeholder="เช่น 830" /></Field>
+                    <Field label={'หิน 3/4" (กก.)'} required><Input type="number" min={0} value={mixAggregate} onChange={(e) => setMixAggregate(e.target.value)} placeholder="เช่น 1140" /></Field>
+                  </div>
+                  <div className="grid g-3" style={{ gap: 12, marginTop: 12 }}>
+                    <Field label="น้ำยาหน่วง (ล.)" hint="Plastomix-704 · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixPlastomix} onChange={(e) => setMixPlastomix(e.target.value)} placeholder="เช่น 1.38" /></Field>
+                    <Field label="น้ำยาเร่ง (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixAccelerator} onChange={(e) => setMixAccelerator(e.target.value)} placeholder="—" /></Field>
+                    <Field label="กันซึม (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixWaterproof} onChange={(e) => setMixWaterproof(e.target.value)} placeholder="—" /></Field>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <>

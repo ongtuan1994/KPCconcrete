@@ -3,6 +3,17 @@ import { COMPANY } from '../../data/real'
 import type { PriceListReport, PriceListReportRow } from '../../data/createdDocs'
 
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** Compact number for material quantities (no forced decimals). */
+const qty = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+/** Shorten the cement-brand label in the narrow column — "ปูนปอร์ตแลนด์ SCG" → "SCG". */
+const shortBrand = (b?: string) => (b && b.includes('SCG') ? 'SCG' : (b ?? ''))
+/** Cement-cell tint — ดอกบัว = เขียวอ่อน · SCG = แดงอ่อน. */
+function brandBg(b?: string): CSSProperties {
+  if (!b) return {}
+  if (b.includes('SCG')) return { background: '#fdecea' }
+  if (b.includes('ดอกบัว')) return { background: '#e6f4ea' }
+  return {}
+}
 
 function fmtCreated(iso: string): string {
   const d = new Date(iso)
@@ -39,37 +50,75 @@ function byDistance(rows: PriceListReportRow[]): { label: string; rows: PriceLis
   return out
 }
 
+/** กำลังอัด (ksc) for sorting — the stored value, else the last 3 digits of the
+    code (Lean = 000 → 0), so old reports without strengthKsc still sort right. */
+function strengthOf(r: PriceListReportRow): number {
+  if (r.strengthKsc != null) return r.strengthKsc
+  const m = r.code.match(/(\d{3})$/)
+  return m ? Number(m[1]) : 0
+}
+
+/** Within one distance, split by ปูนซีเมนต์ (ดอกบัว then SCG) and sort each brand
+    Lean → กำลังอัดต่ำ → สูง (by ksc ascending; Lean = 0 sorts first). */
+function byBrand(rows: PriceListReportRow[]): { brand: string; rows: PriceListReportRow[] }[] {
+  const order = (b?: string) => (b && b.includes('SCG') ? 1 : 0) /* ดอกบัว ก่อน SCG */
+  const groups = new Map<string, PriceListReportRow[]>()
+  for (const r of rows) {
+    const key = r.brand || '—'
+    const a = groups.get(key) ?? []; a.push(r); groups.set(key, a)
+  }
+  return [...groups.entries()]
+    .map(([brand, rs]) => ({ brand, rows: rs.slice().sort((a, b) => strengthOf(a) - strengthOf(b)) }))
+    .sort((a, b) => order(a.brand) - order(b.brand) || a.brand.localeCompare(b.brand))
+}
+
 /** One price table. Empty groups render a red "ไม่มี" row. Foundry items priced
     per collection method show both ราคา (รับเอง / จัดส่ง) in the price cell. */
-function PriceTable({ rows }: { rows: PriceListReportRow[] }) {
+function PriceTable({ rows, showMix }: { rows: PriceListReportRow[]; showMix?: boolean }) {
+  const colCount = showMix ? 13 : 6
+  const cellNum = (v?: number) => (v ? qty(v) : <span style={{ color: faint }}>—</span>)
   return (
     <table className="trr-table">
       <thead>
         <tr>
-          <th className="n" style={{ ...thStyle, width: '5%' }}>ลำดับ</th>
-          <th style={{ ...thStyle, width: '11%' }}>สูตรการผลิต</th>
-          <th style={{ ...thStyle, width: '14%' }}>รหัสสินค้า</th>
+          <th className="n" style={{ ...thStyle, width: '3%' }}>ลำดับ</th>
+          <th style={{ ...thStyle, width: showMix ? '11%' : '18%' }}>รหัสสินค้า</th>
           <th style={thStyle}>รายการ</th>
-          <th className="c" style={{ ...thStyle, width: '11%' }}>ปูนซีเมนต์</th>
-          <th className="c" style={{ ...thStyle, width: '15%' }}>ระยะส่ง</th>
-          <th className="c" style={{ ...thStyle, width: '8%' }}>หน่วย</th>
-          <th className="n" style={{ ...thStyle, width: '15%' }}>ราคา/หน่วย</th>
+          <th className="c" style={{ ...thStyle, width: showMix ? '7%' : '12%' }}>ปูนซีเมนต์</th>
+          <th className="c" style={{ ...thStyle, width: '5%' }}>หน่วย</th>
+          {showMix && <>
+            <th className="n" style={{ ...thStyle, width: '6%' }}>ปูน (กก.)</th>
+            <th className="n" style={{ ...thStyle, width: '6%' }}>ทราย (กก.)</th>
+            <th className="n" style={{ ...thStyle, width: '6%' }}>หิน (กก.)</th>
+            <th className="n" style={{ ...thStyle, width: '5%' }}>น้ำ (ล.)</th>
+            <th className="n" style={{ ...thStyle, width: '7%' }}>น้ำยาหน่วง (ล.)</th>
+            <th className="n" style={{ ...thStyle, width: '7%' }}>น้ำยาเร่ง (ล.)</th>
+            <th className="n" style={{ ...thStyle, width: '7%' }}>กันซึม (ล.)</th>
+          </>}
+          <th className="n" style={{ ...thStyle, width: showMix ? '10%' : '15%' }}>ราคา/หน่วย</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td className="c" colSpan={8} style={{ color: RED, fontWeight: 700 }}>ไม่มี</td>
+            <td className="c" colSpan={colCount} style={{ color: RED, fontWeight: 700 }}>ไม่มี</td>
           </tr>
         ) : rows.map((r, i) => (
           <tr key={r.code}>
             <td className="n mono">{i + 1}</td>
-            <td className="mono">{r.formulaNo || <span style={{ color: RED, fontWeight: 700 }}>ไม่มี</span>}</td>
             <td className="mono">{r.code}</td>
             <td>{r.name}</td>
-            <td className="c">{r.brand || <span style={{ color: faint }}>—</span>}</td>
-            <td className="c">{r.zone || <span style={{ color: faint }}>—</span>}</td>
+            <td className="c" style={brandBg(r.brand)}>{r.brand ? shortBrand(r.brand) : <span style={{ color: faint }}>—</span>}</td>
             <td className="c">{r.unit}</td>
+            {showMix && <>
+              <td className="n mono">{r.mix ? qty(r.mix.cement) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? qty(r.mix.sand) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? qty(r.mix.aggregate) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? qty(r.mix.water) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? cellNum(r.mix.plastomix) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? cellNum(r.mix.accelerator) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? cellNum(r.mix.waterproof) : <span style={{ color: faint }}>—</span>}</td>
+            </>}
             <td className="n mono">
               {r.pickupPrices ? (
                 <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -128,11 +177,23 @@ export function PriceListReportDoc({ report }: { report: PriceListReport }) {
                   <div style={{ fontSize: 12, fontWeight: 700, color: PRIMARY_INK, margin: '8px 0 4px', paddingLeft: 8, borderLeft: `3px solid ${PRIMARY}` }}>
                     {sub.label} <span style={{ fontWeight: 400, color: faint, fontSize: 11 }}>· {sub.rows.length} รายการ</span>
                   </div>
-                  <PriceTable rows={sub.rows} />
+                  {sub.rows.length === 0 ? (
+                    <PriceTable rows={[]} showMix />
+                  ) : (
+                    /* Within a distance: split by ปูนซีเมนต์, each sorted Lean → ต่ำ → สูง. */
+                    byBrand(sub.rows).map((bg) => (
+                      <div key={bg.brand} className="plr-block" style={{ marginBottom: 6 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: '#333', margin: '4px 0 3px', paddingLeft: 10 }}>
+                          ปูน{shortBrand(bg.brand)} <span style={{ fontWeight: 400, color: faint }}>· {bg.rows.length} รายการ</span>
+                        </div>
+                        <PriceTable rows={bg.rows} showMix />
+                      </div>
+                    ))
+                  )}
                 </div>
               ))
             ) : (
-              <PriceTable rows={g.rows} />
+              <div className="plr-block"><PriceTable rows={g.rows} /></div>
             )}
           </div>
         )

@@ -548,12 +548,15 @@ export interface PriceListReportRow {
   name: string
   brand?: string     /* ปูนซีเมนต์ — ดอกบัว / SCG (concrete items only) */
   zone?: string      /* ระยะส่ง — e.g. "On Site (≤20 km)" (concrete items only) */
+  strengthKsc?: number /* กำลังอัด (ksc) — 0 = Lean; used to sort Lean→low→high */
   unit: string
   pickup?: string    /* การรับของ — รับเอง / จัดส่ง (foundry items only) */
   /** Foundry items priced per collection method — shown as two prices in the
       ราคา/หน่วย cell (รับเอง / จัดส่ง). */
   pickupPrices?: { 'รับเอง': number; 'จัดส่ง': number }
   price: number
+  /** สูตรวัตถุดิบ (Mix Design) per 1 คิว — concrete/plant items only. */
+  mix?: { cement: number; sand: number; aggregate: number; water: number; plastomix?: number; sikament?: number; pce?: number; accelerator?: number; waterproof?: number }
 }
 /** One category group (หมวดหมู่) in a price-list report. */
 export interface PriceListReportGroup { label: string; rows: PriceListReportRow[] }

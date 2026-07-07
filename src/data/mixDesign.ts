@@ -5,18 +5,27 @@
    Cement charges to ปูน SCG (codes KPCRO*) or ปูนดอกบัว (codes KPCR2*).
    NOTE: values transcribed from a screenshot — verify against the master sheet. */
 
+/** Default water per 1 m³ (ลิตร) — the plant uses 165 ล. for every สูตร, so this
+    is the fallback when a mix design carries no explicit water value. */
+export const DEFAULT_WATER_L = 165
+
 export interface MixDesign {
   code: string
   cement: number       /* ปูนผง (kg/m³) */
   sand: number         /* ทรายหยาบ (kg/m³) */
   aggregate: number    /* หิน 3/4" (kg/m³) */
-  plastomix?: number   /* Plastomix 704 (Type D) ลิตร/m³ */
+  water?: number       /* น้ำ (ลิตร/m³) — defaults to DEFAULT_WATER_L (165) */
+  plastomix?: number   /* น้ำยาหน่วง — Plastomix 704 (Type D) ลิตร/m³ */
   sikament?: number    /* Sikament F2 (Type F) ลิตร/m³ */
   pce?: number         /* PCE-1 ลิตร/m³ */
+  accelerator?: number /* น้ำยาเร่ง (ลิตร/m³) */
+  waterproof?: number  /* น้ำยากันซึม (ลิตร/m³) */
   /** Manual เลขที่สูตร override. Blank/undefined → the auto CF0-xxx / CF2-xxx
       number (by brand + list order) is used instead. */
   formulaNo?: string
 }
+/** Water (ลิตร/คิว) for a mix design — explicit value or the 165 ล. default. */
+export const mixWater = (m: Pick<MixDesign, 'water'>): number => m.water ?? DEFAULT_WATER_L
 
 export const MIX_DESIGNS: MixDesign[] = [
   /* ── ปูน SCG · On Site (KPCROS) ── */

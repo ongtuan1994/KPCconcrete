@@ -5,7 +5,7 @@ import { Badge, Pill, SearchInput, Button, Field, Input } from '../components/ui
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { KpiCard } from '../components/charts'
-import { MIX_DESIGNS, buildMixFormulaNos, type MixDesign } from '../data/mixDesign'
+import { MIX_DESIGNS, buildMixFormulaNos, mixWater, DEFAULT_WATER_L, type MixDesign } from '../data/mixDesign'
 import { PRODUCTS, type Product } from '../data/real'
 import { prodName, cleanProductName as cleanName } from '../data/selectors'
 import { addGeneralReport, addMixDesign, updateMixDesign, removeMixDesign, isAddedMixDesign, updateProduct, useCreatedDocs, type MixDesignReport } from '../data/createdDocs'
@@ -165,9 +165,10 @@ export function MixDesign() {
     { key: 'cement', header: 'ปูน (กก.)', align: 'right', cell: (r) => num(r.cement) },
     { key: 'sand', header: 'ทราย (กก.)', align: 'right', cell: (r) => num(r.sand) },
     { key: 'agg', header: 'หิน 3/4" (กก.)', align: 'right', cell: (r) => num(r.aggregate) },
-    { key: 'd', header: 'Plastomix-704 (D)', align: 'right', cell: (r) => num(r.plastomix) },
-    { key: 'f', header: 'Sikament F2 (F)', align: 'right', cell: (r) => num(r.sikament) },
-    { key: 'pce', header: 'PCE-1', align: 'right', cell: (r) => num(r.pce) },
+    { key: 'water', header: 'น้ำ (ล.)', align: 'right', cell: (r) => num(mixWater(r)) },
+    { key: 'retarder', header: 'น้ำยาหน่วง (ล.)', align: 'right', cell: (r) => num(r.plastomix) },
+    { key: 'accel', header: 'น้ำยาเร่ง (ล.)', align: 'right', cell: (r) => num(r.accelerator) },
+    { key: 'wproof', header: 'กันซึม (ล.)', align: 'right', cell: (r) => num(r.waterproof) },
     { key: 'edit', header: '', align: 'center', cell: (r) => <Button size="sm" variant="secondary" onClick={() => setEditing(r)}>แก้ไข</Button> },
   ]
 
@@ -179,8 +180,8 @@ export function MixDesign() {
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['เลขที่สูตร', 'รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'ปูน (กก./คิว)', 'ทราย (กก./คิว)', 'หิน (กก./คิว)', 'Plastomix-704 (ล./คิว)', 'Sikament F2 (ล./คิว)', 'PCE-1 (ล./คิว)']
-              const body = rows.map((r) => { const codes = codesForFormula(r.code); return [formulaNo(r.code), codes.join(' / '), namesForFormula(r.code).join(' / '), brandsForFormula(r.code).join(' / '), r.cement, r.sand, r.aggregate, r.plastomix ?? '', r.sikament ?? '', r.pce ?? ''] })
+              const head = ['เลขที่สูตร', 'รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'ปูน (กก./คิว)', 'ทราย (กก./คิว)', 'หิน (กก./คิว)', 'น้ำ (ล./คิว)', 'น้ำยาหน่วง (ล./คิว)', 'น้ำยาเร่ง (ล./คิว)', 'กันซึม (ล./คิว)']
+              const body = rows.map((r) => { const codes = codesForFormula(r.code); return [formulaNo(r.code), codes.join(' / '), namesForFormula(r.code).join(' / '), brandsForFormula(r.code).join(' / '), r.cement, r.sand, r.aggregate, mixWater(r), r.plastomix ?? '', r.accelerator ?? '', r.waterproof ?? ''] })
               downloadCsv('mix-design', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
@@ -249,9 +250,12 @@ function MixFormulaModal({
   const [cement, setCement] = useState('')
   const [sand, setSand] = useState('')
   const [aggregate, setAggregate] = useState('')
+  const [water, setWater] = useState(String(DEFAULT_WATER_L))
   const [plastomix, setPlastomix] = useState('')
   const [sikament, setSikament] = useState('')
   const [pce, setPce] = useState('')
+  const [accelerator, setAccelerator] = useState('')
+  const [waterproof, setWaterproof] = useState('')
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -262,10 +266,11 @@ function MixFormulaModal({
       setSelected(new Set([initial.code]))
       setFormulaNo(initial.formulaNo ?? '')
       setCement(s(initial.cement)); setSand(s(initial.sand)); setAggregate(s(initial.aggregate))
-      setPlastomix(s(initial.plastomix)); setSikament(s(initial.sikament)); setPce(s(initial.pce))
+      setWater(String(initial.water ?? DEFAULT_WATER_L))
+      setPlastomix(s(initial.plastomix)); setSikament(s(initial.sikament)); setPce(s(initial.pce)); setAccelerator(s(initial.accelerator)); setWaterproof(s(initial.waterproof))
     } else {
       setSelected(new Set()); setFormulaNo('')
-      setCement(''); setSand(''); setAggregate(''); setPlastomix(''); setSikament(''); setPce('')
+      setCement(''); setSand(''); setAggregate(''); setWater(String(DEFAULT_WATER_L)); setPlastomix(''); setSikament(''); setPce(''); setAccelerator(''); setWaterproof('')
     }
   }, [open, mode, initial])
 
@@ -299,8 +304,10 @@ function MixFormulaModal({
       return v.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : undefined
     }
     const fno = formulaNo.trim() || undefined
+    const wn = Number(water)
+    const wat = Number.isFinite(wn) && wn > 0 ? Math.round(wn * 100) / 100 : DEFAULT_WATER_L
     const owner = codes[0]
-    const m: MixDesign = { code: owner, cement: c, sand: sd, aggregate: ag, plastomix: opt(plastomix), sikament: opt(sikament), pce: opt(pce), formulaNo: fno }
+    const m: MixDesign = { code: owner, cement: c, sand: sd, aggregate: ag, water: wat, plastomix: opt(plastomix), sikament: opt(sikament), pce: opt(pce), accelerator: opt(accelerator), waterproof: opt(waterproof), formulaNo: fno }
     if (mode === 'add') {
       addMixDesign(m)
       /* The remaining picks SHARE this สูตร via a formulaCode link to the owner. */
@@ -371,16 +378,19 @@ function MixFormulaModal({
           <Field label="หิน 3/4&quot; (กก.)" required>
             <Input type="number" min={0} value={aggregate} onChange={(e) => setAggregate(e.target.value)} placeholder="เช่น 1140" />
           </Field>
+          <Field label="น้ำ (ล.)" required hint="ค่าเริ่มต้น 165 ล./คิว">
+            <Input type="number" min={0} value={water} onChange={(e) => setWater(e.target.value)} />
+          </Field>
         </div>
         <div className="grid g-3" style={{ gap: 12 }}>
-          <Field label="Plastomix-704 (ล.)" hint="ไม่บังคับ">
+          <Field label="น้ำยาหน่วง (ล.)" hint="Plastomix-704 · ไม่บังคับ">
             <Input type="number" min={0} step={0.01} value={plastomix} onChange={(e) => setPlastomix(e.target.value)} placeholder="เช่น 1.38" />
           </Field>
-          <Field label="Sikament F2 (ล.)" hint="ไม่บังคับ">
-            <Input type="number" min={0} step={0.01} value={sikament} onChange={(e) => setSikament(e.target.value)} placeholder="—" />
+          <Field label="น้ำยาเร่ง (ล.)" hint="ไม่บังคับ">
+            <Input type="number" min={0} step={0.01} value={accelerator} onChange={(e) => setAccelerator(e.target.value)} placeholder="—" />
           </Field>
-          <Field label="PCE-1 (ล.)" hint="ไม่บังคับ">
-            <Input type="number" min={0} step={0.01} value={pce} onChange={(e) => setPce(e.target.value)} placeholder="—" />
+          <Field label="กันซึม (ล.)" hint="ไม่บังคับ">
+            <Input type="number" min={0} step={0.01} value={waterproof} onChange={(e) => setWaterproof(e.target.value)} placeholder="—" />
           </Field>
         </div>
       </div>
