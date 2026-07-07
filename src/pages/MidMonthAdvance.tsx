@@ -5,12 +5,12 @@ import { Button, Card, Field, Input, Select } from '../components/ui'
 import { DocModal } from '../components/documents/DocModal'
 import { MidMonthAdvanceReportDoc } from '../components/documents/MidMonthAdvanceReportDoc'
 import { EMPLOYEES, type Employee } from '../data/employees'
+import { salaryStructureFor } from '../data/salaryStructure'
 import { monthLabel } from '../data/selectors'
 import { bahtText } from '../data/bahtText'
 import {
   addGeneralReport,
   addAdvance,
-  removeAdvance,
   useCreatedDocs,
   type AdvancePayment,
   type MidMonthAdvanceReport,
@@ -25,6 +25,9 @@ const CURRENT_MONTH = new Date().getMonth() + 1
 const DEFAULT_DAY = 15
 /** ค่าเริ่มต้นเบิกของคนงานพม่าโรงหล่อ (prefill, แก้ไขได้). */
 const FOUNDRY_DEFAULT_AMOUNT = 3000
+/** เพดานเบิกล่วงหน้าของแรงงานรายวัน — คนอื่นเพดาน = เงินเดือนของตัวเอง
+    (ตรงกับกติกาในหน้าจ่ายเงินเดือน). */
+const LABOR_ADVANCE_CAP = 3000
 /** งวดในระบบใช้ปี ค.ศ. (Gregorian); ข้อมูลบริษัทเป็น พ.ศ. 2569 = ค.ศ. 2026.
     payMonth ("YYYY-MM") ต้องตรงกับที่หน้าจ่ายเงินเดือนใช้หักเบิกล่วงหน้า. */
 const CE_YEAR = 2569 - 543
@@ -85,12 +88,14 @@ function GroupTable({
   onChange,
   amountHint,
   already,
+  remaining,
 }: {
   heading: string
   rows: Draft[]
   onChange: (rows: Draft[]) => void
   amountHint?: string
   already: (employeeId: string) => number
+  remaining: (employeeId: string) => number
 }) {
   const total = sumAmount(rows)
   const totalAlready = rows.reduce((s, r) => s + already(r.employeeId), 0)
@@ -117,6 +122,9 @@ function GroupTable({
         <tbody>
           {rows.map((r, i) => {
             const prev = already(r.employeeId)
+            const rem = remaining(r.employeeId)
+            const entered = Math.max(0, Number(r.amount) || 0)
+            const over = entered > rem
             return (
               <tr key={r.employeeId} style={{ borderTop: '1px solid var(--kpc-border)' }}>
                 <td style={{ padding: '6px 8px', color: 'var(--kpc-text-muted)' }}>{i + 1}</td>
@@ -135,10 +143,13 @@ function GroupTable({
                 <td style={{ padding: '6px 8px' }}>
                   <Input
                     type="number" step="100" min={0} placeholder="0"
-                    style={{ textAlign: 'right' }}
+                    style={{ textAlign: 'right', ...(over ? { borderColor: 'var(--kpc-danger)' } : {}) }}
                     value={r.amount}
                     onChange={(e) => set(i, { amount: e.target.value })}
                   />
+                  <div style={{ fontSize: 11, marginTop: 3, textAlign: 'right', color: over ? 'var(--kpc-danger)' : 'var(--kpc-text-faint)' }}>
+                    {over ? `⚠ เกินเพดาน — เบิกได้อีก ${money2(rem)}` : `เบิกได้อีก ${money2(rem)}`}
+                  </div>
                 </td>
               </tr>
             )
@@ -173,9 +184,10 @@ export function MidMonthAdvance() {
 
   const grandTotal = useMemo(() => sumAmount(plant) + sumAmount(foundryTh) + sumAmount(foundry), [plant, foundryTh, foundry])
 
-  /* How much each employee has ALREADY been advanced for the selected งวด
-     (any source — manual เบิกล่วงหน้า or a previous เบิกกลางเดือน). Shown red +
-     read-only per row to warn against a duplicate withdrawal. */
+  /* How much each employee has ALREADY been advanced for the selected งวด — from
+     any source (manual เบิกล่วงหน้า + every เบิกกลางเดือน batch saved so far).
+     Shown red + read-only per row, and drives the remaining-limit guard so an
+     employee who already hit their ceiling cannot withdraw again. */
   const payMonth = `${CE_YEAR}-${pad2(month)}`
   const alreadyByEmp = useMemo(() => {
     const m: Record<string, number> = {}
@@ -186,6 +198,17 @@ export function MidMonthAdvance() {
     return m
   }, [created.advances, payMonth])
   const already = (employeeId: string) => alreadyByEmp[employeeId] ?? 0
+
+  /* Advance ceiling per employee (same rule as payroll): แรงงานรายวัน = 3,000,
+     คนอื่น = เงินเดือนของตัวเอง. What can still be withdrawn this งวด =
+     เพดาน − เบิกไปแล้ว. */
+  const limitFor = (employeeId: string) => {
+    const emp = EMPLOYEES.find((e) => e.id === employeeId)
+    const st = salaryStructureFor(employeeId, created.salaryStructures)
+    const isLabor = emp?.department === 'labor' || st.dailyWage > 0
+    return isLabor ? LABOR_ADVANCE_CAP : st.baseSalary
+  }
+  const remaining = (employeeId: string) => Math.max(0, limitFor(employeeId) - already(employeeId))
 
   const buildSection = (key: MidMonthAdvanceSection['key'], heading: string, drafts: Draft[], date: string): MidMonthAdvanceSection => {
     const rows: MidMonthAdvanceRow[] = drafts.map((d) => ({
@@ -204,6 +227,16 @@ export function MidMonthAdvance() {
     const dnum = parseInt(day, 10)
     if (!dnum || dnum < 1 || dnum > 31) return setErr('กรุณาระบุวันที่เบิก (1–31)')
     if (grandTotal <= 0) return setErr('กรุณากรอกจำนวนเงินที่เบิกอย่างน้อย 1 รายการ')
+
+    /* Block any withdrawal that pushes an employee over their advance ceiling
+       for this งวด (เพดาน − เบิกไปแล้ว). */
+    const over = [...plant, ...foundryTh, ...foundry]
+      .map((r) => ({ r, entered: Math.max(0, Number(r.amount) || 0), rem: remaining(r.employeeId) }))
+      .filter((x) => x.entered > x.rem)
+    if (over.length > 0) {
+      const names = over.map((x) => `${x.r.name} (เบิกได้อีก ${money2(x.rem)})`).join(', ')
+      return setErr(`มีรายการเกินเพดานการเบิก: ${names} — กรุณาแก้ไขก่อนบันทึก`)
+    }
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const dateLabel = `${pad2(dnum)}/${pad2(month)}/2569`
@@ -228,12 +261,9 @@ export function MidMonthAdvance() {
 
     /* Link to payroll: record each withdrawal as an เบิกล่วงหน้า (AdvancePayment)
        for this งวด so it is auto-deducted from that month's salary — no re-keying.
-       Re-generating the same งวด replaces the records this page made (idempotent),
-       leaving any manually-entered advances untouched. */
+       These ADD to any existing advances (they are not replaced), so the amount
+       counts toward the employee's ceiling and blocks a further over-limit เบิก. */
     const isoDate = `${CE_YEAR}-${pad2(month)}-${pad2(dnum)}`
-    for (const a of created.advances) {
-      if (a.payMonth === payMonth && (a.note ?? '').startsWith(MID_MONTH_ADV_TAG)) removeAdvance(a.advNo)
-    }
     let maxNo = created.advances.reduce((m, a) => {
       const g = /^ADV(\d+)$/.exec(a.advNo)
       return g ? Math.max(m, parseInt(g[1], 10)) : m
@@ -259,6 +289,12 @@ export function MidMonthAdvance() {
       }
     }
 
+    /* Clear the amount inputs so the recorded withdrawal isn't accidentally
+       submitted again — the "เบิกไปแล้ว" column now reflects it. */
+    setPlant((rs) => rs.map((r) => ({ ...r, amount: '' })))
+    setFoundryTh((rs) => rs.map((r) => ({ ...r, amount: '' })))
+    setFoundry((rs) => rs.map((r) => ({ ...r, amount: '' })))
+
     setSavedId(report.id)
     setPreview(report)
   }
@@ -278,7 +314,8 @@ export function MidMonthAdvance() {
       <div className="card" style={{ padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: 'var(--kpc-text-muted)', borderLeft: '3px solid var(--kpc-primary)' }}>
         เงินที่เบิกในหน้านี้จะถูกบันทึกเป็น <strong>“เบิกล่วงหน้า”</strong> ของงวดที่เลือกให้อัตโนมัติ
         และจะถูก <strong>หักคืนตอนทำจ่ายเงินเดือนปลายเดือน</strong> — จึงไม่ต้องไปกรอกซ้ำที่เมนูเบิกล่วงหน้า
-        (ออกรายงานงวดเดิมซ้ำ ระบบจะแทนที่รายการเดิมของหน้านี้ให้ ไม่หักซ้ำ)
+        · ยอดที่เบิกแล้วจะขึ้นในช่อง <strong style={{ color: 'var(--kpc-danger)' }}>“เบิกไปแล้ว (งวดนี้)”</strong> สีแดง
+        และเบิกเพิ่มได้ไม่เกินเพดานของแต่ละคน
       </div>
 
       {savedId && (
@@ -309,6 +346,7 @@ export function MidMonthAdvance() {
           rows={plant}
           onChange={setPlant}
           already={already}
+          remaining={remaining}
           amountHint="กรอกจำนวนเงินของแต่ละคน (เว้นว่าง = ไม่เบิก)"
         />
         <GroupTable
@@ -316,6 +354,7 @@ export function MidMonthAdvance() {
           rows={foundryTh}
           onChange={setFoundryTh}
           already={already}
+          remaining={remaining}
           amountHint="กรอกจำนวนเงินของแต่ละคน (เว้นว่าง = ไม่เบิก)"
         />
         <GroupTable
@@ -323,6 +362,7 @@ export function MidMonthAdvance() {
           rows={foundry}
           onChange={setFoundry}
           already={already}
+          remaining={remaining}
           amountHint={`ตั้งค่าเริ่มต้น ${FOUNDRY_DEFAULT_AMOUNT.toLocaleString()} บาท/คน — แก้ไขได้`}
         />
       </div>
