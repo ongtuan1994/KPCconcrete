@@ -115,9 +115,11 @@ function PriceTable({ rows, showMix }: { rows: PriceListReportRow[]; showMix?: b
               <td className="n mono">{r.mix ? qty(r.mix.sand) : <span style={{ color: faint }}>—</span>}</td>
               <td className="n mono">{r.mix ? qty(r.mix.aggregate) : <span style={{ color: faint }}>—</span>}</td>
               <td className="n mono">{r.mix ? qty(r.mix.water) : <span style={{ color: faint }}>—</span>}</td>
+              {/* หน่วง = Plastomix-704 · เร่ง = PCE-1 Gold 500 SF (pce/accelerator) ·
+                  กันซึม = SikaPlastocrete N (sikament/waterproof). */}
               <td className="n mono">{r.mix ? cellNum(r.mix.plastomix) : <span style={{ color: faint }}>—</span>}</td>
-              <td className="n mono">{r.mix ? cellNum(r.mix.accelerator) : <span style={{ color: faint }}>—</span>}</td>
-              <td className="n mono">{r.mix ? cellNum(r.mix.waterproof) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? cellNum(r.mix.pce || r.mix.accelerator) : <span style={{ color: faint }}>—</span>}</td>
+              <td className="n mono">{r.mix ? cellNum(r.mix.sikament || r.mix.waterproof) : <span style={{ color: faint }}>—</span>}</td>
             </>}
             <td className="n mono">
               {r.pickupPrices ? (

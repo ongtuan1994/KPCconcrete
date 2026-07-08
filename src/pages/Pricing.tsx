@@ -5,7 +5,7 @@ import { Button, Badge, Pill, Field, Input, Select, type Tone } from '../compone
 import { Modal } from '../components/Modal'
 import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, type Product, type ProductSite, type FoundryKind } from '../data/real'
-import { MIX_DESIGNS, DEFAULT_WATER_L, type MixDesign } from '../data/mixDesign'
+import { MIX_DESIGNS, DEFAULT_WATER_L, mixWater, type MixDesign } from '../data/mixDesign'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
 import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, addMixDesign, updateMixDesign, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -21,14 +21,17 @@ import { TransportPricing } from './TransportPricing'
 /** Combined ราคาสินค้า / ค่าขนส่ง view — a toggle switches between the product
     price list and the transport-surcharge schedule. Defaults to products. */
 export function Pricing() {
-  const [view, setView] = useState<'products' | 'transport'>('products')
+  const [view, setView] = useState<'products' | 'transport' | 'foundry'>('products')
   return (
     <>
       <div className="pills" style={{ marginBottom: 20 }}>
-        <Pill active={view === 'products'} onClick={() => setView('products')}>ราคาสินค้า</Pill>
+        <Pill active={view === 'products'} onClick={() => setView('products')}>ราคาสินค้าแพล้นปูน</Pill>
         <Pill active={view === 'transport'} onClick={() => setView('transport')}>ค่าขนส่ง</Pill>
+        <Pill active={view === 'foundry'} onClick={() => setView('foundry')}>ราคาสินค้าโรงหล่อ</Pill>
       </div>
-      {view === 'products' ? <ProductPricing /> : <TransportPricing />}
+      {view === 'products' ? <ProductPricing scope="plant" />
+        : view === 'foundry' ? <ProductPricing scope="foundry" />
+        : <TransportPricing />}
     </>
   )
 }
@@ -80,10 +83,10 @@ function deliveryZone(code: string): Zone | null {
 /* Cement brand is encoded in positions 4–5 of the code:
    R2 / P2 → ปูน ดอกบัว ; RO / PO (no "2") → ปูนปอร์ตแลนด์ SCG. */
 type BrandId = 'DOKBUA' | 'SCG'
-interface Brand { id: BrandId; label: string; tone: Tone }
+interface Brand { id: BrandId; label: string; short: string; tone: Tone }
 const BRANDS: Brand[] = [
-  { id: 'DOKBUA', label: 'ดอกบัว',           tone: 'success' },
-  { id: 'SCG',    label: 'ปูนปอร์ตแลนด์ SCG', tone: 'danger' },
+  { id: 'DOKBUA', label: 'ดอกบัว',           short: 'ดอกบัว', tone: 'success' },
+  { id: 'SCG',    label: 'ปูนปอร์ตแลนด์ SCG', short: 'SCG',    tone: 'danger' },
 ]
 /** Filled cell background per cement brand — ดอกบัว เขียว · SCG แดง. */
 const BRAND_BG: Record<BrandId, string> = { DOKBUA: '#16a34a', SCG: '#dc2626' }
@@ -118,8 +121,8 @@ function genPlantName(brand: BrandId, category: 'concrete' | 'lean', strength: s
     : `คอนกรีตกำลังอัด ${Number(strength) || 0} กก./ตร.ซม. ${bt}`
 }
 
-function ProductPricing() {
-  const [site, setSite] = useState<'all' | ProductSite>('all')
+function ProductPricing({ scope }: { scope: ProductSite }) {
+  const isFoundry = scope === 'foundry'
   const [type, setType] = useState<'all' | string>('all')
   const [zone, setZone] = useState<'all' | ZoneId>('all')
   const [brand, setBrand] = useState<'all' | BrandId>('all')
@@ -160,13 +163,13 @@ function ProductPricing() {
   const mixForProduct = (p: Product): MixDesign | undefined => mixByCode.get(p.formulaCode || p.code)
 
   const rows = products.filter((p) => {
-    if (site !== 'all' && productSite(p) !== site) return false
+    if (productSite(p) !== scope) return false
     if (type !== 'all' && prodType(p).th !== type) return false
-    if (zone !== 'all') {
+    if (!isFoundry && zone !== 'all') {
       const z = deliveryZone(p.code)
       if (!z || z.id !== zone) return false
     }
-    if (brand !== 'all') {
+    if (!isFoundry && brand !== 'all') {
       const b = cementBrandOf(p)
       if (!b || b.id !== brand) return false
     }
@@ -192,57 +195,58 @@ function ProductPricing() {
     }
   }, [rows, sortBy])
 
-  const zoneCount = (id: ZoneId) => PRODUCTS.filter((p) => deliveryZone(p.code)?.id === id).length
-  const brandCount = (id: BrandId) => products.filter((p) => cementBrandOf(p)?.id === id).length
-  const siteCount = (id: ProductSite) => PRODUCTS.filter((p) => productSite(p) === id).length
+  const zoneCount = (id: ZoneId) => products.filter((p) => productSite(p) === scope && deliveryZone(p.code)?.id === id).length
+  const brandCount = (id: BrandId) => products.filter((p) => productSite(p) === scope && cementBrandOf(p)?.id === id).length
 
-  /* ประเภท options — distinct prodType labels within the selected SITE, in first-
-     seen order, each with its product count. Resets to "all" when SITE changes. */
+  /* ประเภท options — distinct prodType labels within this SITE scope, in first-seen
+     order, each with its product count (includes user-added products). */
   const typeOptions = useMemo(() => {
     const m = new Map<string, number>()
-    for (const p of PRODUCTS) {
-      if (site !== 'all' && productSite(p) !== site) continue
+    for (const p of products) {
+      if (productSite(p) !== scope) continue
       const th = prodType(p).th
       m.set(th, (m.get(th) ?? 0) + 1)
     }
     return [...m.entries()].map(([label, count]) => ({ label, count }))
-  }, [site])
-  const selectSite = (s: 'all' | ProductSite) => { setSite(s); setType('all') }
+  }, [products, scope])
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
     { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{cleanName(r.name)}</span> },
-    {
-      key: 'brand',
-      header: 'ปูนซีเมนต์',
-      align: 'center',
-      cell: (r) => {
-        const b = cementBrandOf(r)
-        if (!b) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
-        return (
-          <span style={{ display: 'inline-block', minWidth: 96, background: BRAND_BG[b.id], color: '#fff', padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}>
-            {b.label}
-          </span>
-        )
-      },
-    },
-    { key: 'str', header: 'กำลังอัด', align: 'right', cell: (r) => (r.strengthKsc ? <span className="mono">{r.strengthKsc} ksc</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
-    {
-      key: 'zone',
-      header: 'ระยะส่ง',
-      align: 'center',
-      cell: (r) => {
-        const z = deliveryZone(r.code)
-        return z
-          ? (
-            <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-              <Badge tone={z.tone} pip={false} square>{z.label}</Badge>
-              <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>{z.range}</span>
+    /* ปูนซีเมนต์ / กำลังอัด / ระยะส่ง are plant-only concepts — hidden on the โรงหล่อ page. */
+    ...(isFoundry ? [] : [
+      {
+        key: 'brand',
+        header: 'ปูนซีเมนต์',
+        align: 'center',
+        cell: (r: Product) => {
+          const b = cementBrandOf(r)
+          if (!b) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+          return (
+            <span style={{ display: 'inline-block', minWidth: 96, background: BRAND_BG[b.id], color: '#fff', padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600 }}>
+              {b.short}
             </span>
           )
-          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        },
       },
-    },
+      { key: 'str', header: 'กำลังอัด', align: 'right', cell: (r: Product) => (r.strengthKsc ? <span className="mono">{r.strengthKsc} ksc</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
+      {
+        key: 'zone',
+        header: 'ระยะส่ง',
+        align: 'center',
+        cell: (r: Product) => {
+          const z = deliveryZone(r.code)
+          return z
+            ? (
+              <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <Badge tone={z.tone} pip={false} square>{z.label}</Badge>
+                <span style={{ fontSize: 11, color: 'var(--kpc-text-muted)' }}>{z.range}</span>
+              </span>
+            )
+            : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        },
+      },
+    ] as Column<Product>[]),
     { key: 'unit', header: 'หน่วย', align: 'center', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>{r.unit}</span> },
     { key: 'cat', header: 'ประเภท', align: 'center', cell: (r) => { const t = prodType(r); return <Badge tone={t.tone} pip={false} square>{t.th}</Badge> } },
     {
@@ -291,12 +295,12 @@ function ProductPricing() {
       groupsMap.set(label, arr)
     }
     const groups = [...groupsMap.entries()].map(([label, rows]) => ({ label, rows }))
-    const scopeLabel = site === 'all' ? 'ทุก SITE' : SITES.find((s) => s.id === site)!.label
+    const scopeLabel = SITES.find((s) => s.id === scope)!.label
     const today = todayThai()
     const report: PriceListReport = {
       id: `gr_${Date.now()}`,
       kind: 'price-list',
-      title: `ราคาสินค้า (${scopeLabel}) ณ ${today}`,
+      title: `ราคาสินค้า${isFoundry ? 'โรงหล่อ' : ''} (${scopeLabel}) ณ ${today}`,
       fromLabel: today,
       toLabel: today,
       scopeLabel,
@@ -313,19 +317,41 @@ function ProductPricing() {
   return (
     <>
       <PageHeader
-        title="ราคาสินค้า"
-        sub="Price List · ราคาขายต่อคิว (อ้างอิงจริงจากใบจ่ายคอนกรีต)"
+        title={isFoundry ? 'ราคาสินค้าโรงหล่อ' : 'ราคาสินค้าแพล้นปูน'}
+        sub={isFoundry ? 'Price List · โรงหล่อ (แผ่นพื้น / เสาไอ / แผ่นผนัง)' : 'Price List · ราคาขายต่อคิว (อ้างอิงจริงจากใบจ่ายคอนกรีต)'}
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'การรับของ', 'ราคา/หน่วย (รวม VAT)']
-              const body = sortedRows.map((p) => [
-                p.code, cleanName(p.name),
-                cementBrandOf(p)?.label ?? '',
-                p.strengthKsc || '',
-                deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
-                p.unit, prodType(p).th, p.pickup ?? '', p.price || '',
-              ])
+              if (isFoundry) {
+                /* โรงหล่อ — no cement brand / strength / zone / mix; เสาไอ carries รับเอง+จัดส่ง. */
+                const head = ['รหัสสินค้า', 'รายการ', 'ประเภท', 'หน่วย', 'การรับของ', 'ราคารับเอง', 'ราคาจัดส่ง', 'ราคา/หน่วย (รวม VAT)']
+                const body = sortedRows.map((p) => [
+                  p.code, cleanName(p.name), prodType(p).th, p.unit, p.pickup ?? '',
+                  p.pickupPrices?.['รับเอง'] ?? '', p.pickupPrices?.['จัดส่ง'] ?? '',
+                  p.pickupPrices ? '' : (p.price || ''),
+                ])
+                downloadCsv('pricing-foundry', [head, ...body])
+                return
+              }
+              const head = [
+                'รหัสสินค้า', 'รายการ', 'ปูนซีเมนต์', 'กำลังอัด (ksc)', 'ระยะส่ง', 'หน่วย', 'ประเภท', 'ราคา/หน่วย (รวม VAT)',
+                'ปูน (กก.)', 'ทราย (กก.)', 'หิน 3/4" (กก.)', 'น้ำ (ล.)', 'น้ำยาหน่วง (ล.)', 'น้ำยาเร่ง (ล.)', 'กันซึม (ล.)',
+              ]
+              const mv = (n?: number) => (n && n > 0 ? n : '')
+              const body = sortedRows.map((p) => {
+                const m = mixForProduct(p)
+                /* 3 น้ำยา: หน่วง = Plastomix-704 (plastomix) · เร่ง = PCE-1 Gold 500 SF
+                   (pce/accelerator) · กันซึม = SikaPlastocrete N (sikament/waterproof). */
+                return [
+                  p.code, cleanName(p.name),
+                  cementBrandOf(p)?.label ?? '',
+                  p.strengthKsc || '',
+                  deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
+                  p.unit, prodType(p).th, p.price || '',
+                  mv(m?.cement), mv(m?.sand), mv(m?.aggregate), m ? mixWater(m) : '',
+                  mv(m?.plastomix), mv(m?.pce || m?.accelerator), mv(m?.sikament || m?.waterproof),
+                ]
+              })
               downloadCsv('pricing', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
@@ -354,28 +380,19 @@ function ProductPricing() {
             <option value="price-desc">ราคา (มาก → น้อย)</option>
           </Select>
         </div>
-        <div className="row wrap" style={{ gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>SITE</span>
-          <div className="pills">
-            <Pill active={site === 'all'} onClick={() => selectSite('all')}>ทั้งหมด {PRODUCTS.length}</Pill>
-            {SITES.map((s) => (
-              <Pill key={s.id} active={site === s.id} onClick={() => selectSite(s.id)}>
-                {s.label} {siteCount(s.id)}
-              </Pill>
-            ))}
+        {!isFoundry && (
+          <div className="row wrap" style={{ gap: 10 }}>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ปูนซีเมนต์</span>
+            <div className="pills">
+              <Pill active={brand === 'all'} onClick={() => setBrand('all')}>ทั้งหมด</Pill>
+              {BRANDS.map((b) => (
+                <Pill key={b.id} active={brand === b.id} onClick={() => setBrand(b.id)}>
+                  {b.label} {brandCount(b.id)}
+                </Pill>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="row wrap" style={{ gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ปูนซีเมนต์</span>
-          <div className="pills">
-            <Pill active={brand === 'all'} onClick={() => setBrand('all')}>ทั้งหมด</Pill>
-            {BRANDS.map((b) => (
-              <Pill key={b.id} active={brand === b.id} onClick={() => setBrand(b.id)}>
-                {b.label} {brandCount(b.id)}
-              </Pill>
-            ))}
-          </div>
-        </div>
+        )}
         <div className="row wrap" style={{ gap: 10 }}>
           <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ประเภท</span>
           <div className="pills">
@@ -387,21 +404,25 @@ function ProductPricing() {
             ))}
           </div>
         </div>
-        <div className="row wrap" style={{ gap: 10 }}>
-          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ระยะส่ง</span>
-          <div className="pills">
-            <Pill active={zone === 'all'} onClick={() => setZone('all')}>ทั้งหมด</Pill>
-            {ZONES.map((z) => (
-              <Pill key={z.id} active={zone === z.id} onClick={() => setZone(z.id)}>
-                {z.label} ({z.range}) {zoneCount(z.id)}
-              </Pill>
-            ))}
+        {!isFoundry && (
+          <div className="row wrap" style={{ gap: 10 }}>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)', minWidth: 72 }}>ระยะส่ง</span>
+            <div className="pills">
+              <Pill active={zone === 'all'} onClick={() => setZone('all')}>ทั้งหมด</Pill>
+              {ZONES.map((z) => (
+                <Pill key={z.id} active={zone === z.id} onClick={() => setZone(z.id)}>
+                  {z.label} ({z.range}) {zoneCount(z.id)}
+                </Pill>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <DataTable columns={columns} rows={sortedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
       <p className="page-sub" style={{ marginTop: 14 }}>
-        * ราคา/หน่วยทุกรายการเป็น <strong>ราคารวม VAT 7% แล้ว</strong> · ปูนซีเมนต์/ระยะส่งอ่านจากรหัสสินค้า (R2/P2 = ดอกบัว, RO/PO = SCG · OS00 / OV21 / OV31 / OV41)
+        {isFoundry
+          ? <>* ราคา/หน่วยทุกรายการเป็น <strong>ราคารวม VAT 7% แล้ว</strong> · เสาไอแยกราคา รับเอง / จัดส่ง</>
+          : <>* ราคา/หน่วยทุกรายการเป็น <strong>ราคารวม VAT 7% แล้ว</strong> · ปูนซีเมนต์/ระยะส่งอ่านจากรหัสสินค้า (R2/P2 = ดอกบัว, RO/PO = SCG · OS00 / OV21 / OV31 / OV41)</>}
       </p>
 
       <div style={{ marginTop: 28 }}>
@@ -422,8 +443,8 @@ function ProductPricing() {
         )}
       </div>
 
-      <PriceAdjustModal open={open} products={products} onClose={() => setOpen(false)} />
-      <ProductFormModal open={adding} mode="add" existingCodes={existingCodes} onClose={() => setAdding(false)} />
+      <PriceAdjustModal open={open} scope={scope} products={products.filter((p) => productSite(p) === scope)} onClose={() => setOpen(false)} />
+      <ProductFormModal open={adding} mode="add" forceSite={scope} existingCodes={existingCodes} onClose={() => setAdding(false)} />
       <ProductFormModal
         key={editing?.code ?? 'edit'}
         open={!!editing}
@@ -494,12 +515,15 @@ function PriceHistoryCard({ adj }: { adj: PriceAdjustment }) {
 function PriceAdjustModal({
   open,
   products,
+  scope,
   onClose,
 }: {
   open: boolean
   products: Product[]
+  scope: ProductSite
   onClose: () => void
 }) {
+  const isFoundry = scope === 'foundry'
   /* Editable list — exclude precast (internal-use, price=0). */
   const editable = useMemo(() => products.filter((p) => p.price > 0), [products])
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -589,12 +613,14 @@ function PriceAdjustModal({
     >
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
-      <div className="row wrap" style={{ gap: 10, marginBottom: 10, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ประเภท:</span>
-        <Pill active={filterCat === 'all'} onClick={() => setFilterCat('all')}>ทั้งหมด</Pill>
-        <Pill active={filterCat === 'concrete'} onClick={() => setFilterCat('concrete')}>คอนกรีต</Pill>
-        <Pill active={filterCat === 'lean'} onClick={() => setFilterCat('lean')}>Lean</Pill>
-      </div>
+      {!isFoundry && (
+        <div className="row wrap" style={{ gap: 10, marginBottom: 10, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ประเภท:</span>
+          <Pill active={filterCat === 'all'} onClick={() => setFilterCat('all')}>ทั้งหมด</Pill>
+          <Pill active={filterCat === 'concrete'} onClick={() => setFilterCat('concrete')}>คอนกรีต</Pill>
+          <Pill active={filterCat === 'lean'} onClick={() => setFilterCat('lean')}>Lean</Pill>
+        </div>
+      )}
 
       <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>ปรับแบบเร็ว (เฉพาะรายการที่เห็น):</span>
@@ -707,6 +733,7 @@ function ProductFormModal({
   mode,
   initial,
   initialMix,
+  forceSite,
   existingCodes,
   onClose,
 }: {
@@ -714,6 +741,8 @@ function ProductFormModal({
   mode: 'add' | 'edit'
   initial?: Product
   initialMix?: MixDesign
+  /** When adding, pin the SITE to this value and skip the SITE chooser step. */
+  forceSite?: ProductSite
   existingCodes: Set<string>
   onClose: () => void
 }) {
@@ -777,15 +806,15 @@ function ProductFormModal({
       setMixAccelerator(s(initialMix?.accelerator)); setMixWaterproof(s(initialMix?.waterproof))
       setCodeDirty(true); setNameDirty(true)
     } else {
-      setSite(null)
+      setSite(forceSite ?? null)
       setBrand('SCG'); setCategory('concrete'); setZone('OS'); setKind('plank'); setCustomType('')
-      setCode(''); setName(''); setUnit('คิว'); setStrength(''); setPrice('')
+      setCode(''); setName(''); setUnit(forceSite === 'foundry' ? 'แผ่น' : 'คิว'); setStrength(''); setPrice('')
       setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง')
       setMixCement(''); setMixSand(''); setMixAggregate(''); setMixWater(String(DEFAULT_WATER_L))
       setMixPlastomix(''); setMixSikament(''); setMixPce(''); setMixAccelerator(''); setMixWaterproof('')
       setCodeDirty(false); setNameDirty(false)
     }
-  }, [open, mode, initial, initialMix])
+  }, [open, mode, initial, initialMix, forceSite])
 
   /* Auto-fill code + name from the plant drivers while adding, until the user
      types their own value in either field. */
@@ -838,24 +867,29 @@ function ProductFormModal({
       const pr = Number(price)
       if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       const strengthKsc = category === 'lean' ? 0 : Number(strength)
-      /* Own สูตรวัตถุดิบ (Mix Design) — every plant product carries its own now. */
+      /* Own สูตรวัตถุดิบ (Mix Design). Required when ADDING; optional when editing
+         so a seed product with no seed mix can still have its ชื่อ/รหัส/ราคา saved
+         (a partially-filled mix is still rejected). */
       const mc = Number(mixCement), ms = Number(mixSand), ma = Number(mixAggregate)
-      if (!(mc > 0) || !(ms > 0) || !(ma > 0)) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
+      const hasMix = mc > 0 && ms > 0 && ma > 0
+      const anyMixFilled = [mixCement, mixSand, mixAggregate].some((v) => v.trim() !== '')
+      if (mode === 'add' && !hasMix) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
+      if (anyMixFilled && !hasMix) return setErr('กรุณากรอกส่วนผสมวัตถุดิบ (ปูน / ทราย / หิน) ให้ครบ')
       const r2n = (n: number) => Math.round(n * 100) / 100
       const optN = (v: string) => { const n = Number(v); return v.trim() !== '' && Number.isFinite(n) && n > 0 ? r2n(n) : undefined }
       const w = Number(mixWater)
-      const mix: MixDesign = {
+      const mix: MixDesign | null = hasMix ? {
         code: c, cement: r2n(mc), sand: r2n(ms), aggregate: r2n(ma),
         water: Number.isFinite(w) && w > 0 ? r2n(w) : DEFAULT_WATER_L,
         plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
-      }
+      } : null
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand })
       } else {
         /* Clear any legacy formula link — the product uses its own mix now. */
         updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand })
       }
-      if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix)
+      if (mix) { if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix) }
     } else if (isCustom) {
       /* Brand-new foundry type — user supplies the type name, unit and a single price. */
       const t = customType.trim()
@@ -943,7 +977,7 @@ function ProductFormModal({
         </div>
       ) : (
         <div className="stack" style={{ gap: 12 }}>
-          {mode === 'add' && (
+          {mode === 'add' && !forceSite && (
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Badge tone="info" pip={false} square>SITE: {site === 'plant' ? 'แพล้นปูน' : 'โรงหล่อ'}</Badge>
               <Button size="sm" variant="secondary" onClick={() => setSite(null)}>เปลี่ยน SITE</Button>
@@ -1002,8 +1036,8 @@ function ProductFormModal({
                 </div>
                 <div className="grid g-3" style={{ gap: 12, marginTop: 12 }}>
                   <Field label="น้ำยาหน่วง (ล.)" hint="Plastomix-704 · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixPlastomix} onChange={(e) => setMixPlastomix(e.target.value)} placeholder="เช่น 1.38" /></Field>
-                  <Field label="น้ำยาเร่ง (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixAccelerator} onChange={(e) => setMixAccelerator(e.target.value)} placeholder="—" /></Field>
-                  <Field label="กันซึม (ล.)" hint="ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixWaterproof} onChange={(e) => setMixWaterproof(e.target.value)} placeholder="—" /></Field>
+                  <Field label="น้ำยาเร่ง (ล.)" hint="PCE-1 Gold 500 SF · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixAccelerator} onChange={(e) => setMixAccelerator(e.target.value)} placeholder="—" /></Field>
+                  <Field label="กันซึม (ล.)" hint="SikaPlastocrete N · ไม่บังคับ"><Input type="number" min={0} step={0.01} value={mixWaterproof} onChange={(e) => setMixWaterproof(e.target.value)} placeholder="—" /></Field>
                 </div>
               </div>
             </>

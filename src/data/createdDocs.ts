@@ -985,8 +985,11 @@ const remote = createRemoteSync<Partial<CreatedDocs>>(
   'createdDocs',
   (data) => {
     /* Remote change (another browser saved) → adopt it. Merge over `empty` so a
-       blob from an older schema still has every key. Does NOT push back. */
-    state = { ...empty, ...data }
+       blob from an older schema still has every key. `hidden` is merged one level
+       deeper so a remote blob predating the products/employees keys still yields
+       arrays (otherwise removeProduct's [...hidden.products] spread throws). Does
+       NOT push back. */
+    state = { ...empty, ...data, hidden: { ...emptyHidden, ...(data.hidden ?? {}) } }
     try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
     notify()
   },
@@ -1393,7 +1396,7 @@ export function removeProduct(code: string) {
     ...state,
     productsAdded: state.productsAdded.filter((p) => p.code !== code),
     productEdits: nextEdits,
-    hidden: wasAdded ? state.hidden : { ...state.hidden, products: [...state.hidden.products, code] },
+    hidden: wasAdded ? state.hidden : { ...state.hidden, products: [...(state.hidden.products ?? []), code] },
   })
 }
 /** True when a product code belongs to a user-added product (vs a seed product). */
