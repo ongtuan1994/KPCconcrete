@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, PRODUCTS, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type PayMethod, type ProductPickup } from '../../data/real'
+import { CUSTOMER_MASTER, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type PayMethod, type ProductPickup } from '../../data/real'
 import { monthLabel } from '../../data/selectors'
-import { addTicket, updateTicket, useCreatedDocs } from '../../data/createdDocs'
+import { addTicket, updateTicket, useCreatedDocs, useProducts } from '../../data/createdDocs'
 import { NewCustomerForm } from './NewCustomerForm'
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
@@ -14,8 +14,6 @@ const MONTH_OPTS = Array.from({ length: 12 }, (_, i) => i + 1)
 /** Current calendar month (1–12) — the sensible default งวด for a new ticket. */
 const CURRENT_MONTH = new Date().getMonth() + 1
 
-/** Delivery tickets only cover concrete products — precast (เสาเข็ม / คานสำเร็จรูป) excluded. */
-const SELECTABLE_PRODUCTS = PRODUCTS.filter((p) => p.category !== 'precast')
 
 /** Optional pre-fill values, e.g. when issuing a ticket from a sales order. */
 export interface DeliveryTicketInitial {
@@ -43,13 +41,18 @@ export function NewDeliveryTicketForm({
   editTicket?: DeliveryTicket | null
 }) {
   const isEdit = !!editTicket
+  /* Delivery tickets only cover concrete products — precast excluded — and only
+     ones still on sale (จำหน่าย). Built from the live merged list so user-added
+     products appear and งดจำหน่าย ones are hidden. */
+  const merged = useProducts()
+  const sellable = useMemo(() => merged.filter((p) => p.category !== 'precast' && !p.discontinued), [merged])
   const [dtNoDigits, setDtNoDigits] = useState<string>('') /* user types 11 digits; "DT" prefix is implicit */
   const [month, setMonth] = useState<number>(CURRENT_MONTH)
   /* Default the delivery date to today — most tickets are issued the same day. */
   const [day, setDay] = useState<string>(String(new Date().getDate()))
   const [type, setType] = useState<string>('ขายลูกค้า')
   const [customer, setCustomer] = useState<string>('')
-  const [prodCode, setProdCode] = useState<string>(SELECTABLE_PRODUCTS[0]?.code ?? '')
+  const [prodCode, setProdCode] = useState<string>(sellable[0]?.code ?? '')
   const [m3, setM3] = useState<string>('')
   /* การรับของ (customer sales only): 'จัดส่ง' = บริษัทจัดส่ง (default) หรือ
      'รับเอง' = ลูกค้ามารับเอง (หัก 100 บาท/คิว ตอนออกใบกำกับ, ไม่ต้องมีรถ/คนขับ). */
@@ -64,6 +67,16 @@ export function NewDeliveryTicketForm({
   const [err, setErr] = useState<string>('')
 
   const all = useMemo(() => [...createdTickets, ...DELIVERY_TICKETS], [createdTickets])
+
+  /* Dropdown options — the sellable list, plus the currently-selected product if
+     it has since been set งดจำหน่าย, so editing an old ticket keeps its item. */
+  const options = useMemo(() => {
+    if (prodCode && !sellable.some((p) => p.code === prodCode)) {
+      const cur = merged.find((p) => p.code === prodCode)
+      if (cur) return [cur, ...sellable]
+    }
+    return sellable
+  }, [merged, sellable, prodCode])
 
   /* Prefill every field from the ticket being edited when the form opens. */
   useEffect(() => {
@@ -90,7 +103,7 @@ export function NewDeliveryTicketForm({
     if (!open || !initial || editTicket) return
     if (initial.type) setType(initial.type)
     if (initial.customer !== undefined) setCustomer(initial.customer)
-    if (initial.prodCode && SELECTABLE_PRODUCTS.some((p) => p.code === initial.prodCode)) setProdCode(initial.prodCode)
+    if (initial.prodCode && sellable.some((p) => p.code === initial.prodCode)) setProdCode(initial.prodCode)
     if (initial.m3 !== undefined) setM3(initial.m3)
     if (initial.note !== undefined) setNote(initial.note)
   }, [open, initial, editTicket])
@@ -105,7 +118,7 @@ export function NewDeliveryTicketForm({
   const reset = () => {
     setDtNoDigits('')
     setMonth(CURRENT_MONTH); setDay(String(new Date().getDate())); setType('ขายลูกค้า'); setCustomer('')
-    setProdCode(SELECTABLE_PRODUCTS[0]?.code ?? ''); setM3('')
+    setProdCode(sellable[0]?.code ?? ''); setM3('')
     setPickup('จัดส่ง')
     setVehicle(VEHICLES[0]?.id ?? ''); setPay('เครดิต')
     setIssuer(ISSUERS[0] ?? ''); setReceiver(''); setNote(''); setErr('')
@@ -292,7 +305,7 @@ export function NewDeliveryTicketForm({
 
         <Field label="สินค้า" required style={{ gridColumn: '1 / -1' }}>
           <Select value={prodCode} onChange={(e) => setProdCode(e.target.value)}>
-            {SELECTABLE_PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
+            {options.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}{pr.discontinued ? ' (งดจำหน่าย)' : ''}</option>)}
           </Select>
         </Field>
 

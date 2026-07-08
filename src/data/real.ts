@@ -50,6 +50,10 @@ export interface Product {
       that lacks the OS00/OV.. marker still classifies correctly. Unset (seed) ⇒
       derived from the code. */
   zone?: 'OS' | 'OV21' | 'OV31' | 'OV41'
+  /** สถานะการขาย — true = งดจำหน่าย (discontinued). Unset/false = จำหน่าย (on sale).
+      งดจำหน่าย products drop to the bottom of the ราคาสินค้า table and are hidden
+      from the ใบจ่ายคอนกรีต product picker. New products default to จำหน่าย. */
+  discontinued?: boolean
   price: number
 }
 export const PRODUCTS: Product[] = [

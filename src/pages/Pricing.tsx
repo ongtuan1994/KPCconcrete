@@ -7,7 +7,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { PRODUCTS, type Product, type ProductSite, type FoundryKind } from '../data/real'
 import { MIX_DESIGNS, DEFAULT_WATER_L, mixWater, type MixDesign } from '../data/mixDesign'
 import { baht, cleanProductName as cleanName } from '../data/selectors'
-import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, addMixDesign, updateMixDesign, useCreatedDocs, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
+import { addPriceAdjustment, addGeneralReport, addProduct, updateProduct, removeProduct, renameProduct, isAddedProduct, addMixDesign, updateMixDesign, useCreatedDocs, useProducts, type PriceAdjustment, type PriceListReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 /** Today as DD/MM/พ.ศ. for report labels. */
@@ -147,19 +147,9 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
   const created = useCreatedDocs()
   const navigate = useNavigate()
 
-  /* Current effective price overrides = latest adjustment snapshot. */
-  const currentOverrides: Record<string, number> = created.priceAdjustments[0]?.prices ?? {}
-
-  /* Merge, in order: user-added products first, then seed → per-product edits
-     (productEdits) → the latest price-adjustment override (which always wins). */
-  const products = useMemo(() => {
-    const hidden = new Set(created.hidden.products)
-    const base = [...created.productsAdded, ...PRODUCTS].filter((p) => !hidden.has(p.code))
-    return base.map((p) => {
-      const withEdit = created.productEdits[p.code] ? { ...p, ...created.productEdits[p.code] } : p
-      return currentOverrides[p.code] !== undefined ? { ...withEdit, price: currentOverrides[p.code] } : withEdit
-    })
-  }, [created.productsAdded, created.productEdits, currentOverrides, created.hidden.products])
+  /* Merged product list (added + seed + edits + latest price override, minus
+     hidden) — shared with the product pickers via useProducts. */
+  const products = useProducts()
 
   /* Every code in use — for the เพิ่มสินค้า uniqueness check. */
   const existingCodes = useMemo(() => new Set(products.map((p) => p.code)), [products])
@@ -192,18 +182,21 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
     return true
   })
 
-  /* Apply the chosen sort (default keeps the natural added-then-seed order). */
+  /* Apply the chosen sort (default keeps the natural added-then-seed order), then
+     always sink งดจำหน่าย to the very bottom. The final sort is stable, so the
+     chosen order is preserved within the จำหน่าย and งดจำหน่าย groups. */
   const sortedRows = useMemo(() => {
-    if (sortBy === 'default') return rows
     const rs = rows.slice()
     switch (sortBy) {
-      case 'strength-asc': return rs.sort((a, b) => (a.strengthKsc || 0) - (b.strengthKsc || 0))
-      case 'strength-desc': return rs.sort((a, b) => (b.strengthKsc || 0) - (a.strengthKsc || 0))
-      case 'code': return rs.sort((a, b) => a.code.localeCompare(b.code))
-      case 'price-asc': return rs.sort((a, b) => (a.price || 0) - (b.price || 0))
-      case 'price-desc': return rs.sort((a, b) => (b.price || 0) - (a.price || 0))
-      default: return rs
+      case 'strength-asc': rs.sort((a, b) => (a.strengthKsc || 0) - (b.strengthKsc || 0)); break
+      case 'strength-desc': rs.sort((a, b) => (b.strengthKsc || 0) - (a.strengthKsc || 0)); break
+      case 'code': rs.sort((a, b) => a.code.localeCompare(b.code)); break
+      case 'price-asc': rs.sort((a, b) => (a.price || 0) - (b.price || 0)); break
+      case 'price-desc': rs.sort((a, b) => (b.price || 0) - (a.price || 0)); break
+      default: break /* keep natural order */
     }
+    rs.sort((a, b) => Number(!!a.discontinued) - Number(!!b.discontinued))
+    return rs
   }, [rows, sortBy])
 
   const zoneCount = (id: ZoneId) => products.filter((p) => productSite(p) === scope && deliveryZoneOf(p)?.id === id).length
@@ -223,7 +216,19 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
 
   const columns: Column<Product>[] = [
     { key: 'code', header: 'รหัสสินค้า', cell: (r) => r.code, className: 'docno' },
-    { key: 'name', header: 'รายการสินค้า', cell: (r) => <span className="th">{cleanName(r.name)}</span> },
+    {
+      key: 'name', header: 'รายการสินค้า',
+      cell: (r) => (
+        <span className="th" style={r.discontinued ? { color: 'var(--kpc-text-faint)' } : undefined}>
+          {cleanName(r.name)}
+          {r.discontinued && (
+            <span style={{ marginLeft: 8, display: 'inline-block', verticalAlign: 'middle' }}>
+              <Badge tone="danger" pip={false} square>งดจำหน่าย</Badge>
+            </span>
+          )}
+        </span>
+      ),
+    },
     /* ปูนซีเมนต์ / กำลังอัด / ระยะส่ง are plant-only concepts — hidden on the โรงหล่อ page. */
     ...(isFoundry ? [] : [
       {
@@ -771,6 +776,8 @@ function ProductFormModal({
   const [priceSelf, setPriceSelf] = useState('')
   const [priceDeliver, setPriceDeliver] = useState('')
   const [pickup, setPickup] = useState<'รับเอง' | 'จัดส่ง'>('รับเอง')
+  /* สถานะการขาย — false = จำหน่าย (default), true = งดจำหน่าย. */
+  const [discontinued, setDiscontinued] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
   const [nameDirty, setNameDirty] = useState(false)
   const [err, setErr] = useState('')
@@ -815,6 +822,7 @@ function ProductFormModal({
       setMixWater(String(initialMix?.water ?? DEFAULT_WATER_L))
       setMixPlastomix(s(initialMix?.plastomix)); setMixSikament(s(initialMix?.sikament)); setMixPce(s(initialMix?.pce))
       setMixAccelerator(s(initialMix?.accelerator)); setMixWaterproof(s(initialMix?.waterproof))
+      setDiscontinued(!!initial.discontinued)
       setCodeDirty(true); setNameDirty(true)
     } else {
       setSite(forceSite ?? null)
@@ -823,6 +831,7 @@ function ProductFormModal({
       setPriceSelf(''); setPriceDeliver(''); setPickup('รับเอง')
       setMixCement(''); setMixSand(''); setMixAggregate(''); setMixWater(String(DEFAULT_WATER_L))
       setMixPlastomix(''); setMixSikament(''); setMixPce(''); setMixAccelerator(''); setMixWaterproof('')
+      setDiscontinued(false) /* new products default to จำหน่าย */
       setCodeDirty(false); setNameDirty(false)
     }
   }, [open, mode, initial, initialMix, forceSite])
@@ -895,10 +904,10 @@ function ProductFormModal({
         plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
       } : null
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, zone })
+        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, zone, ...(discontinued ? { discontinued: true } : {}) })
       } else {
         /* Clear any legacy formula link — the product uses its own mix now. */
-        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand, zone })
+        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand, zone, discontinued })
       }
       if (mix) { if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix) }
     } else if (isCustom) {
@@ -909,26 +918,26 @@ function ProductFormModal({
       const pr = Number(price)
       if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: pr })
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: pr, ...(discontinued ? { discontinued: true } : {}) })
       } else {
-        updateProduct(c, { name: nm, unit: u, price: pr })
+        updateProduct(c, { name: nm, unit: u, price: pr, discontinued })
       }
     } else if (kind === 'ipole') {
       const ps = Number(priceSelf), pd = Number(priceDeliver)
       if (!Number.isFinite(ps) || ps <= 0 || !Number.isFinite(pd) || pd <= 0) return setErr('กรุณากรอกราคารับเอง / จัดส่งให้ถูกต้อง')
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'ต้น', category: 'precast', site: 'foundry', kind, pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'ต้น', category: 'precast', site: 'foundry', kind, pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps, ...(discontinued ? { discontinued: true } : {}) })
       } else {
-        updateProduct(c, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps })
+        updateProduct(c, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps, discontinued })
       }
     } else {
       const pr = Number(price)
       if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       const isWall = kind === 'wallpanel'
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind: kind as FoundryKind, price: pr, ...(isWall ? { pickup } : {}) })
+        addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind: kind as FoundryKind, price: pr, ...(isWall ? { pickup } : {}), ...(discontinued ? { discontinued: true } : {}) })
       } else {
-        updateProduct(c, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}) })
+        updateProduct(c, { name: nm, unit: u || 'แผ่น', price: pr, ...(isWall ? { pickup } : {}), discontinued })
       }
     }
     onClose()
@@ -994,6 +1003,13 @@ function ProductFormModal({
               <Button size="sm" variant="secondary" onClick={() => setSite(null)}>เปลี่ยน SITE</Button>
             </div>
           )}
+
+          <Field label="สถานะการขาย" hint="งดจำหน่าย = ซ่อนจากตัวเลือกในใบจ่ายคอนกรีต และย้ายไปท้ายตารางราคาสินค้า">
+            <Select value={discontinued ? 'off' : 'on'} onChange={(e) => setDiscontinued(e.target.value === 'off')}>
+              <option value="on">จำหน่าย</option>
+              <option value="off">งดจำหน่าย</option>
+            </Select>
+          </Field>
 
           {site === 'plant' ? (
             <>

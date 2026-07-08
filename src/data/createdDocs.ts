@@ -5,9 +5,9 @@
    `hidden` tracks IDs of seed (real-data) records the user removed in dev mode.
    The delete UI is gated on `import.meta.env.DEV`, so this state stays empty in prod. */
 
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import { CUSTOMER_MASTER, type DeliveryTicket, type Customer, type Product } from './real'
+import { CUSTOMER_MASTER, PRODUCTS, type DeliveryTicket, type Customer, type Product } from './real'
 import type { MixDesign } from './mixDesign'
 import type { FoundryFormula } from './foundryFormula'
 import type { Employee } from './employees'
@@ -38,7 +38,7 @@ export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'departm
 /** Editable subset of Product fields merged on top of PRODUCTS (and productsAdded).
     Keyed by product code. Covers everything the เพิ่ม/แก้ไขสินค้า form can change
     except the code/site/category, which are fixed by the code itself. */
-export type ProductEdit = Partial<Pick<Product, 'name' | 'unit' | 'price' | 'pickup' | 'pickupPrices' | 'strengthKsc' | 'formulaCode' | 'cementBrand' | 'zone'>>
+export type ProductEdit = Partial<Pick<Product, 'name' | 'unit' | 'price' | 'pickup' | 'pickupPrices' | 'strengthKsc' | 'formulaCode' | 'cementBrand' | 'zone' | 'discontinued'>>
 
 /** One row in the product-price adjustment log. Stored newest-first so the
     head element gives the current effective product prices. */
@@ -1575,6 +1575,23 @@ export function useCreatedDocs(): CreatedDocs {
     () => state,
     () => state,
   )
+}
+
+/** The current merged product list — user-added first, then seed PRODUCTS, with
+    per-product edits and the latest price-adjustment override applied, and hidden
+    (deleted) products removed. Single source of truth for "what products exist
+    now", shared by the ราคาสินค้า page and the product pickers. */
+export function useProducts(): Product[] {
+  const s = useCreatedDocs()
+  return useMemo(() => {
+    const hidden = new Set(s.hidden.products)
+    const overrides = s.priceAdjustments[0]?.prices ?? {}
+    const base = [...s.productsAdded, ...PRODUCTS].filter((p) => !hidden.has(p.code))
+    return base.map((p) => {
+      const withEdit = s.productEdits[p.code] ? { ...p, ...s.productEdits[p.code] } : p
+      return overrides[p.code] !== undefined ? { ...withEdit, price: overrides[p.code] } : withEdit
+    })
+  }, [s.productsAdded, s.productEdits, s.priceAdjustments, s.hidden.products])
 }
 
 /* Build-time switch: in production builds, hide the delete UI entirely. */
