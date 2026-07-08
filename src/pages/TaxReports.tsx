@@ -320,7 +320,7 @@ export function TaxReports() {
     if (kind === 'sale') {
       for (const inv of created.invoices) { const iy = buddhistYearOf(inv.date); if (iy != null) s.add(iy) }
     } else {
-      for (const g of created.goodsPayments) if (g.withVat !== false) s.add(buddhistYearOfIso(g.payDate))
+      for (const g of created.goodsPayments) if (g.withVat !== false) s.add(buddhistYearOfIso(g.vatMonth ?? g.payDate))
     }
     return [...s].sort((a, b) => a - b)
   }, [kind, saleImports, purchaseImports, created.invoices, created.goodsPayments])
@@ -349,8 +349,11 @@ export function TaxReports() {
       /* Live ภาษีซื้อ = VAT-bearing ใบสำคัญจ่าย (ใบกำกับภาษีจากผู้ขาย). */
       for (const p of created.goodsPayments) {
         if (p.withVat === false) continue
-        const iy = buddhistYearOfIso(p.payDate)
-        const im = Number(p.payDate.slice(5, 7))
+        /* File under the chosen เดือนยื่น VAT (vatMonth); the row still shows its
+           actual payDate below, so a voucher can be filed in a later month. */
+        const filingYm = p.vatMonth || p.payDate.slice(0, 7)
+        const iy = buddhistYearOfIso(filingYm)
+        const im = Number(filingYm.slice(5, 7))
         if (iy !== year || !im || !isLivePeriod(iy, im)) continue
         const { value, vat } = splitVat(p.amount)
         live.push({ month: im, row: { seq: '', date: `${Number(p.payDate.slice(8, 10))}/${im}/${String(iy % 100).padStart(2, '0')}`, docNo: p.taxInvoiceNo || p.ref || p.gpNo, name: p.supplier, taxId: '', branch: '', value, vat } })

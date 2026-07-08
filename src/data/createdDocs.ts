@@ -189,6 +189,10 @@ export interface GoodsPayment {
   ref?: string       /* optional reference — PO no. / invoice no. */
   /** Whether this voucher records VAT (ลง VAT). Defaults to true when omitted. */
   withVat?: boolean
+  /** เดือนที่ยื่น VAT ("YYYY-MM") — which filing period the purchase-tax report
+      counts this voucher under. Defaults to the ออกใบ (payDate) month; editable
+      later. Only meaningful when ลง VAT. Unset ⇒ fall back to payDate's month. */
+  vatMonth?: string
   /** Supplier's tax-invoice number (เลขที่ใบกำกับ) — shown as the doc no. in
       the purchase-tax report when this voucher is ลง VAT. */
   taxInvoiceNo?: string
@@ -1179,6 +1183,10 @@ export function markPurchaseOrderReceived(poNo: string) {
 /* Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ). */
 export function addGoodsPayment(gp: GoodsPayment) {
   commit({ ...state, goodsPayments: [stamp(gp), ...state.goodsPayments] })
+}
+/** Patch fields of an existing ใบสำคัญจ่าย in place (e.g. the เดือนยื่น VAT). */
+export function updateGoodsPayment(gpNo: string, patch: Partial<GoodsPayment>) {
+  commit({ ...state, goodsPayments: state.goodsPayments.map((g) => (g.gpNo === gpNo ? { ...g, ...patch } : g)) })
 }
 export function removeGoodsPayment(gpNo: string) {
   const rec = state.goodsPayments.find((g) => g.gpNo === gpNo)

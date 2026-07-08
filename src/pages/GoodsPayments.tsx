@@ -8,10 +8,12 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { NewSupplierForm } from '../components/documents/NewSupplierForm'
+import { DocModal } from '../components/documents/DocModal'
+import { GoodsPaymentVoucherDoc } from '../components/documents/GoodsPaymentVoucherDoc'
 import { baht, monthName } from '../data/selectors'
 import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
   type DeletedGoodsPayment,
@@ -44,6 +46,16 @@ function fmtDate(iso: string): string {
   if (!y || !m || !d) return iso
   return `${d}/${m}/${Number(y) + 543}`
 }
+/** Short Thai label for a "YYYY-MM" month, e.g. "มิถุนายน 2569". */
+function fmtYm(ym?: string): string {
+  if (!ym) return '—'
+  const [y, m] = ym.split('-')
+  if (!y || !m) return ym
+  return `${monthName(Number(m))} ${Number(y) + 543}`
+}
+/** เดือนยื่น VAT ที่ใช้จริง — the stored value, else the payDate's month. */
+const vatMonthOf = (g: GoodsPayment) => g.vatMonth || g.payDate.slice(0, 7)
+
 function nextGpNo(existing: GoodsPayment[]): string {
   let max = 0
   for (const g of existing) {
@@ -67,6 +79,8 @@ export function GoodsPayments() {
   const [month, setMonth] = useState<number | 'all'>('all')
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<GoodsPaymentInitial | null>(null)
+  const [editVat, setEditVat] = useState<GoodsPayment | null>(null)
+  const [active, setActive] = useState<GoodsPayment | null>(null)
   const created = useCreatedDocs()
   const all = created.goodsPayments
   const canDelete = useCan('goods-payments').edit
@@ -188,7 +202,18 @@ export function GoodsPayments() {
       key: 'vat', header: 'ภาษี', align: 'center',
       cell: (r) => r.withVat === false
         ? <Badge tone="neutral" pip={false} square>ไม่ลง VAT</Badge>
-        : <Badge tone="info" pip={false} square>ลง VAT</Badge>,
+        : (
+          <div className="stack" style={{ gap: 3, alignItems: 'center' }}>
+            <Badge tone="info" pip={false} square>ลง VAT</Badge>
+            <button
+              onClick={() => setEditVat(r)}
+              title="แก้ไขเดือนยื่น VAT"
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11, color: 'var(--kpc-primary-ink)', textDecoration: 'underline' }}
+            >
+              ยื่น {fmtYm(vatMonthOf(r))} ✎
+            </button>
+          </div>
+        ),
     },
     {
       key: 'method', header: 'วิธีจ่าย', align: 'center',
@@ -202,6 +227,7 @@ export function GoodsPayments() {
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.amount)}</span> },
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'view', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ใบสำคัญจ่าย', ref: r.gpNo, label: r.gpNo, sub: `${r.supplier} · ${baht(r.amount)}`, route: '/goods-payments' }} /> },
     ...(canDelete ? [{
       key: 'del', header: '', align: 'center' as const,
@@ -298,7 +324,35 @@ export function GoodsPayments() {
         initial={prefill}
         onSaved={(g) => { setShowForm(false); setPrefill(null); setQuery(g.gpNo) }}
       />
+      <EditVatMonthModal payment={editVat} onClose={() => setEditVat(null)} />
+      <DocModal open={!!active} title={active ? `ใบสำคัญจ่าย ${active.gpNo}` : ''} onClose={() => setActive(null)}>
+        {active && <GoodsPaymentVoucherDoc gp={active} />}
+      </DocModal>
     </>
+  )
+}
+
+/** Edit the เดือนยื่น VAT of an already-issued ใบสำคัญจ่าย (การแก้ไขภายหลัง). */
+function EditVatMonthModal({ payment, onClose }: { payment: GoodsPayment | null; onClose: () => void }) {
+  const [ym, setYm] = useState('')
+  useEffect(() => { if (payment) setYm(vatMonthOf(payment)) }, [payment])
+  if (!payment) return null
+  const save = () => {
+    updateGoodsPayment(payment.gpNo, { vatMonth: ym || payment.payDate.slice(0, 7) })
+    onClose()
+  }
+  return (
+    <Modal open={!!payment} title={`เดือนยื่น VAT · ${payment.gpNo}`} onClose={onClose} maxWidth={420}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}>
+      <div className="stack" style={{ gap: 10 }}>
+        <div style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>
+          {payment.supplier} · ออกใบเมื่อ {fmtDate(payment.payDate)}
+        </div>
+        <Field label="ยื่น VAT ในเดือน" hint="ใบสำคัญจ่ายนี้จะถูกนับในรายงานภาษีซื้อของเดือนที่เลือก">
+          <Input type="month" value={ym} onChange={(e) => setYm(e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
   )
 }
 
@@ -328,6 +382,9 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   const [withVat, setWithVat] = useState(true)
   /* Supplier's tax-invoice no. — feeds the purchase-tax report when ลง VAT. */
   const [taxInvoiceNo, setTaxInvoiceNo] = useState('')
+  /* เดือนยื่น VAT ("YYYY-MM") — default = เดือนที่ออกใบ (payDate); user can override. */
+  const [vatMonth, setVatMonth] = useState<string>(todayIso().slice(0, 7))
+  const [vatMonthDirty, setVatMonthDirty] = useState(false)
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
   const [pullInfo, setPullInfo] = useState('')
@@ -337,12 +394,18 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   useEffect(() => {
     if (!open) return
     setPayDate(todayIso()); setMethod('โอน'); setChequeNo(''); setWithVat(true); setTaxInvoiceNo(''); setNote(''); setErr(''); setPullInfo('')
+    setVatMonth(todayIso().slice(0, 7)); setVatMonthDirty(false)
     setCategory('ค่าซื้อวัตถุดิบ'); setSite('แพล้นปูน')
     setSupplier(initial?.supplier ?? '')
     setItems([emptyItem()])
     setAmount(initial?.amount ?? '')
     setRef(initial?.ref ?? '')
   }, [open, initial])
+
+  /* เดือนยื่น VAT follows the ออกใบ (payDate) month until the user overrides it. */
+  useEffect(() => {
+    if (!vatMonthDirty) setVatMonth(payDate ? payDate.slice(0, 7) : todayIso().slice(0, 7))
+  }, [payDate, vatMonthDirty])
 
   /* Purchase orders for the selected supplier — quick reference picker. */
   const supplierPOs = purchaseOrders.filter((p) => !supplier || p.supplier === supplier)
@@ -412,7 +475,9 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
       category, site: category === 'ค่าซื้อวัตถุดิบ' ? site : undefined,
       items: savedItems, amount: amt, method,
       chequeNo: method === 'เช็ค' ? chequeNo.trim() : undefined,
-      ref: finalRef || undefined, withVat, taxInvoiceNo: taxInvoiceNo.trim() || undefined,
+      ref: finalRef || undefined, withVat,
+      vatMonth: withVat ? (vatMonth || payDate.slice(0, 7)) : undefined,
+      taxInvoiceNo: taxInvoiceNo.trim() || undefined,
       note: note.trim() || undefined, createdAt: new Date().toISOString(),
     }
     addGoodsPayment(gp)
@@ -420,7 +485,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   }
 
   return (
-    <Modal open={open} title="ออกใบสำคัญจ่าย" onClose={onClose} maxWidth={620}
+    <Modal open={open} title="ออกใบสำคัญจ่าย" onClose={onClose} maxWidth={780}
       footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>ออกใบสำคัญจ่าย</Button></>}>
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
@@ -431,38 +496,49 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
         <Field label="วันที่จ่าย" required hint="ค่าเริ่มต้น = วันนี้">
           <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
         </Field>
-        <Field label="เลขที่ใบสั่งซื้อ (ถ้ามี)" style={{ gridColumn: '1 / -1' }} hint="กรอกเลขใบสั่งซื้อแล้วกดดึงข้อมูล เพื่อเติมซัพพลายเออร์ + รายการสินค้า — หรือเว้นว่างไว้แล้วเพิ่มรายการเอง ระบบจะสร้างใบสั่งซื้อให้อัตโนมัติ">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-            <Input list="kpc-po-list" placeholder="เช่น PO00001 / เลขที่ใบส่งของ" value={ref} onChange={(e) => { setRef(e.target.value); setPullInfo('') }} />
-            <Button variant="tonal" onClick={pullFromPO}>ดึงข้อมูล</Button>
-          </div>
-          <datalist id="kpc-po-list">
-            {supplierPOs.map((p) => <option key={p.poNo} value={p.poNo} />)}
-          </datalist>
-          {pullInfo && <div style={{ fontSize: 12, color: 'var(--kpc-primary-ink)', marginTop: 6 }}>✓ {pullInfo}</div>}
-        </Field>
-        <Field label="ซัพพลายเออร์" required style={{ gridColumn: '1 / -1' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-            <Input list="kpc-supplier-list-gp" placeholder="พิมพ์หรือเลือกซัพพลายเออร์" value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ flex: 1 }} />
-            <Button variant="tonal" size="sm" onClick={() => setShowAddSupplier(true)} title="เพิ่มซัพพลายเออร์ใหม่">+ เพิ่มซัพพลายเออร์</Button>
-          </div>
-          <datalist id="kpc-supplier-list-gp">
-            {created.suppliersAdded.map((s) => <option key={s.id} value={s.name} />)}
-            {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
-          </datalist>
-        </Field>
+        {/* เลขที่ใบสั่งซื้อ · ซัพพลายเออร์ · เลขที่ใบกำกับ — same row (document refs). */}
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'start' }}>
+          <Field label="เลขที่ใบสั่งซื้อ (ถ้ามี)" hint="กรอกแล้วกดดึงข้อมูล — หรือเว้นว่าง ระบบสร้างให้อัตโนมัติ">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
+              <Input list="kpc-po-list" placeholder="เช่น PO00001" value={ref} onChange={(e) => { setRef(e.target.value); setPullInfo('') }} />
+              <Button variant="tonal" size="sm" onClick={pullFromPO}>ดึง</Button>
+            </div>
+            <datalist id="kpc-po-list">
+              {supplierPOs.map((p) => <option key={p.poNo} value={p.poNo} />)}
+            </datalist>
+            {pullInfo && <div style={{ fontSize: 12, color: 'var(--kpc-primary-ink)', marginTop: 6 }}>✓ {pullInfo}</div>}
+          </Field>
+          <Field label="ซัพพลายเออร์" required>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+              <Input list="kpc-supplier-list-gp" placeholder="พิมพ์หรือเลือก" value={supplier} onChange={(e) => setSupplier(e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+              <Button variant="tonal" size="sm" onClick={() => setShowAddSupplier(true)} title="เพิ่มซัพพลายเออร์ใหม่">+</Button>
+            </div>
+            <datalist id="kpc-supplier-list-gp">
+              {created.suppliersAdded.map((s) => <option key={s.id} value={s.name} />)}
+              {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
+            </datalist>
+          </Field>
+          <Field label="เลขที่ใบกำกับ" hint="ใบกำกับภาษีของผู้ขาย (ลง VAT)">
+            <Input placeholder="เช่น INV256906/0123" value={taxInvoiceNo} onChange={(e) => setTaxInvoiceNo(e.target.value)} />
+          </Field>
+        </div>
 
         <Field label="ประเภทค่าใช้จ่าย" required>
-          <Select value={category} onChange={(e) => setCategory(e.target.value as GoodsPaymentCategory)}>
-            {GOODS_PAYMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </Select>
+          <div className="select-dark">
+            <Select value={category} onChange={(e) => setCategory(e.target.value as GoodsPaymentCategory)}>
+              {GOODS_PAYMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </div>
         </Field>
         {category === 'ค่าซื้อวัตถุดิบ' && (
-          <Field label="SITE (คลังปลายทาง)" required hint="วัตถุดิบนี้เข้าคลังไหน">
-            <Select value={site} onChange={(e) => setSite(e.target.value as GoodsPaymentSite)}>
-              <option value="แพล้นปูน">แพล้นปูน</option>
-              <option value="โรงหล่อ">โรงหล่อ</option>
-            </Select>
+          <Field label="SITE (คลังปลายทาง)" required hint="แพล้นปูน = น้ำเงิน · โรงหล่อ = เหลืองตามธีม">
+            {/* SITE cell coloured by theme: แพล้นปูน น้ำเงิน · โรงหล่อ เหลืองอำพัน. */}
+            <div className={site === 'แพล้นปูน' ? 'month-primary' : 'select-foundry'}>
+              <Select value={site} onChange={(e) => setSite(e.target.value as GoodsPaymentSite)}>
+                <option value="แพล้นปูน">แพล้นปูน</option>
+                <option value="โรงหล่อ">โรงหล่อ</option>
+              </Select>
+            </div>
           </Field>
         )}
 
@@ -503,17 +579,6 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
             <Input type="number" step="0.01" min={0} placeholder="เช่น 25000" value={amount} onChange={(e) => setAmount(e.target.value)} />
           )}
         </Field>
-        <Field label="การลงภาษี" required hint="ค่าเริ่มต้น = ลง VAT">
-          <Select value={withVat ? 'vat' : 'novat'} onChange={(e) => setWithVat(e.target.value === 'vat')}>
-            <option value="vat">ลง VAT</option>
-            <option value="novat">ไม่ลง VAT</option>
-          </Select>
-        </Field>
-        {withVat && (
-          <Field label="เลขที่ใบกำกับ" style={{ gridColumn: '1 / -1' }} hint="เลขที่ใบกำกับภาษีของซัพพลายเออร์ — ใช้แสดงในรายงานภาษีซื้อ">
-            <Input placeholder="เช่น INV256906/0123" value={taxInvoiceNo} onChange={(e) => setTaxInvoiceNo(e.target.value)} />
-          </Field>
-        )}
         <Field label="วิธีจ่าย" required>
           <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethodOut)}>
             <option value="โอน">โอน</option>
@@ -522,8 +587,19 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
           </Select>
         </Field>
         {method === 'เช็ค' && (
-          <Field label="เลขที่เช็ค" required hint="บันทึกเลขที่เช็คที่จ่าย">
+          <Field label="เลขที่เช็ค" required style={{ gridColumn: '1 / -1' }} hint="บันทึกเลขที่เช็คที่จ่าย">
             <Input placeholder="เช่น 0012345" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} />
+          </Field>
+        )}
+        <Field label="การลงภาษี" required hint="ค่าเริ่มต้น = ลง VAT">
+          <Select value={withVat ? 'vat' : 'novat'} onChange={(e) => setWithVat(e.target.value === 'vat')}>
+            <option value="vat">ลง VAT</option>
+            <option value="novat">ไม่ลง VAT</option>
+          </Select>
+        </Field>
+        {withVat && (
+          <Field label="เดือนยื่น VAT" hint="ค่าเริ่มต้น = เดือนที่ออกใบ · แก้ไขได้ภายหลัง">
+            <Input type="month" value={vatMonth} onChange={(e) => { setVatMonth(e.target.value); setVatMonthDirty(true) }} />
           </Field>
         )}
         <Field label="หมายเหตุ" style={{ gridColumn: '1 / -1' }}>

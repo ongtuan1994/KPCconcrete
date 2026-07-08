@@ -234,6 +234,18 @@ button.nav-section-toggle:hover { color: var(--kpc-neutral-300); }
 .month-primary-dark .select:focus { border-color: var(--kpc-primary-ink); box-shadow: 0 0 0 3px var(--kpc-primary-50); }
 .month-primary-dark .chev { color: #fff; }
 .month-primary-dark .select option { color: #111; background: #fff; font-weight: 400; }
+
+/* Black select cell (ประเภทค่าใช้จ่าย · ใบสำคัญจ่าย) — black box, white text. */
+.select-dark .select { background: #111827; color: #fff; font-weight: 600; border-color: #111827; }
+.select-dark .select:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,0.18); }
+.select-dark .chev { color: #fff; }
+.select-dark .select option { color: #111; background: #fff; font-weight: 400; }
+
+/* Foundry SITE select — amber per the foundry (โรงหล่อ) theme, dark text. */
+.select-foundry .select { background: #f59e0b; color: #422006; font-weight: 700; border-color: #d97706; }
+.select-foundry .select:focus { border-color: #d97706; box-shadow: 0 0 0 3px #fde68a; }
+.select-foundry .chev { color: #422006; }
+.select-foundry .select option { color: #111; background: #fff; font-weight: 400; }
 .input-icon { position: relative; }
 .input-icon svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); }
 .input-icon .input { padding-left: 38px; }
