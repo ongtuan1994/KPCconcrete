@@ -85,6 +85,35 @@
   --kpc-elev-lg: 0 12px 28px rgba(20,23,27,0.16);
 }
 
+/* ---- Foundry (โรงหล่อ) scope: recolour the blue primary to the amber/orange
+   used on the monthly-report foundry section. Wrapping a foundry page's content
+   in .foundry-theme remaps the whole --kpc-primary scale locally, so every
+   component that reads --kpc-primary / --kpc-info (PageHeader, Pill, primary
+   Button, KPI cards, info Badges, links) turns orange without touching each one.
+   Overriding --kpc-primary here beats the ThemeContext value set on <html>,
+   because the nearest ancestor that defines a custom property wins. ---- */
+.foundry-theme {
+  --kpc-primary-50:  #FFFBEB;
+  --kpc-primary-100: #FEF3C7;
+  --kpc-primary-200: #FDE68A;
+  --kpc-primary-300: #FCD34D;
+  --kpc-primary-400: #FBBF24;
+  --kpc-primary-500: #F59E0B;
+  --kpc-primary-600: #D97706;
+  --kpc-primary-700: #B45309;
+  --kpc-primary-900: #78350F;
+  --kpc-primary: #F59E0B;
+  --kpc-primary-ink: #B45309;
+}
+
+/* Inverted (filled) KPI cards inside a foundry scope. The base rule tints the
+   label with a light BLUE (#C8C8FB) meant for the blue card — it reads as washed-
+   out grey on orange. Deepen the fill to amber-600 and use a light-amber label so
+   both the white value and the label stay clearly legible. */
+.foundry-theme .kpi.invert { background: var(--kpc-primary-600); }
+.foundry-theme .kpi.invert .label,
+.foundry-theme .kpi.invert .delta-note { color: #FFECC7; }
+
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; }

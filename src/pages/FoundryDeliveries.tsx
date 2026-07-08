@@ -119,7 +119,7 @@ export function FoundryDeliveries() {
   ]
 
   return (
-    <>
+    <div className="foundry-theme">
       <PageHeader
         title="ใบส่งสินค้าโรงหล่อ"
         sub={`Foundry Delivery Notes · ${month === 'all' ? 'ทุกเดือน' : monthName(month)} ${year}`}
@@ -182,7 +182,7 @@ export function FoundryDeliveries() {
       >
         {active && <FoundryDeliveryDoc fd={active} />}
       </DocModal>
-    </>
+    </div>
   )
 }
 

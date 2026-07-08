@@ -23,7 +23,8 @@ import { TransportPricing } from './TransportPricing'
 export function Pricing() {
   const [view, setView] = useState<'products' | 'transport' | 'foundry'>('products')
   return (
-    <>
+    /* โรงหล่อ tab → orange scope (recolours the active pill + the whole view). */
+    <div className={view === 'foundry' ? 'foundry-theme' : undefined}>
       <div className="pills" style={{ marginBottom: 20 }}>
         <Pill active={view === 'products'} onClick={() => setView('products')}>ราคาสินค้าแพล้นปูน</Pill>
         <Pill active={view === 'transport'} onClick={() => setView('transport')}>ค่าขนส่ง</Pill>
@@ -32,7 +33,7 @@ export function Pricing() {
       {view === 'products' ? <ProductPricing scope="plant" />
         : view === 'foundry' ? <ProductPricing scope="foundry" />
         : <TransportPricing />}
-    </>
+    </div>
   )
 }
 

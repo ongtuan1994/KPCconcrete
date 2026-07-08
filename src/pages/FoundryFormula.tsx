@@ -114,7 +114,7 @@ export function FoundryFormula() {
   }
 
   return (
-    <>
+    <div className="foundry-theme">
       <PageHeader
         title="สูตรผลิตโรงหล่อ"
         sub={`สูตรการผลิตสินค้าโรงหล่อ (พรีคาสท์) · ${formulas.length} สูตร`}
@@ -180,7 +180,7 @@ export function FoundryFormula() {
         nameOf={nameOf}
         onClose={() => setEditing(null)}
       />
-    </>
+    </div>
   )
 }
 

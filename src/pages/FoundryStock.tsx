@@ -189,7 +189,7 @@ export function FoundryStock() {
   }
 
   return (
-    <>
+    <div className="foundry-theme">
       <PageHeader
         title="สต๊อกสินค้าโรงหล่อ"
         sub={`Foundry Product Stock · ${items.length} รายการ`}
@@ -251,7 +251,7 @@ export function FoundryStock() {
 
       <ReceiveFoundryModal open={showReceive} onClose={() => setShowReceive(false)} balanceByCode={Object.fromEntries(items.map((r) => [r.code, r.balance]))} />
       <FoundryReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} items={items} />
-    </>
+    </div>
   )
 }
 
