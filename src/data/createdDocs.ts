@@ -557,6 +557,8 @@ export interface PriceListReportRow {
   price: number
   /** สูตรวัตถุดิบ (Mix Design) per 1 คิว — concrete/plant items only. */
   mix?: { cement: number; sand: number; aggregate: number; water: number; plastomix?: number; sikament?: number; pce?: number; accelerator?: number; waterproof?: number }
+  /** สถานะการขาย — true = งดจำหน่าย (shown at the bottom, tagged). Unset = จำหน่าย. */
+  discontinued?: boolean
 }
 /** One category group (หมวดหมู่) in a price-list report. */
 export interface PriceListReportGroup { label: string; rows: PriceListReportRow[] }

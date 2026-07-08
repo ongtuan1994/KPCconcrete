@@ -68,8 +68,11 @@ function strengthOf(r: PriceListReportRow): number {
   return m ? Number(m[1]) : 0
 }
 
+/** งดจำหน่าย sinks to the bottom of any listing (1 after 0). */
+const disc = (r: PriceListReportRow) => (r.discontinued ? 1 : 0)
+
 /** Within one distance, split by ปูนซีเมนต์ (ดอกบัว then SCG) and sort each brand
-    Lean → กำลังอัดต่ำ → สูง (by ksc ascending; Lean = 0 sorts first). */
+    Lean → กำลังอัดต่ำ → สูง (by ksc ascending; Lean = 0 sorts first), งดจำหน่าย last. */
 function byBrand(rows: PriceListReportRow[]): { brand: string; rows: PriceListReportRow[] }[] {
   const order = (b?: string) => (b && b.includes('SCG') ? 1 : 0) /* ดอกบัว ก่อน SCG */
   const groups = new Map<string, PriceListReportRow[]>()
@@ -78,7 +81,7 @@ function byBrand(rows: PriceListReportRow[]): { brand: string; rows: PriceListRe
     const a = groups.get(key) ?? []; a.push(r); groups.set(key, a)
   }
   return [...groups.entries()]
-    .map(([brand, rs]) => ({ brand, rows: rs.slice().sort((a, b) => strengthOf(a) - strengthOf(b)) }))
+    .map(([brand, rs]) => ({ brand, rows: rs.slice().sort((a, b) => disc(a) - disc(b) || strengthOf(a) - strengthOf(b)) }))
     .sort((a, b) => order(a.brand) - order(b.brand) || a.brand.localeCompare(b.brand))
 }
 
@@ -114,10 +117,13 @@ function PriceTable({ rows, showMix }: { rows: PriceListReportRow[]; showMix?: b
             <td className="c" colSpan={colCount} style={{ color: RED, fontWeight: 700 }}>ไม่มี</td>
           </tr>
         ) : rows.map((r, i) => (
-          <tr key={r.code}>
+          <tr key={r.code} style={r.discontinued ? { color: faint } : undefined}>
             <td className="n mono">{i + 1}</td>
             <td className="mono">{r.code}</td>
-            <td>{r.name}</td>
+            <td>
+              {r.name}
+              {r.discontinued && <span style={{ color: RED, fontWeight: 700, marginLeft: 6, whiteSpace: 'nowrap' }}>· งดจำหน่าย</span>}
+            </td>
             <td className="c" style={brandBg(r.brand)}>{r.brand ? shortBrand(r.brand) : <span style={{ color: faint }}>—</span>}</td>
             <td className="c">{r.unit}</td>
             {showMix && <>
@@ -205,7 +211,7 @@ export function PriceListReportDoc({ report }: { report: PriceListReport }) {
                 </div>
               ))
             ) : (
-              <div className="plr-block"><PriceTable rows={g.rows} /></div>
+              <div className="plr-block"><PriceTable rows={g.rows.slice().sort((a, b) => disc(a) - disc(b))} /></div>
             )}
           </div>
         )

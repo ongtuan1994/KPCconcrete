@@ -306,6 +306,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
         pickup: p.pickup,
         pickupPrices: p.pickupPrices,
         price: p.price,
+        ...(p.discontinued ? { discontinued: true } : {}),
         ...(m ? { mix: { cement: m.cement, sand: m.sand, aggregate: m.aggregate, water: m.water ?? DEFAULT_WATER_L, plastomix: m.plastomix, sikament: m.sikament, pce: m.pce, accelerator: m.accelerator, waterproof: m.waterproof } } : {}),
       })
       groupsMap.set(label, arr)
