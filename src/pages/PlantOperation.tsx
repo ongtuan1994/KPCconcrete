@@ -4,7 +4,8 @@ import { Badge } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { qm, baht } from '../data/selectors'
 import { useCreatedDocs } from '../data/createdDocs'
-import { plantLiveBalances, stockStatus } from '../data/plantStock'
+import { plantLiveBalances, stockStatus, ticketConsumption } from '../data/plantStock'
+import { MIX_BY_CODE, DEFAULT_WATER_L } from '../data/mixDesign'
 import { ticketISO } from '../data/truckTripFee'
 import { DELIVERY_TICKETS, VEHICLES, type StockMaterial } from '../data/real'
 
@@ -37,6 +38,19 @@ function Chip({ x, y, text, tone }: { x: number; y: number; text: string; tone: 
     <g>
       <rect x={x - w / 2} y={y - 13} width={w} height={26} rx={13} fill={c.bg} stroke={c.stroke} strokeWidth={1.6} />
       <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize={13.5} fontWeight={800} fill={c.text} style={{ fontFamily: 'var(--kpc-mono, ui-monospace, monospace)' }}>{text}</text>
+    </g>
+  )
+}
+
+/** A small indigo flow tag sitting on a vessel's discharge pipe — TODAY's
+    dispensed quantity of that material. Distinct from the status Chip (คงเหลือ)
+    at the top of each vessel. */
+function FlowTag({ x, y, text }: { x: number; y: number; text: string }) {
+  const w = Math.max(52, text.length * 6.6 + 26)
+  return (
+    <g>
+      <rect x={x - w / 2} y={y - 11} width={w} height={22} rx={11} fill="#e0e7ff" stroke="#6366f1" strokeWidth={1.4} />
+      <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize={11.5} fontWeight={700} fill="#4338ca" style={{ fontFamily: 'var(--kpc-mono, ui-monospace, monospace)' }}>▼ {text}</text>
     </g>
   )
 }
@@ -205,6 +219,34 @@ export function PlantOperation() {
   }, [created.tickets, created.hidden.tickets, today])
   const r2 = (n: number) => Math.round(n * 100) / 100
 
+  /* Today's raw-material จ่ายออก per code — the consumption (ticketConsumption)
+     summed over TODAY's delivery tickets. This is the slice of the auto-จ่ายออก
+     that happened today, shown as a tag on each vessel's discharge pipe. */
+  const todayDispense = useMemo(() => {
+    const hidden = new Set(created.hidden.tickets)
+    const acc: Record<string, number> = {}
+    for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
+      if (hidden.has(t.dtNo) || ticketISO(t.date) !== today) continue
+      for (const c of ticketConsumption(t)) acc[c.code] = (acc[c.code] ?? 0) + c.qty
+    }
+    return acc
+  }, [created.tickets, created.hidden.tickets, today])
+  /** Formatted "จ่ายออกวันนี้" for a material code — quantity + its unit. */
+  const outText = (code: string) => `${qm(r2(todayDispense[code] ?? 0))} ${byCode[code]?.unit ?? ''}`.trim()
+
+  /* Water จ่ายออกวันนี้ (ลิตร) — not a stock material (pumped from groundwater), so
+     it isn't in ticketConsumption. Compute it straight from the สูตรการผลิต:
+     น้ำ (ล./คิว) × คิว, summed over today's tickets. */
+  const todayWaterL = useMemo(() => {
+    const hidden = new Set(created.hidden.tickets)
+    let liters = 0
+    for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
+      if (hidden.has(t.dtNo) || ticketISO(t.date) !== today) continue
+      liters += (t.m3 || 0) * (MIX_BY_CODE[t.prod]?.water ?? DEFAULT_WATER_L)
+    }
+    return liters
+  }, [created.tickets, created.hidden.tickets, today])
+
   const tripsByTruck = useMemo(() => {
     const m: Record<string, number> = { '001': 0, '002': 0, '003': 0, '004': 0 }
     const hidden = new Set(created.hidden.tickets)
@@ -240,6 +282,10 @@ export function PlantOperation() {
             <span style={{ color: 'var(--kpc-text)' }}>{label}</span>
           </span>
         ))}
+        <span className="row" style={{ gap: 7, alignItems: 'center', fontSize: 12.5, marginLeft: 6 }}>
+          <span style={{ width: 14, height: 14, borderRadius: 4, background: '#e0e7ff', border: '1.5px solid #6366f1' }} />
+          <span style={{ color: 'var(--kpc-text)' }}>▼ จ่ายออกวันนี้ (ที่ท่อ)</span>
+        </span>
         <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--kpc-text-faint)' }}>อ้างอิงยอด ณ {updated}</span>
       </div>
 
@@ -303,11 +349,14 @@ export function PlantOperation() {
           <Chip x={556} y={35} text={admF.text} tone={admF.tone} />
           <EqLabel x={556} y={82} top="PCE-1 Gold" sub="500 SF · เร่ง" />
 
-          {/* ── Water tank (not stock-tracked) ── */}
+          {/* ── Water tank — น้ำบาดาล: ยอดคงเหลือ ∞ (สูบใช้ไม่จำกัด) ── */}
           <g>
             <Tank x={704} topY={56} w={64} h={58} />
             <rect x={672} y={56} width={64} height={58} fill="#dbeafe" opacity={0.5} />
             <ellipse cx={704} cy={56} rx={32} ry={6} fill="#dbeafe" stroke="#60a5fa" strokeWidth={2} />
+            {/* ยอดคงเหลือ = ∞ (น้ำบาดาล) */}
+            <rect x={704 - 26} y={35 - 13} width={52} height={26} rx={13} fill="#dbeafe" stroke="#60a5fa" strokeWidth={1.6} />
+            <text x={704} y={36} textAnchor="middle" dominantBaseline="middle" fontSize={18} fontWeight={800} fill="#1e40af">∞</text>
             <EqLabel x={704} y={82} top="ถังน้ำ" sub="Water Tank" />
           </g>
 
@@ -319,6 +368,16 @@ export function PlantOperation() {
           <Bin x={1070} topY={56} topW={140} botW={50} bodyH={76} />
           <Chip x={1070} y={40} text={agg.text} tone={agg.tone} />
           <EqLabel x={1070} y={92} top={'หิน 3/4"'} sub="Aggregate" />
+
+          {/* ── จ่ายออกวันนี้ — indigo tag on each discharge pipe. Water จ่ายออกตามสูตร
+                 (น้ำบาดาล — คงเหลือ ∞ แต่ยังนับปริมาณที่ใช้). ── */}
+          <FlowTag x={82} y={188} text={outText('CEM-2')} />
+          <FlowTag x={228} y={188} text={outText('CEM-1')} />
+          <FlowTag x={386} y={188} text={outText('ADM-D')} />
+          <FlowTag x={556} y={188} text={outText('ADM-F')} />
+          <FlowTag x={704} y={188} text={`${qm(r2(todayWaterL))} ลิตร`} />
+          <FlowTag x={868} y={188} text={outText('SAN')} />
+          <FlowTag x={1070} y={188} text={outText('AGG')} />
         </svg>
       </div>
 
@@ -337,7 +396,10 @@ export function PlantOperation() {
         * ตัวเลขบนถัง/ไซโลแต่ละจุดคือ<strong>ปริมาณคงเหลือจริง</strong>จากเมนู “คลังวัตถุดิบแพล้นปูน” (ยอดตั้งต้น + รับเข้า + กระทบยอดที่อนุมัติ − จ่ายออกอัตโนมัติตามใบจ่ายคอนกรีต) —
         สี<span style={{ color: SV.success.text, fontWeight: 700 }}> เขียว</span> = พอเพียง,
         <span style={{ color: SV.warning.text, fontWeight: 700 }}> เหลือง</span> = ใกล้หมด (ต่ำกว่าจุดสั่งซื้อ),
-        <span style={{ color: SV.danger.text, fontWeight: 700 }}> แดง</span> = ติดลบ / หมด · ถังน้ำไม่ได้ตัดสต๊อกในระบบ
+        <span style={{ color: SV.danger.text, fontWeight: 700 }}> แดง</span> = ติดลบ / หมด · ถังน้ำเป็นน้ำบาดาล ยอดคงเหลือแสดง <strong>∞</strong> (สูบใช้ไม่จำกัด)
+      </p>
+      <p className="page-sub" style={{ marginTop: 4, fontSize: 12 }}>
+        * ตัวเลข<span style={{ color: '#4338ca', fontWeight: 700 }}> ▼ สีน้ำเงิน</span>ที่ท่อจ่ายออกของแต่ละถัง/ไซโล คือ<strong>ปริมาณที่จ่ายออกวันนี้</strong> ({todayLabel}) — รวมจากใบจ่ายคอนกรีตของวันนี้ตามสูตรส่วนผสมของแต่ละสินค้า
       </p>
       <p className="page-sub" style={{ marginTop: 4, fontSize: 12 }}>
         * <strong>จำนวนรอบการขนส่งวันนี้</strong>ของรถโม่แต่ละคัน นับเฉพาะใบจ่ายคอนกรีต (ขายลูกค้า) ของวันนี้ ({todayLabel}) ที่ระบุรถทะเบียนนั้น — ตรงกับเมนู “บันทึกเที่ยวรถโม่”
