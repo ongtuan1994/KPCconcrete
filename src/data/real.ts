@@ -45,6 +45,11 @@ export interface Product {
       WINS over the code-based guess, so a hand-typed code can't force the wrong
       cement. Unset (seed) ⇒ derived from the code (KPCR2… = ดอกบัว, else SCG). */
   cementBrand?: 'DOKBUA' | 'SCG'
+  /** ระยะส่ง (delivery zone) for plant products chosen explicitly at creation. When
+      set it WINS over the code-based guess (deliveryZone), so a hand-typed code
+      that lacks the OS00/OV.. marker still classifies correctly. Unset (seed) ⇒
+      derived from the code. */
+  zone?: 'OS' | 'OV21' | 'OV31' | 'OV41'
   price: number
 }
 export const PRODUCTS: Product[] = [

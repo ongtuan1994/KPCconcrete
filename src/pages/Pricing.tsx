@@ -76,8 +76,18 @@ function deliveryZone(code: string): Zone | null {
   if (code.includes('OV41')) return ZONE_MAP.OV41
   if (code.includes('OV31')) return ZONE_MAP.OV31
   if (code.includes('OV21')) return ZONE_MAP.OV21
-  if (code.includes('OS00')) return ZONE_MAP.OS
+  /* On Site = any "OS" that isn't an "OV.." over-band. The seed uses the OS00
+     marker, but hand-typed codes (KPCPOS.., KPCROSPP-..) only carry a bare "OS"
+     — still On Site. OV bands are ruled out above, so this can't mis-match them. */
+  if (code.includes('OS')) return ZONE_MAP.OS
   return null
+}
+/** A product's ระยะส่ง: the explicitly-chosen zone (stored at creation) wins;
+    otherwise fall back to guessing from the code. Mirrors cementBrandOf so a
+    hand-typed code that lacks the OS00/OV.. marker still classifies correctly. */
+function deliveryZoneOf(p: Product): Zone | null {
+  if (p.zone) return ZONE_MAP[p.zone]
+  return deliveryZone(p.code)
 }
 
 /* Cement brand is encoded in positions 4–5 of the code:
@@ -166,7 +176,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
     if (productSite(p) !== scope) return false
     if (type !== 'all' && prodType(p).th !== type) return false
     if (!isFoundry && zone !== 'all') {
-      const z = deliveryZone(p.code)
+      const z = deliveryZoneOf(p)
       if (!z || z.id !== zone) return false
     }
     if (!isFoundry && brand !== 'all') {
@@ -195,7 +205,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
     }
   }, [rows, sortBy])
 
-  const zoneCount = (id: ZoneId) => products.filter((p) => productSite(p) === scope && deliveryZone(p.code)?.id === id).length
+  const zoneCount = (id: ZoneId) => products.filter((p) => productSite(p) === scope && deliveryZoneOf(p)?.id === id).length
   const brandCount = (id: BrandId) => products.filter((p) => productSite(p) === scope && cementBrandOf(p)?.id === id).length
 
   /* ประเภท options — distinct prodType labels within this SITE scope, in first-seen
@@ -235,7 +245,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
         header: 'ระยะส่ง',
         align: 'center',
         cell: (r: Product) => {
-          const z = deliveryZone(r.code)
+          const z = deliveryZoneOf(r)
           return z
             ? (
               <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
@@ -278,7 +288,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
          sub-tables (sorted first as the lowest strength), not its own category. */
       const label = p.category === 'lean' ? CAT.concrete.th : prodType(p).th
       const arr = groupsMap.get(label) ?? []
-      const z = deliveryZone(p.code)
+      const z = deliveryZoneOf(p)
       const m = productSite(p) !== 'foundry' ? mixForProduct(p) : undefined
       arr.push({
         code: p.code,
@@ -346,7 +356,7 @@ function ProductPricing({ scope }: { scope: ProductSite }) {
                   p.code, cleanName(p.name),
                   cementBrandOf(p)?.label ?? '',
                   p.strengthKsc || '',
-                  deliveryZone(p.code) ? `${deliveryZone(p.code)!.label} (${deliveryZone(p.code)!.range})` : '',
+                  deliveryZoneOf(p) ? `${deliveryZoneOf(p)!.label} (${deliveryZoneOf(p)!.range})` : '',
                   p.unit, prodType(p).th, p.price || '',
                   mv(m?.cement), mv(m?.sand), mv(m?.aggregate), m ? mixWater(m) : '',
                   mv(m?.plastomix), mv(m?.pce || m?.accelerator), mv(m?.sikament || m?.waterproof),
@@ -788,7 +798,7 @@ function ProductFormModal({
       setSite(productSite(initial))
       setBrand(cementBrandOf(initial)?.id ?? 'SCG')
       setCategory(initial.category === 'lean' ? 'lean' : 'concrete')
-      setZone(deliveryZone(initial.code)?.id ?? 'OS')
+      setZone(deliveryZoneOf(initial)?.id ?? 'OS')
       setKind(initial.typeLabel ? CUSTOM_KIND : (initial.kind ?? 'plank'))
       setCustomType(initial.typeLabel ?? '')
       setCode(initial.code)
@@ -884,10 +894,10 @@ function ProductFormModal({
         plastomix: optN(mixPlastomix), sikament: optN(mixSikament), pce: optN(mixPce), accelerator: optN(mixAccelerator), waterproof: optN(mixWaterproof),
       } : null
       if (mode === 'add') {
-        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand })
+        addProduct({ code: c, name: nm, strengthKsc, unit: u || 'คิว', category, price: pr, cementBrand: brand, zone })
       } else {
         /* Clear any legacy formula link — the product uses its own mix now. */
-        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand })
+        updateProduct(c, { name: nm, unit: u || 'คิว', strengthKsc, price: pr, formulaCode: '', cementBrand: brand, zone })
       }
       if (mix) { if (initialMix) updateMixDesign(c, mix); else addMixDesign(mix) }
     } else if (isCustom) {

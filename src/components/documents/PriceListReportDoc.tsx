@@ -40,12 +40,22 @@ const DISTANCE_GROUPS: { label: string; test: (code: string) => boolean }[] = [
   { label: 'Over 41–50', test: (c) => /^KPCR2?OV41/i.test(c) },
 ]
 
+/** Which distance section a row belongs to. The stored zone label (e.g. "On Site
+    (≤20 km)") wins — so a hand-typed code lacking the OS00/OV.. marker still lands
+    in the right section — otherwise fall back to the code-prefix test. */
+function distanceLabelOf(r: PriceListReportRow): string | null {
+  if (r.zone) {
+    const g = DISTANCE_GROUPS.find((g) => r.zone!.startsWith(g.label))
+    if (g) return g.label
+  }
+  return DISTANCE_GROUPS.find((g) => g.test(r.code))?.label ?? null
+}
+
 /** The four fixed distance sections (always present so an empty range shows
     "ไม่มี") plus อื่นๆ only when it actually has rows. */
 function byDistance(rows: PriceListReportRow[]): { label: string; rows: PriceListReportRow[] }[] {
-  const out = DISTANCE_GROUPS.map((g) => ({ label: g.label, rows: rows.filter((r) => g.test(r.code)) }))
-  const matched = new Set(out.flatMap((o) => o.rows))
-  const other = rows.filter((r) => !matched.has(r))
+  const out = DISTANCE_GROUPS.map((g) => ({ label: g.label, rows: rows.filter((r) => distanceLabelOf(r) === g.label) }))
+  const other = rows.filter((r) => distanceLabelOf(r) === null)
   if (other.length) out.push({ label: 'อื่นๆ', rows: other })
   return out
 }
