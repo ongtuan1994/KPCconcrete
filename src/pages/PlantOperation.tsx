@@ -161,9 +161,9 @@ function TruckCard({ id, plate, driver, maxM3, trips }: { id: string; plate: str
       <MixerTruck big={maxM3 >= 6} />
       <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
         <span className="mono" style={{ fontSize: 30, fontWeight: 800, color: 'var(--kpc-primary-ink, #3730a3)', lineHeight: 1 }}>{qm(trips)}</span>
-        <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>รอบ</span>
+        <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>เที่ยว</span>
       </div>
-      <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>จำนวนรอบการขนส่งวันนี้</span>
+      <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>จำนวนเที่ยวสะสมเดือนนี้</span>
       <div className="row" style={{ justifyContent: 'space-between', fontSize: 12, color: 'var(--kpc-text-faint)', borderTop: '1px solid var(--kpc-border-soft, #f1f5f9)', paddingTop: 8 }}>
         <span className="mono">{plate}</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{driver}</span>
@@ -196,19 +196,22 @@ export function PlantOperation() {
   const admD = info('ADM-D')   // Plastomix-704
   const admF = info('ADM-F')   // PCE-1 Gold 500 SF
 
-  /* จำนวนรอบการขนส่งวันนี้ per mixer truck — TODAY's customer (ขายลูกค้า) delivery
-     tickets attributed to each vehicle (seed + created, excluding hidden). Same
-     truck attribution as the บันทึกเที่ยวรถโม่ page. */
+  /* Month-to-date figures — everything below accumulates over the CURRENT calendar
+     month (ticket dates whose "YYYY-MM" equals this month) and resets on the 1st.
+     The material remaining-balance chips above stay live/current, not monthly. */
   const today = todayIso()
+  const thisMonth = today.slice(0, 7) /* "YYYY-MM" */
   const todayLabel = new Date().toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+  const monthLabel = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+  const inThisMonth = (t: { date: string }) => ticketISO(t.date).slice(0, 7) === thisMonth
 
-  /* Today's concrete delivered, split by channel: ขายลูกค้า (customer) vs
-     โรงหล่อ (foundry). Sums คิว, ใบจ่าย count and ฿ from today's tickets. */
-  const todaySales = useMemo(() => {
+  /* Concrete delivered this month, split by channel: ขายลูกค้า (customer) vs
+     โรงหล่อ (foundry). Sums คิว, ใบจ่าย count and ฿ over this month's tickets. */
+  const monthSales = useMemo(() => {
     const hidden = new Set(created.hidden.tickets)
     const acc = { cust: { m3: 0, tickets: 0, amount: 0 }, foundry: { m3: 0, tickets: 0, amount: 0 } }
     for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
-      if (hidden.has(t.dtNo) || ticketISO(t.date) !== today) continue
+      if (hidden.has(t.dtNo) || !inThisMonth(t)) continue
       const b = t.type === 'ขายลูกค้า' ? acc.cust : t.type === 'โรงหล่อ' ? acc.foundry : null
       if (!b) continue
       b.m3 += t.m3 || 0
@@ -216,54 +219,56 @@ export function PlantOperation() {
       b.amount += t.amount || 0
     }
     return acc
-  }, [created.tickets, created.hidden.tickets, today])
+  }, [created.tickets, created.hidden.tickets, thisMonth])
   const r2 = (n: number) => Math.round(n * 100) / 100
 
-  /* Today's raw-material จ่ายออก per code — the consumption (ticketConsumption)
-     summed over TODAY's delivery tickets. This is the slice of the auto-จ่ายออก
-     that happened today, shown as a tag on each vessel's discharge pipe. */
-  const todayDispense = useMemo(() => {
+  /* Raw-material จ่ายออก per code, accumulated this month — the consumption
+     (ticketConsumption) summed over this month's delivery tickets. Shown as a tag
+     on each vessel's discharge pipe. */
+  const monthDispense = useMemo(() => {
     const hidden = new Set(created.hidden.tickets)
     const acc: Record<string, number> = {}
     for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
-      if (hidden.has(t.dtNo) || ticketISO(t.date) !== today) continue
+      if (hidden.has(t.dtNo) || !inThisMonth(t)) continue
       for (const c of ticketConsumption(t)) acc[c.code] = (acc[c.code] ?? 0) + c.qty
     }
     return acc
-  }, [created.tickets, created.hidden.tickets, today])
-  /** Formatted "จ่ายออกวันนี้" for a material code — quantity + its unit. */
-  const outText = (code: string) => `${qm(r2(todayDispense[code] ?? 0))} ${byCode[code]?.unit ?? ''}`.trim()
+  }, [created.tickets, created.hidden.tickets, thisMonth])
+  /** Formatted "จ่ายออกสะสมเดือนนี้" for a material code — quantity + its unit. */
+  const outText = (code: string) => `${qm(r2(monthDispense[code] ?? 0))} ${byCode[code]?.unit ?? ''}`.trim()
 
-  /* Water จ่ายออกวันนี้ (ลิตร) — not a stock material (pumped from groundwater), so
-     it isn't in ticketConsumption. Compute it straight from the สูตรการผลิต:
-     น้ำ (ล./คิว) × คิว, summed over today's tickets. */
-  const todayWaterL = useMemo(() => {
+  /* Water จ่ายออกสะสมเดือนนี้ (ลิตร) — not a stock material (pumped from groundwater),
+     so it isn't in ticketConsumption. Compute it from the สูตรการผลิต: น้ำ (ล./คิว) ×
+     คิว, summed over this month's tickets. */
+  const monthWaterL = useMemo(() => {
     const hidden = new Set(created.hidden.tickets)
     let liters = 0
     for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
-      if (hidden.has(t.dtNo) || ticketISO(t.date) !== today) continue
+      if (hidden.has(t.dtNo) || !inThisMonth(t)) continue
       liters += (t.m3 || 0) * (MIX_BY_CODE[t.prod]?.water ?? DEFAULT_WATER_L)
     }
     return liters
-  }, [created.tickets, created.hidden.tickets, today])
+  }, [created.tickets, created.hidden.tickets, thisMonth])
 
+  /* จำนวนเที่ยวสะสมเดือนนี้ per mixer truck — this month's customer (ขายลูกค้า) delivery
+     tickets attributed to each vehicle. Same attribution as บันทึกเที่ยวรถโม่. */
   const tripsByTruck = useMemo(() => {
     const m: Record<string, number> = { '001': 0, '002': 0, '003': 0, '004': 0 }
     const hidden = new Set(created.hidden.tickets)
     for (const t of [...created.tickets, ...DELIVERY_TICKETS]) {
       if (hidden.has(t.dtNo) || t.type !== 'ขายลูกค้า') continue
-      if (ticketISO(t.date) !== today) continue
+      if (!inThisMonth(t)) continue
       if (t.vehicle && m[t.vehicle] != null) m[t.vehicle] += 1
     }
     return m
-  }, [created.tickets, created.hidden.tickets, today])
+  }, [created.tickets, created.hidden.tickets, thisMonth])
   const totalTrips = VEHICLES.reduce((s, v) => s + (tripsByTruck[v.id] ?? 0), 0)
 
   return (
     <>
       <PageHeader
         title="Today Operation"
-        sub="การดำเนินงานวันนี้ · ยอดขายคอนกรีตวันนี้ · ผังโรงงาน — ปริมาณคงเหลือจากคลังวัตถุดิบแพล้นปูน"
+        sub={`สรุปสะสมทั้งเดือน (${monthLabel}) · ยอดขาย · วัตถุดิบจ่ายออก · เที่ยวรถ — วัตถุดิบคงเหลือเป็นยอด ณ ปัจจุบัน`}
         actions={
           <>
             <Badge tone={out > 0 ? 'danger' : low > 0 ? 'warning' : 'success'}>
@@ -284,24 +289,24 @@ export function PlantOperation() {
         ))}
         <span className="row" style={{ gap: 7, alignItems: 'center', fontSize: 12.5, marginLeft: 6 }}>
           <span style={{ width: 14, height: 14, borderRadius: 4, background: '#e0e7ff', border: '1.5px solid #6366f1' }} />
-          <span style={{ color: 'var(--kpc-text)' }}>▼ จ่ายออกวันนี้ (ที่ท่อ)</span>
+          <span style={{ color: 'var(--kpc-text)' }}>▼ จ่ายออกสะสมเดือนนี้ (ที่ท่อ)</span>
         </span>
         <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--kpc-text-faint)' }}>อ้างอิงยอด ณ {updated}</span>
       </div>
 
-      {/* Today's concrete sold — customer vs foundry */}
+      {/* Concrete sold this month (สะสม) — customer vs foundry */}
       <div className="grid g-2" style={{ marginBottom: 20 }}>
         <KpiCard
-          label="ขายลูกค้าวันนี้ · Sold to customer"
-          value={qm(r2(todaySales.cust.m3))}
+          label={`ขายลูกค้าเดือนนี้ · ${monthLabel}`}
+          value={qm(r2(monthSales.cust.m3))}
           unit="คิว"
-          note={`${todaySales.cust.tickets} ใบจ่าย · ${baht(todaySales.cust.amount)}`}
+          note={`${monthSales.cust.tickets} ใบจ่าย · ${baht(monthSales.cust.amount)}`}
         />
         <KpiCard
-          label="โรงหล่อวันนี้ · Sold to foundry"
-          value={qm(r2(todaySales.foundry.m3))}
+          label={`โรงหล่อเดือนนี้ · ${monthLabel}`}
+          value={qm(r2(monthSales.foundry.m3))}
           unit="คิว"
-          note={`${todaySales.foundry.tickets} ใบจ่าย · ${baht(todaySales.foundry.amount)}`}
+          note={`${monthSales.foundry.tickets} ใบจ่าย · ${baht(monthSales.foundry.amount)}`}
           invert
         />
       </div>
@@ -369,22 +374,22 @@ export function PlantOperation() {
           <Chip x={1070} y={40} text={agg.text} tone={agg.tone} />
           <EqLabel x={1070} y={92} top={'หิน 3/4"'} sub="Aggregate" />
 
-          {/* ── จ่ายออกวันนี้ — indigo tag on each discharge pipe. Water จ่ายออกตามสูตร
+          {/* ── จ่ายออกสะสมเดือนนี้ — indigo tag on each discharge pipe. Water จ่ายออกตามสูตร
                  (น้ำบาดาล — คงเหลือ ∞ แต่ยังนับปริมาณที่ใช้). ── */}
           <FlowTag x={82} y={188} text={outText('CEM-2')} />
           <FlowTag x={228} y={188} text={outText('CEM-1')} />
           <FlowTag x={386} y={188} text={outText('ADM-D')} />
           <FlowTag x={556} y={188} text={outText('ADM-F')} />
-          <FlowTag x={704} y={188} text={`${qm(r2(todayWaterL))} ลิตร`} />
+          <FlowTag x={704} y={188} text={`${qm(r2(monthWaterL))} ลิตร`} />
           <FlowTag x={868} y={188} text={outText('SAN')} />
           <FlowTag x={1070} y={188} text={outText('AGG')} />
         </svg>
       </div>
 
-      {/* ── Concrete mixer trucks — จำนวนรอบการขนส่งวันนี้ ── */}
+      {/* ── Concrete mixer trucks — จำนวนเที่ยวสะสมเดือนนี้ ── */}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', margin: '22px 0 12px' }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>รถโม่คอนกรีต · Concrete Mixer Trucks</span>
-        <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>วันนี้ {todayLabel} · รวม {qm(totalTrips)} รอบ</span>
+        <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{monthLabel} (ถึง {todayLabel}) · รวม {qm(totalTrips)} เที่ยว</span>
       </div>
       <div className="grid g-4" style={{ gap: 16 }}>
         {VEHICLES.map((v) => (
@@ -399,10 +404,10 @@ export function PlantOperation() {
         <span style={{ color: SV.danger.text, fontWeight: 700 }}> แดง</span> = ติดลบ / หมด · ถังน้ำเป็นน้ำบาดาล ยอดคงเหลือแสดง <strong>∞</strong> (สูบใช้ไม่จำกัด)
       </p>
       <p className="page-sub" style={{ marginTop: 4, fontSize: 12 }}>
-        * ตัวเลข<span style={{ color: '#4338ca', fontWeight: 700 }}> ▼ สีน้ำเงิน</span>ที่ท่อจ่ายออกของแต่ละถัง/ไซโล คือ<strong>ปริมาณที่จ่ายออกวันนี้</strong> ({todayLabel}) — รวมจากใบจ่ายคอนกรีตของวันนี้ตามสูตรส่วนผสมของแต่ละสินค้า
+        * ตัวเลข<span style={{ color: '#4338ca', fontWeight: 700 }}> ▼ สีน้ำเงิน</span>ที่ท่อจ่ายออกของแต่ละถัง/ไซโล คือ<strong>ปริมาณจ่ายออกสะสมทั้งเดือน</strong> ({monthLabel} ถึง {todayLabel}) — รวมจากใบจ่ายคอนกรีตของเดือนนี้ตามสูตรส่วนผสม · รีเซ็ตเมื่อขึ้นเดือนใหม่
       </p>
       <p className="page-sub" style={{ marginTop: 4, fontSize: 12 }}>
-        * <strong>จำนวนรอบการขนส่งวันนี้</strong>ของรถโม่แต่ละคัน นับเฉพาะใบจ่ายคอนกรีต (ขายลูกค้า) ของวันนี้ ({todayLabel}) ที่ระบุรถทะเบียนนั้น — ตรงกับเมนู “บันทึกเที่ยวรถโม่”
+        * <strong>จำนวนเที่ยวสะสมเดือนนี้</strong>ของรถโม่แต่ละคัน นับเฉพาะใบจ่ายคอนกรีต (ขายลูกค้า) ของเดือนนี้ ({monthLabel}) ที่ระบุรถทะเบียนนั้น — ตรงกับเมนู “บันทึกเที่ยวรถโม่” · รีเซ็ตเมื่อขึ้นเดือนใหม่
       </p>
     </>
   )
