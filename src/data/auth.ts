@@ -125,14 +125,10 @@ export function roleAllowsResource(role: Role, key: string): boolean {
   return !allow || allow.includes(role)
 }
 
-/** Default landing route for a role: the first resource (in sidebar order) it may
-    actually view — so a role locked out of the monthly report doesn't land on the
-    "no access" page. Falls back to the personal ungated page. */
-export function landingRouteFor(role: Role, perms: PermMatrix): string {
-  for (const r of RESOURCES) {
-    const lvl = perms[role]?.[r.key] ?? 'none'
-    if (lvl !== 'none' && roleAllowsResource(role, r.key)) return r.route
-  }
+/** Landing route after login — every user is taken to งานของฉัน (/my-work), the
+    personal, ungated page that all roles can access. role/perms are kept in the
+    signature for the callers but no longer affect the destination. */
+export function landingRouteFor(_role: Role, _perms: PermMatrix): string {
   return '/my-work'
 }
 

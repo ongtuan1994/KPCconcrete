@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { BOQ_MATERIALS, BOQ_MATERIAL_MAP, boqOutput } from '../../data/foundryBoq'
+import { BOQ_MATERIALS, boqOutput, toBoqDef, type BoqMaterialDef } from '../../data/foundryBoq'
 import {
   addFoundryBoq, updateFoundryBoq, useCreatedDocs,
   type FoundryBoq, type FoundryBoqProduct, type FoundryBoqMaterial, type FoundryMaterialKey, type FoundryProductType,
@@ -48,9 +48,8 @@ const parse = (s?: string): number | undefined => {
   return Number.isNaN(n) ? undefined : n
 }
 
-/** Build a stored material line from a draft row (mode picks the inputs). */
-function toMaterial(r: DraftMatRow): FoundryBoqMaterial {
-  const def = BOQ_MATERIAL_MAP[r.key]
+/** Build a stored material line from a draft row (the def's mode picks the inputs). */
+function toMaterial(r: DraftMatRow, def: BoqMaterialDef): FoundryBoqMaterial {
   switch (def.mode) {
     case 'direct': return { key: r.key, value: parse(r.value) }
     case 'lengthCount': return { key: r.key, length: parse(r.length), count: parse(r.count) }
@@ -72,6 +71,19 @@ export function NewFoundryBoqForm({
 }) {
   const created = useCreatedDocs()
   const isEdit = !!editing
+  /* Seed BOQ materials + user-added foundry materials (from the stock page), so
+     newly added materials are selectable here too. */
+  const boqMaterials = useMemo(
+    () => [...BOQ_MATERIALS, ...created.foundryMaterialsAdded.map(toBoqDef)],
+    [created.foundryMaterialsAdded],
+  )
+  const matMap = useMemo(
+    () => Object.fromEntries(boqMaterials.map((d) => [d.key, d])) as Record<string, BoqMaterialDef>,
+    [boqMaterials],
+  )
+  /* Resolve a row's material def; unknown (since-deleted) keys fall back to a
+     direct-mode stub so old BOQs still render. */
+  const defOf = (key: FoundryMaterialKey): BoqMaterialDef => matMap[key] ?? { key, label: String(key), unit: '', mode: 'direct' }
   const [project, setProject] = useState('')
   const [date, setDate] = useState(todayIso())
   const [note, setNote] = useState('')
@@ -142,7 +154,7 @@ export function NewFoundryBoqForm({
       if (!qty || qty <= 0) return setErr(`กรุณาระบุจำนวน (ตัว) ของสินค้า "${p.type}" ให้มากกว่า 0`)
       const materials: FoundryBoqMaterial[] = []
       for (const r of p.materials) {
-        const m = toMaterial(r)
+        const m = toMaterial(r, defOf(r.key))
         if (boqOutput(m) > 0) materials.push(m)
       }
       if (materials.length === 0) continue /* skip products with no takeoff */
@@ -237,13 +249,13 @@ export function NewFoundryBoqForm({
                   </thead>
                   <tbody>
                     {p.materials.map((r) => {
-                      const def = BOQ_MATERIAL_MAP[r.key]
-                      const per = boqOutput(toMaterial(r))
+                      const def = defOf(r.key)
+                      const per = boqOutput(toMaterial(r, def))
                       return (
                         <tr key={r.rowId}>
                           <td>
                             <Select value={r.key} onChange={(e) => changeMatKey(i, r.rowId, e.target.value as FoundryMaterialKey)}>
-                              {BOQ_MATERIALS.map((d) => <option key={d.key} value={d.key}>{d.label} ({d.unit})</option>)}
+                              {boqMaterials.map((d) => <option key={d.key} value={d.key}>{d.label} ({d.unit})</option>)}
                             </Select>
                           </td>
                           <td>

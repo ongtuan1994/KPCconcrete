@@ -12,7 +12,7 @@
    Wire kg/m factors were confirmed with the user (2026-07): PCW 4=0.100 /
    5=0.150 / 7=0.300; Stir 2.8=0.050 / 4=0.100 / 6=0.222. */
 
-import type { FoundryBoqMaterial, FoundryMaterialKey } from './createdDocs'
+import type { FoundryBoqMaterial, FoundryMaterialKey, FoundryMaterial } from './createdDocs'
 
 export type BoqMode = 'direct' | 'lengthCount' | 'lengthSpacing' | 'countFixed'
 
@@ -47,13 +47,20 @@ export const BOQ_MATERIALS: BoqMaterialDef[] = [
 export const BOQ_MATERIAL_MAP: Record<FoundryMaterialKey, BoqMaterialDef> =
   Object.fromEntries(BOQ_MATERIALS.map((m) => [m.key, m])) as Record<FoundryMaterialKey, BoqMaterialDef>
 
+/** Turn a user-added foundry material (from the stock page) into a BOQ takeoff
+    definition — always 'direct' mode (the quantity is typed straight in). */
+export function toBoqDef(m: FoundryMaterial): BoqMaterialDef {
+  return { key: m.code, label: m.name, unit: m.unit, mode: 'direct' }
+}
+
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 
 /** Per-unit output quantity for a material takeoff line, in the material's unit.
     Returns 0 when the required inputs are missing. */
 export function boqOutput(m: FoundryBoqMaterial): number {
   const def = BOQ_MATERIAL_MAP[m.key]
-  if (!def) return 0
+  /* Unknown key = a user-added material (or one since deleted) → direct mode. */
+  if (!def) return r3(m.value ?? 0)
   switch (def.mode) {
     case 'direct':
       return r3(m.value ?? 0)

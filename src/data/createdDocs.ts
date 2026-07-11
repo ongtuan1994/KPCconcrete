@@ -7,7 +7,11 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import { CUSTOMER_MASTER, PRODUCTS, type DeliveryTicket, type Customer, type Product } from './real'
+import { CUSTOMER_MASTER, PRODUCTS, STOCK_MATERIALS, type DeliveryTicket, type Customer, type Product } from './real'
+
+/** Codes of the seed foundry stock materials (site: 'foundry') — used to tell a
+    re-added seed material from a genuinely new one. */
+const STOCK_SEED_FOUNDRY_CODES = new Set(STOCK_MATERIALS.filter((m) => m.site === 'foundry').map((m) => m.code))
 import type { MixDesign } from './mixDesign'
 import type { FoundryFormula } from './foundryFormula'
 import type { Employee } from './employees'
@@ -149,11 +153,27 @@ export interface Quotation {
 /* ───────── Foundry BOQ (ประเมินราคาสินค้าโรงหล่อ) ───────── */
 
 /** Raw-material identifiers used in a foundry BOQ takeoff. See BOQ_MATERIALS in
-    ./foundryBoq for the display labels, units, input modes and kg/m factors. */
+    ./foundryBoq for the seed labels, units, input modes and kg/m factors.
+    `(string & {})` keeps the seed keys as autocomplete hints while allowing
+    user-added material codes (see FoundryMaterial) as keys too — those always
+    use 'direct' mode (the quantity is typed straight in). */
 export type FoundryMaterialKey =
   | 'concrete' | 'db16' | 'db12' | 'rb9' | 'rb6'
   | 'pcw4' | 'pcw5' | 'pcw7' | 'stir28' | 'stir4' | 'stir6'
   | 'plate9' | 'plate6' | 'box24'
+  | (string & {})
+
+/** A user-added foundry raw material — shared between the คลังวัตถุดิบโรงหล่อ stock
+    page (as a stock row) and the ประเมินราคาสินค้าโรงหล่อ BOQ page (as a direct-mode
+    takeoff material). `code` is the stable key used on both. */
+export interface FoundryMaterial {
+  code: string
+  name: string
+  en?: string
+  unit: string
+  reorder?: number
+  cost?: number
+}
 
 /** One material takeoff line — stores the raw inputs the user typed; the output
     quantity (per unit) is derived from the material's mode in ./foundryBoq. Only
@@ -977,6 +997,15 @@ export interface CreatedDocs {
   foundryReceipts: StockReceipt[]
   /** Stock reconciliations (กระทบยอดคงคลัง) — newest first. */
   stockReconciles: StockReconcile[]
+  /** Per-material unit cost (ต้นทุน/หน่วย · บาท) keyed by StockMaterial.code —
+      merged on top of the seed `cost`. Editable from the คลังวัตถุดิบ page. */
+  stockCosts: Record<string, number>
+  /** User-added foundry raw materials (คลังวัตถุดิบโรงหล่อ) — also surface on the
+      ประเมินราคาสินค้าโรงหล่อ page. Newest first. */
+  foundryMaterialsAdded: FoundryMaterial[]
+  /** Codes of seed foundry stock materials the user removed (hides them from the
+      คลังวัตถุดิบโรงหล่อ list). */
+  foundryMaterialsHidden: string[]
   /** Historical tax rows imported from Excel/CSV (รายงานภาษีซื้อ/ขาย ย้อนหลัง). */
   taxImports: ImportedTaxRow[]
   /** Installment payments recorded against tax invoices (ผ่อนชำระใบกำกับ). */
@@ -996,7 +1025,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -1063,6 +1092,9 @@ function read(): CreatedDocs {
       stockReceipts: v.stockReceipts ?? [],
       foundryReceipts: v.foundryReceipts ?? [],
       stockReconciles: v.stockReconciles ?? [],
+      stockCosts: v.stockCosts ?? {},
+      foundryMaterialsAdded: v.foundryMaterialsAdded ?? [],
+      foundryMaterialsHidden: v.foundryMaterialsHidden ?? [],
       /* Backfill year on rows imported before the year dimension existed (the
          original seed/imports were พ.ศ. 2569). */
       taxImports: (v.taxImports ?? []).map((r) => ({ ...r, year: r.year ?? 2569 })),
@@ -1414,6 +1446,40 @@ export function addStockReceipt(r: Omit<StockReceipt, 'createdBy' | 'createdAt'>
 }
 export function removeStockReceipt(id: string) {
   commit({ ...state, stockReceipts: state.stockReceipts.filter((r) => r.id !== id) })
+}
+/** Set (or clear) the stored unit cost (ต้นทุน/หน่วย · บาท) for a stock material,
+    keyed by StockMaterial.code. Pass undefined / a non-finite / negative value to
+    clear it (display then falls back to the seed cost). */
+export function setStockCost(code: string, cost: number | undefined) {
+  const next = { ...state.stockCosts }
+  if (cost === undefined || !Number.isFinite(cost) || cost < 0) delete next[code]
+  else next[code] = cost
+  commit({ ...state, stockCosts: next })
+}
+/** Add a new foundry raw material (คลังวัตถุดิบโรงหล่อ). Also appears on the
+    ประเมินราคาสินค้าโรงหล่อ page. If `code` was previously a hidden seed material,
+    un-hide it instead of adding a duplicate. */
+export function addFoundryMaterial(m: FoundryMaterial) {
+  const isSeed = STOCK_SEED_FOUNDRY_CODES.has(m.code)
+  commit({
+    ...state,
+    foundryMaterialsAdded: isSeed ? state.foundryMaterialsAdded : [m, ...state.foundryMaterialsAdded.filter((x) => x.code !== m.code)],
+    foundryMaterialsHidden: state.foundryMaterialsHidden.filter((c) => c !== m.code),
+  })
+}
+/** Remove a foundry raw material by code. User-added ones are dropped outright;
+    seed ones are hidden. Its stored unit cost (if any) is cleared too. */
+export function removeFoundryMaterial(code: string) {
+  const wasAdded = state.foundryMaterialsAdded.some((m) => m.code === code)
+  const nextCosts = { ...state.stockCosts }; delete nextCosts[code]
+  commit({
+    ...state,
+    foundryMaterialsAdded: state.foundryMaterialsAdded.filter((m) => m.code !== code),
+    foundryMaterialsHidden: wasAdded || state.foundryMaterialsHidden.includes(code)
+      ? state.foundryMaterialsHidden
+      : [...state.foundryMaterialsHidden, code],
+    stockCosts: nextCosts,
+  })
 }
 
 /* Foundry finished-goods stock receipts (รับเข้าสต๊อกสินค้าโรงหล่อ). */

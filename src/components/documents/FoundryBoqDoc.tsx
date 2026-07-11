@@ -1,7 +1,7 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
 import { COMPANY } from '../../data/real'
-import { BOQ_MATERIALS, BOQ_MATERIAL_MAP, boqOutput } from '../../data/foundryBoq'
-import type { FoundryBoq, FoundryMaterialKey } from '../../data/createdDocs'
+import { BOQ_MATERIALS, boqOutput, toBoqDef, type BoqMaterialDef } from '../../data/foundryBoq'
+import { useCreatedDocs, type FoundryBoq, type FoundryMaterialKey } from '../../data/createdDocs'
 
 const nq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 3 })
 
@@ -15,6 +15,13 @@ function fmtDate(iso: string): string {
 /** Printable foundry BOQ takeoff (ประเมินราคาสินค้าโรงหล่อ) — per-product material
     takeoff plus a project-wide material summary. */
 export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
+  const created = useCreatedDocs()
+  /* Seed materials + user-added foundry materials, so added/deleted ones still
+     resolve to a label/unit here. Unknown keys fall back to a direct-mode stub. */
+  const allDefs = [...BOQ_MATERIALS, ...created.foundryMaterialsAdded.map(toBoqDef)]
+  const matMap = Object.fromEntries(allDefs.map((d) => [d.key, d])) as Record<string, BoqMaterialDef>
+  const defOf = (key: FoundryMaterialKey): BoqMaterialDef => matMap[key] ?? { key, label: String(key), unit: '', mode: 'direct' }
+
   /* Aggregate every material across all products: per-unit output × product qty. */
   const summary = new Map<FoundryMaterialKey, number>()
   for (const p of boq.products) {
@@ -23,7 +30,11 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
       if (total > 0) summary.set(m.key, (summary.get(m.key) ?? 0) + total)
     }
   }
-  const summaryRows = BOQ_MATERIALS.filter((d) => summary.has(d.key))
+  /* Ordered by the material catalog, then any leftover (deleted) keys. */
+  const summaryKeys: FoundryMaterialKey[] = [
+    ...allDefs.map((d) => d.key).filter((k) => summary.has(k)),
+    ...[...summary.keys()].filter((k) => !matMap[k]),
+  ]
 
   return (
     <DocShell docType="ประเมินราคาสินค้าโรงหล่อ (BOQ)" copyLabel="FOUNDRY BOQ / MATERIAL TAKEOFF">
@@ -55,7 +66,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
                 {used.length === 0 ? (
                   <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--kpc-text-faint)' }}>— ยังไม่ได้ถอดวัตถุดิบ —</td></tr>
                 ) : used.map((m, i) => {
-                  const def = BOQ_MATERIAL_MAP[m.key]
+                  const def = defOf(m.key)
                   const per = boqOutput(m)
                   return (
                     <tr key={m.key}>
@@ -73,7 +84,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
         )
       })}
 
-      {summaryRows.length > 0 && (
+      {summaryKeys.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 4 }}>
             สรุปวัตถุดิบรวมทั้งโครงการ
@@ -88,14 +99,17 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
               </tr>
             </thead>
             <tbody>
-              {summaryRows.map((d, i) => (
-                <tr key={d.key}>
-                  <td className="ctr">{i + 1}</td>
-                  <td className="th">{d.label}</td>
-                  <td className="ctr">{d.unit}</td>
-                  <td className="num mono" style={{ fontWeight: 600 }}>{nq(summary.get(d.key) ?? 0)}</td>
-                </tr>
-              ))}
+              {summaryKeys.map((k, i) => {
+                const def = defOf(k)
+                return (
+                  <tr key={k}>
+                    <td className="ctr">{i + 1}</td>
+                    <td className="th">{def.label}</td>
+                    <td className="ctr">{def.unit}</td>
+                    <td className="num mono" style={{ fontWeight: 600 }}>{nq(summary.get(k) ?? 0)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

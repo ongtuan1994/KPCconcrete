@@ -10,7 +10,7 @@ import { STOCK_MATERIALS, type StockMaterial } from '../data/real'
 import { CREDITOR_MASTER } from '../data/creditors'
 import { baht, qm, prodShort } from '../data/selectors'
 import { MIX_PER_M3, ticketConsumption, stockStatus as status } from '../data/plantStock'
-import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
+import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, setStockCost, addFoundryMaterial, removeFoundryMaterial, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'low' | 'out'
@@ -62,8 +62,18 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   /* Reconcile scope for this stock — kept separate so plant, foundry-material and
      foundry-product reconcile histories don't mix. */
   const rcScope: 'material' | 'foundry-material' = isFoundry ? 'foundry-material' : 'material'
-  /* The material universe for this page — plant (concrete) or foundry (reinforcement). */
-  const universe = useMemo(() => STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === scope), [scope])
+  const created = useCreatedDocs()
+  const navigate = useNavigate()
+  /* The material universe for this page — plant (concrete) or foundry (reinforcement).
+     Foundry adds user-added materials and drops any the user removed (hidden). */
+  const universe = useMemo(() => {
+    const seed = STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === scope && !created.foundryMaterialsHidden.includes(m.code))
+    if (scope !== 'foundry') return seed
+    const added: StockMaterial[] = created.foundryMaterialsAdded.map((m) => ({
+      code: m.code, name: m.name, en: m.en ?? '', unit: m.unit, balance: 0, reorder: m.reorder ?? 0, cost: m.cost, site: 'foundry',
+    }))
+    return [...seed, ...added]
+  }, [scope, created.foundryMaterialsAdded, created.foundryMaterialsHidden])
   const scopeCodes = useMemo(() => new Set(universe.map((m) => m.code)), [universe])
 
   const [filter, setFilter] = useState<Filter>('all')
@@ -72,8 +82,8 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   const [to, setTo] = useState(todayIso())
   const [showReceive, setShowReceive] = useState(false)
   const [showReconcile, setShowReconcile] = useState(false)
-  const created = useCreatedDocs()
-  const navigate = useNavigate()
+  const [showCosts, setShowCosts] = useState(false)
+  const [showAddMat, setShowAddMat] = useState(false)
 
   /* Movements up to the "จนถึง" date count toward the displayed balance (so the
      balance reflects the end of the selected period); empty `to` = all-time. */
@@ -111,9 +121,11 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   const materials = useMemo(
     () => universe.map((m) => ({
       ...m,
+      /* Stored per-material price (ต้นทุน/หน่วย) overrides the seed cost when set. */
+      cost: created.stockCosts[m.code] ?? m.cost,
       balance: Math.round((m.balance + (receivedByCode[m.code] ?? 0) + (adjustByCode[m.code] ?? 0) - (issuedByCode[m.code] ?? 0)) * 100) / 100,
     })),
-    [universe, receivedByCode, adjustByCode, issuedByCode],
+    [universe, receivedByCode, adjustByCode, issuedByCode, created.stockCosts],
   )
 
   const rows = useMemo(
@@ -222,6 +234,17 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       ),
     },
     { key: 'unit', header: 'หน่วย', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>{r.unit}</span> },
+    {
+      key: 'cost',
+      header: 'ต้นทุน/หน่วย',
+      align: 'right',
+      cell: (r) => (r.cost != null
+        ? <span className="mono" style={{ color: 'var(--kpc-text-strong)' }}>{baht(r.cost)}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
+    },
+    { key: 'value', header: 'มูลค่าคงคลัง', align: 'right', cell: (r) => (r.cost != null
+        ? <span className="mono" style={{ color: 'var(--kpc-text-muted)' }}>{baht(Math.round(r.balance * r.cost * 100) / 100)}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'reorder', header: 'จุดสั่งซื้อ', align: 'right', cell: (r) => <span className="mono" style={{ color: 'var(--kpc-text-muted)' }}>{r.reorder.toLocaleString()}</span> },
     {
       key: 'status',
@@ -232,6 +255,21 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
         return <Badge tone={s.tone} pip={false}>{s.th}</Badge>
       },
     },
+    ...(isFoundry ? [{
+      key: 'del', header: '', align: 'center' as const,
+      cell: (r: StockMaterial) => {
+        const isAdded = created.foundryMaterialsAdded.some((m) => m.code === r.code)
+        return (
+          <Button
+            variant="ghost" size="sm" style={{ color: 'var(--kpc-danger)' }} aria-label="ลบวัตถุดิบ"
+            onClick={() => {
+              const extra = isAdded ? '\n(รายการนี้จะหายจากหน้าประเมินราคาสินค้าโรงหล่อด้วย)' : ''
+              if (confirm(`ลบวัตถุดิบ "${r.name}" ออกจากคลัง?${extra}`)) removeFoundryMaterial(r.code)
+            }}
+          >ลบ</Button>
+        )
+      },
+    }] : []),
   ]
 
   return (
@@ -242,13 +280,15 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'หน่วย', 'จุดสั่งซื้อ', 'สถานะ']
-              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.reorder, status(r).th])
+              const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่าคงคลัง', 'จุดสั่งซื้อ', 'สถานะ']
+              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.cost ?? '', r.cost != null ? Math.round(r.balance * r.cost * 100) / 100 : '', r.reorder, status(r).th])
               downloadCsv(isFoundry ? 'foundry-materials' : 'stock', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
             <Button variant="secondary" onClick={() => navigate(isFoundry ? '/foundry-materials-reconcile' : '/stock-reconcile')}>ประวัติการกระทบยอด</Button>
+            <Button variant="tonal" onClick={() => setShowCosts(true)}>ตั้งราคาต้นทุน</Button>
             <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>
+            {isFoundry && <Button variant="tonal" onClick={() => setShowAddMat(true)}><IconPlus /> เพิ่มวัตถุดิบใหม่</Button>}
             <Button variant="primary" onClick={() => setShowReceive(true)}>
               <IconPlus /> รับเข้าวัตถุดิบ
             </Button>
@@ -301,6 +341,8 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
 
       <ReceiveStockModal open={showReceive} onClose={() => setShowReceive(false)} receivedByCode={receivedByCode} materials={universe} />
       <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} scope={rcScope} />
+      <EditCostsModal open={showCosts} onClose={() => setShowCosts(false)} materials={materials} stockLabel={stockLabel} />
+      <AddFoundryMaterialModal open={showAddMat} onClose={() => setShowAddMat(false)} existingCodes={scopeCodes} />
     </>
   )
 }
@@ -535,6 +577,130 @@ function ReconcileModal({ open, onClose, materials, scope }: { open: boolean; on
         <div>ต้นทุนเสียหายรวม: <strong className="mono" style={{ color: '#b91c1c' }}>{baht(Math.round(totals.loss * 100) / 100)}</strong></div>
       </div>
       <div style={{ marginTop: 6, fontSize: 12, color: 'var(--kpc-text-muted)' }}>* บันทึกเพื่อขออนุมัติ — ระบบจะปรับยอดคงคลังตามจำนวนที่นับจริงเมื่อผู้บริหาร (Board) อนุมัติ</div>
+    </Modal>
+  )
+}
+
+/** เพิ่มวัตถุดิบใหม่ — add a new foundry raw material. It is persisted (shared with
+    the ประเมินราคาสินค้าโรงหล่อ page). Code must be unique within this stock. */
+function AddFoundryMaterialModal({ open, onClose, existingCodes }: { open: boolean; onClose: () => void; existingCodes: Set<string> }) {
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [en, setEn] = useState('')
+  const [unit, setUnit] = useState('')
+  const [reorder, setReorder] = useState('')
+  const [cost, setCost] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setCode(''); setName(''); setEn(''); setUnit(''); setReorder(''); setCost(''); setErr('')
+  }, [open])
+
+  const submit = () => {
+    setErr('')
+    const c = code.trim()
+    if (!c) return setErr('กรุณาระบุรหัสวัตถุดิบ')
+    if (existingCodes.has(c)) return setErr(`รหัส "${c}" มีอยู่แล้ว — กรุณาใช้รหัสอื่น`)
+    if (!name.trim()) return setErr('กรุณาระบุชื่อวัตถุดิบ')
+    if (!unit.trim()) return setErr('กรุณาระบุหน่วย')
+    addFoundryMaterial({
+      code: c,
+      name: name.trim(),
+      en: en.trim() || undefined,
+      unit: unit.trim(),
+      reorder: reorder.trim() ? Number(reorder) : undefined,
+      cost: cost.trim() ? Number(cost) : undefined,
+    })
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="เพิ่มวัตถุดิบใหม่ (โรงหล่อ)" onClose={onClose} maxWidth={560}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>เพิ่มวัตถุดิบ</Button></>}>
+      {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+      <div className="grid g-2" style={{ gap: 12 }}>
+        <Field label="รหัสวัตถุดิบ" required hint="ใช้เป็นรหัสอ้างอิง (ไม่ซ้ำ)">
+          <Input placeholder="เช่น DB20" value={code} onChange={(e) => setCode(e.target.value)} />
+        </Field>
+        <Field label="หน่วย" required hint="เช่น m / kg / แผ่น / เส้น">
+          <Input placeholder="เช่น m" value={unit} onChange={(e) => setUnit(e.target.value)} />
+        </Field>
+        <Field label="ชื่อวัตถุดิบ" required style={{ gridColumn: '1 / -1' }}>
+          <Input placeholder="เช่น เหล็กข้ออ้อย DB 20 mm." value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="ชื่อภาษาอังกฤษ (ถ้ามี)" style={{ gridColumn: '1 / -1' }}>
+          <Input placeholder="เช่น Deformed bar DB20" value={en} onChange={(e) => setEn(e.target.value)} />
+        </Field>
+        <Field label="จุดสั่งซื้อ (reorder)" hint="ปล่อยว่าง = 0">
+          <Input type="number" min={0} step="0.01" placeholder="0" value={reorder} onChange={(e) => setReorder(e.target.value)} />
+        </Field>
+        <Field label="ต้นทุน/หน่วย (บาท)" hint="ระบุภายหลังได้">
+          <Input type="number" min={0} step="0.01" placeholder="—" value={cost} onChange={(e) => setCost(e.target.value)} />
+        </Field>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 12, marginBottom: 0 }}>
+        * ยอดคงเหลือเริ่มต้น = 0 (รับเข้าภายหลังผ่านปุ่มรับเข้าวัตถุดิบ) · วัตถุดิบนี้จะไปแสดงในหน้าประเมินราคาสินค้าโรงหล่อโดยกรอกจำนวนได้โดยตรง
+      </p>
+    </Modal>
+  )
+}
+
+/** ตั้งราคาต้นทุน — set the per-material unit cost (ต้นทุน/หน่วย). Persists via
+    setStockCost keyed by code; a blank field clears the override. */
+function EditCostsModal({ open, onClose, materials, stockLabel }: { open: boolean; onClose: () => void; materials: StockMaterial[]; stockLabel: string }) {
+  const [costs, setCosts] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!open) return
+    const c: Record<string, string> = {}
+    for (const m of materials) c[m.code] = m.cost != null ? String(m.cost) : ''
+    setCosts(c)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit = () => {
+    for (const m of materials) {
+      const raw = (costs[m.code] ?? '').trim()
+      setStockCost(m.code, raw === '' ? undefined : Number(raw))
+    }
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title={`ตั้งราคาต้นทุนวัตถุดิบ · ${stockLabel}`} onClose={onClose} maxWidth={560}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>บันทึกราคา</Button></>}>
+      <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 0, marginBottom: 10 }}>
+        ต้นทุน/หน่วย (บาท) ของวัตถุดิบแต่ละรายการ — ใช้คำนวณมูลค่าคงคลังและมูลค่าส่วนต่างตอนกระทบยอด · เว้นว่าง = ไม่ระบุ
+      </p>
+      <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid var(--kpc-border)', borderRadius: 8 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead style={{ position: 'sticky', top: 0, background: 'var(--kpc-bg-soft, #f8fafc)', zIndex: 1 }}>
+            <tr>
+              <th style={{ ...thSt, textAlign: 'left' }}>วัตถุดิบ</th>
+              <th style={{ ...thSt, textAlign: 'center' }}>หน่วย</th>
+              <th style={{ ...thSt, textAlign: 'right' }}>ต้นทุน/หน่วย (บาท)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {materials.map((m) => (
+              <tr key={m.code}>
+                <td style={tdSt}>
+                  <div style={{ fontSize: 13, color: 'var(--kpc-text-strong)' }}>{m.name}</div>
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }}>{m.code}</div>
+                </td>
+                <td style={{ ...tdSt, textAlign: 'center', color: 'var(--kpc-text-muted)' }}>{m.unit}</td>
+                <td style={{ ...tdSt, textAlign: 'right' }}>
+                  <input
+                    type="number" step="0.01" min={0} className="input mono" placeholder="—"
+                    value={costs[m.code] ?? ''} onChange={(e) => setCosts({ ...costs, [m.code]: e.target.value })}
+                    style={{ width: 120, textAlign: 'right', padding: '4px 8px', fontSize: 13 }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Modal>
   )
 }

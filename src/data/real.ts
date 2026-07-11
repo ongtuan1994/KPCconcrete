@@ -2518,8 +2518,19 @@ export const STOCK_MATERIALS: StockMaterial[] = [
   { code: "ADM-D", name: "น้ำยา Plastomix-704 (หน่วง)", en: "Retarder admixture", unit: "ลิตร", balance: 832.36, reorder: 300, cost: 45 },
   { code: "ADM-F", name: "น้ำยา PCE-1 Gold 500 SF (เร่ง)", en: "Accelerator admixture", unit: "ลิตร", balance: 923.4, reorder: 300, cost: 60 },
   { code: "ADM-W", name: "น้ำยา SikaPlastocrete N (กันซึม)", en: "Waterproof admixture", unit: "ลิตร", balance: 200.0, reorder: 150, cost: 80 },
-  /* ───────── โรงหล่อ (Foundry) raw materials — reinforcement for precast ───────── */
-  { code: "WM", name: "ตะแกรงเหล็กไวร์เมช", en: "Steel wire mesh", unit: "ผืน", balance: 10, reorder: 5, site: 'foundry' },
-  { code: "TIE", name: "เหล็กปลอก", en: "Tie steel (stirrup)", unit: "ตัว", balance: 10, reorder: 5, site: 'foundry' },
-  { code: "PCW", name: "ลวดอัดแรง", en: "PC wire (prestressing)", unit: "เส้น", balance: 10, reorder: 5, site: 'foundry' },
+  /* ───────── โรงหล่อ (Foundry) raw materials — reinforcement + concrete for precast.
+     Mirrors the BOQ material catalog (see BOQ_MATERIALS in ./foundryBoq). Balances
+     start empty (0) — เติมผ่านหน้ารับเข้าวัตถุดิบ / กระทบยอดคงคลัง. ───────── */
+  { code: "DB16", name: "เหล็กข้ออ้อย DB 16 mm.", en: "Deformed bar DB16", unit: "m", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "DB12", name: "เหล็กข้ออ้อย DB 12 mm.", en: "Deformed bar DB12", unit: "m", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "RB9", name: "เหล็กเส้นกลม RB 9 mm.", en: "Round bar RB9", unit: "m", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "RB6", name: "เหล็กเส้นกลม RB 6 mm.", en: "Round bar RB6", unit: "m", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "PCW4", name: "ลวด PCW 4 mm.", en: "PC wire 4mm", unit: "kg", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "PCW5", name: "ลวด PCW 5 mm.", en: "PC wire 5mm", unit: "kg", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "PCW7", name: "ลวด PCW 7 mm.", en: "PC wire 7mm", unit: "kg", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "STIR28", name: "ลวดปลอก Stir RB 2.8 mm.", en: "Stirrup wire RB 2.8mm", unit: "kg", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "STIR4", name: "ลวดปลอก Stir RB 4 mm.", en: "Stirrup wire RB 4mm", unit: "kg", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "PLATE9", name: "เหล็กเพลท 9 mm. (0.15 × 0.3 m)", en: "Steel plate 9mm (0.15×0.3m)", unit: "แผ่น", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "PLATE6", name: "เหล็กเพลท 6 mm. (0.10 × 0.15 m)", en: "Steel plate 6mm (0.10×0.15m)", unit: "แผ่น", balance: 0, reorder: 0, site: 'foundry' },
+  { code: "BOX24", name: "เหล็กกล่อง 2\"×4\"", en: "Steel box 2\"×4\"", unit: "m", balance: 0, reorder: 0, site: 'foundry' },
 ]
