@@ -39,7 +39,6 @@ export const BOQ_MATERIALS: BoqMaterialDef[] = [
   { key: 'pcw7', label: 'ลวด PCW 7 mm.', unit: 'kg', mode: 'lengthCount', factor: 0.3, lengthLabel: 'ความยาวคาน (m)' },
   { key: 'stir28', label: 'ลวดปลอก Stir RB 2.8 mm.', unit: 'kg', mode: 'lengthCount', factor: 0.05, lengthLabel: 'ความยาวคาน (m)' },
   { key: 'stir4', label: 'ลวดปลอก Stir RB 4 mm.', unit: 'kg', mode: 'lengthCount', factor: 0.1, lengthLabel: 'ความยาวคาน (m)' },
-  { key: 'stir6', label: 'ลวดปลอก Stir RB 6 mm.', unit: 'kg', mode: 'lengthCount', factor: 0.222, lengthLabel: 'ความยาวคาน (m)' },
   { key: 'plate9', label: 'เหล็กเพลท 9 mm. (0.15 × 0.3 m)', unit: 'แผ่น', mode: 'direct' },
   { key: 'plate6', label: 'เหล็กเพลท 6 mm. (0.10 × 0.15 m)', unit: 'แผ่น', mode: 'direct' },
   { key: 'box24', label: 'เหล็กกล่อง 2"×4"', unit: 'm', mode: 'countFixed', factor: 0.35 },

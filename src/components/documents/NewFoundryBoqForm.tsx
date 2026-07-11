@@ -185,13 +185,13 @@ export function NewFoundryBoqForm({
             {no}
           </div>
         </Field>
-        <Field label="ชื่อโครงการ / ลูกค้า" required style={{ gridColumn: 'span 2' }}>
+        <Field label="ชื่อโครงการ / ลูกค้า" required>
           <Input placeholder="เช่น โครงการบ้านเดี่ยว คุณสมชาย" value={project} onChange={(e) => setProject(e.target.value)} />
         </Field>
         <Field label="วันที่" required hint="ค่าเริ่มต้น = วันนี้">
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="หมายเหตุ" style={{ gridColumn: 'span 2' }}>
+        <Field label="หมายเหตุ" style={{ gridColumn: '1 / -1' }}>
           <Input placeholder="รายละเอียดเพิ่มเติม" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
       </div>
@@ -225,11 +225,11 @@ export function NewFoundryBoqForm({
               </div>
 
               <div style={{ overflowX: 'auto' }}>
-                <table className="doc-lines" style={{ minWidth: 720 }}>
+                <table className="doc-lines" style={{ minWidth: 820 }}>
                   <thead>
                     <tr>
                       <th style={{ minWidth: 210 }}>วัตถุดิบ</th>
-                      <th style={{ minWidth: 240 }}>ข้อมูลที่ใช้ถอด</th>
+                      <th style={{ minWidth: 320 }}>ข้อมูลที่ใช้ถอด</th>
                       <th className="num" style={{ width: 88 }}>ต่อ 1 ตัว</th>
                       <th className="num" style={{ width: 96 }}>รวม (×{qty || 0})</th>
                       <th className="ctr" style={{ width: 78 }}></th>
@@ -249,24 +249,24 @@ export function NewFoundryBoqForm({
                           <td>
                             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                               {def.mode === 'direct' && (
-                                <SmallNum ph={`จำนวน (${def.unit})`} value={r.value} onChange={(v) => setMatRow(i, r.rowId, { value: v })} w={130} />
+                                <SmallNum ph={`จำนวน (${def.unit})`} value={r.value} onChange={(v) => setMatRow(i, r.rowId, { value: v })} w={150} />
                               )}
                               {def.mode === 'lengthCount' && (
                                 <>
-                                  <SmallNum ph={def.lengthLabel ?? 'ความยาว (m)'} value={r.length} onChange={(v) => setMatRow(i, r.rowId, { length: v })} />
-                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} />
+                                  <SmallNum ph={def.lengthLabel ?? 'ความยาว (m)'} value={r.length} onChange={(v) => setMatRow(i, r.rowId, { length: v })} w={150} />
+                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120} />
                                   {def.factor != null && <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} kg/m</span>}
                                 </>
                               )}
                               {def.mode === 'lengthSpacing' && (
                                 <>
-                                  <SmallNum ph="ความยาวคาน (m)" value={r.beamLength} onChange={(v) => setMatRow(i, r.rowId, { beamLength: v })} />
-                                  <SmallNum ph="ระยะห่าง (m)" value={r.spacing} onChange={(v) => setMatRow(i, r.rowId, { spacing: v })} />
+                                  <SmallNum ph="ความยาวคาน (m)" value={r.beamLength} onChange={(v) => setMatRow(i, r.rowId, { beamLength: v })} w={150} />
+                                  <SmallNum ph="ระยะห่าง (m)" value={r.spacing} onChange={(v) => setMatRow(i, r.rowId, { spacing: v })} w={130} />
                                 </>
                               )}
                               {def.mode === 'countFixed' && (
                                 <>
-                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} />
+                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120} />
                                   <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} m/เส้น</span>
                                 </>
                               )}
