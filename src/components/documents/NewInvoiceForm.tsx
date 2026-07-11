@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
 import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket } from '../../data/real'
-import { INVOICES, baht, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
+import { INVOICES, baht, cleanProductName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
@@ -111,7 +111,7 @@ export function NewInvoiceForm({
       const discountPreVat = Math.round((discountInclVat / 1.07) * 100) / 100
       const amountPreVat = Math.round((amountInclVat / 1.07) * 100) / 100
       ls.push({
-        code: p.code, name: p.name, unit: p.unit, qty,
+        code: p.code, name: cleanProductName(p.name), unit: p.unit, qty,
         price: pricePreVat,
         amount: amountPreVat,
         ...(discountPreVat > 0 ? { discount: discountPreVat } : {}),

@@ -1,7 +1,11 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
-import { baht, qm, customerLegal, type Invoice } from '../../data/selectors'
+import { baht, qm, cleanProductName, customerLegal, type Invoice } from '../../data/selectors'
 import { bahtText } from '../../data/bahtText'
 import { COMPANY } from '../../data/real'
+
+/** VAT-inclusive value from a pre-VAT amount (stored line prices are pre-VAT). */
+const incl = (n: number) => Math.round(n * 1.07 * 100) / 100
+const num2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
   const cust = customerLegal(inv.customer)
@@ -26,8 +30,8 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
             <th>รายละเอียด</th>
             <th className="num" style={{ width: 60 }}>จำนวน</th>
             <th className="ctr" style={{ width: 44 }}>หน่วย</th>
-            <th className="num" style={{ width: 80 }}>ราคา/หน่วย</th>
-            <th className="num" style={{ width: 96 }}>จำนวนเงิน</th>
+            <th className="num" style={{ width: 88 }}>ราคา/หน่วย<br />(รวม VAT)</th>
+            <th className="num" style={{ width: 104 }}>จำนวนเงิน<br />(รวม VAT)</th>
           </tr>
         </thead>
         <tbody>
@@ -35,11 +39,11 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
             <tr key={i}>
               <td className="ctr">{i + 1}</td>
               <td className="mono">{l.code}</td>
-              <td className="th">{l.name}</td>
+              <td className="th">{cleanProductName(l.name)}</td>
               <td className="num mono">{qm(l.qty)}</td>
               <td className="ctr">{l.unit}</td>
-              <td className="num mono">{l.price.toLocaleString()}</td>
-              <td className="num mono">{baht(l.amount)}</td>
+              <td className="num mono">{num2(incl(l.price))}</td>
+              <td className="num mono">{baht(incl(l.amount))}</td>
             </tr>
           ))}
           {inv.lines.length < 4 &&
@@ -56,9 +60,9 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
           <strong>({bahtText(inv.total)})</strong>
         </div>
         <div className="doc-totals">
-          <div className="trow"><span className="lab">รวมเป็นเงิน</span><span className="val">{baht(inv.subtotal)}</span></div>
+          <div className="trow"><span className="lab">มูลค่าก่อนภาษี (ก่อน VAT)</span><span className="val">{baht(inv.subtotal)}</span></div>
           <div className="trow"><span className="lab">ภาษีมูลค่าเพิ่ม 7%</span><span className="val">{baht(inv.vat)}</span></div>
-          <div className="trow grand"><span className="lab">จำนวนเงินรวมทั้งสิ้น</span><span className="val">{baht(inv.total)}</span></div>
+          <div className="trow grand"><span className="lab">จำนวนเงินรวมทั้งสิ้น (รวม VAT)</span><span className="val">{baht(inv.total)}</span></div>
         </div>
       </div>
 
