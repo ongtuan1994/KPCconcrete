@@ -16,8 +16,8 @@ import { STOCK_MATERIALS, type Product } from './real'
 import type { FoundryBoqMaterial, FoundryMaterialKey, FoundryMaterial } from './createdDocs'
 
 /** Product the คอนกรีต material cost is pinned to: คอนกรีตกำลังอัด 400 กก./ตร.ซม.
-    (ปูน ดอกบัว). Falls back to any 400-ksc Dokbua concrete if the code changes. */
-export const CONCRETE_REF_CODE = 'KPCP2OSPP-1'
+    (รหัส KPCROSPP-2). Falls back to any other 400-ksc concrete if the code changes. */
+export const CONCRETE_REF_CODE = 'KPCROSPP-2'
 
 export type BoqMode = 'direct' | 'lengthCount' | 'lengthSpacing' | 'countFixed'
 
@@ -84,7 +84,7 @@ export function foundryCostResolver(
     if (c != null) costByCode[m.code.toUpperCase()] = c
   }
   const concreteRef = products.find((p) => p.code === CONCRETE_REF_CODE)
-    ?? products.find((p) => p.category === 'concrete' && p.strengthKsc === 400 && /^KPC[RP]2/.test(p.code))
+    ?? products.find((p) => p.category === 'concrete' && p.strengthKsc === 400)
   const concreteCost = concreteRef?.price ?? 0
   return (key) => (key === 'concrete' ? concreteCost : (costByCode[String(key).toUpperCase()] ?? 0))
 }

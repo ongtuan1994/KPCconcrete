@@ -155,7 +155,11 @@
   .app-shell .sidebar,
   .main-col .topbar,
   .page-header { display: none !important; }
-  .page > *:not(.modal-overlay) { display: none !important; }
+  /* Keep only the printable modal. It sits either directly under .page, or one
+     level inside a theme wrapper (e.g. .foundry-theme) — hide everything at both
+     levels except the .modal-overlay (and any wrapper that contains it). */
+  .page > *:not(.modal-overlay):not(:has(.modal-overlay)) { display: none !important; }
+  .page > *:has(.modal-overlay) > *:not(.modal-overlay):not(:has(.modal-overlay)) { display: none !important; }
 
   /* Strip viewport min-height, flex layout, and screen padding from every
      ancestor — otherwise their leftover height pushes the document past
