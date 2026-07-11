@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { PRODUCTS, PRODUCT_MAP, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket } from '../../data/real'
+import { PRODUCTS, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
 import { INVOICES, baht, cleanProductName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
-import { addInvoice, useCreatedDocs } from '../../data/createdDocs'
+import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
     per-คิว pickup discount and is excluded from the under-load transport
@@ -64,6 +64,11 @@ export function NewInvoiceForm({
   initialFdRefs?: string
 }) {
   const created = useCreatedDocs()
+  /* Merged product list (seed + user-added), so foundry products added on the
+     ราคาสินค้าโรงหล่อ page resolve here — both in the picker and when pulling from
+     a ใบส่งสินค้าโรงหล่อ. */
+  const products = useProducts()
+  const productMap = useMemo(() => Object.fromEntries(products.map((p) => [p.code, p])) as Record<string, Product>, [products])
   const [customer, setCustomer] = useState('')
   const [month, setMonth] = useState<number>(LATEST_MONTH)
   const [day, setDay] = useState<string>('')
@@ -99,7 +104,7 @@ export function NewInvoiceForm({
     let totalInclVat = 0
     let concreteQty = 0
     for (const ld of lines) {
-      const p = PRODUCTS.find((x) => x.code === ld.code)
+      const p = productMap[ld.code]
       if (!p) continue
       const qty = Number(ld.qty)
       const priceInclVat = Number(ld.price)
@@ -240,7 +245,7 @@ export function NewInvoiceForm({
     let priceFilledFromMaster = 0
     let selfPickupLines = 0
     for (const t of matched) {
-      const masterPrice = PRODUCT_MAP[t.prod]?.price || 0
+      const masterPrice = productMap[t.prod]?.price || 0
       const effPrice = t.price || masterPrice
       const isSelfPickup = t.pickup === 'รับเอง'
       /* Self-pickup lines get the per-คิว pickup discount and must not merge with
@@ -308,7 +313,7 @@ export function NewInvoiceForm({
     let priceFilledFromMaster = 0
     for (const f of matched) {
       for (const it of f.items) {
-        const prod = PRODUCT_MAP[it.code]
+        const prod = productMap[it.code]
         const masterPrice = (prod?.pickupPrices && it.pickup)
           ? prod.pickupPrices[it.pickup]
           : (prod?.price || 0)
@@ -431,7 +436,7 @@ export function NewInvoiceForm({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
         {lines.map((ld, i) => {
-          const p = PRODUCTS.find((x) => x.code === ld.code)
+          const p = productMap[ld.code]
           const priceN = Number(ld.price) || 0
           const discN = Number(ld.discount) || 0
           const overDiscount = discN > 0 && discN > priceN
@@ -442,13 +447,13 @@ export function NewInvoiceForm({
                   <Select
                     value={ld.code}
                     onChange={(e) => {
-                      const np = PRODUCTS.find((x) => x.code === e.target.value)
+                      const np = productMap[e.target.value]
                       const next = [...lines]
                       next[i] = { ...ld, code: e.target.value, price: ld.price || String(np?.price ?? '') }
                       setLines(next)
                     }}
                   >
-                    {PRODUCTS.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
+                    {products.map((pr) => <option key={pr.code} value={pr.code}>{pr.code} — {pr.name}</option>)}
                   </Select>
                 </Field>
                 <Field label={i === 0 ? `จำนวน (${p?.unit ?? 'หน่วย'})` : undefined}>

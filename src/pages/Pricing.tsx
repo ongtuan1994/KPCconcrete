@@ -131,6 +131,14 @@ function genPlantName(brand: BrandId, category: 'concrete' | 'lean', strength: s
     ? `คอนกรีต Lean ${bt}`
     : `คอนกรีตกำลังอัด ${Number(strength) || 0} กก./ตร.ซม. ${bt}`
 }
+/** Auto-generate a unique foundry product code (KPCF0001, …) for when the user
+    leaves the รหัสสินค้า field blank. */
+function genFoundryCode(existing: Set<string>): string {
+  let n = 1
+  let code = `KPCF${String(n).padStart(4, '0')}`
+  while (existing.has(code)) { n++; code = `KPCF${String(n).padStart(4, '0')}` }
+  return code
+}
 
 function ProductPricing({ scope }: { scope: ProductSite }) {
   const isFoundry = scope === 'foundry'
@@ -866,9 +874,13 @@ function ProductFormModal({
     /* The code is taken as-is (auto-filled but hand-editable). The cement brand
        no longer relies on it — it is stored explicitly from the ยี่ห้อปูน
        selection below (see cementBrand on addProduct/updateProduct). */
-    const c = code.trim()
+    let c = code.trim()
     const nm = name.trim()
-    if (!c) return setErr('กรุณากรอกรหัสสินค้า')
+    /* รหัสสินค้า is required for plant products but optional for foundry — when a
+       foundry product is added without one, auto-generate a unique code. */
+    if (!c && site === 'plant') return setErr('กรุณากรอกรหัสสินค้า')
+    if (!c && mode === 'add') c = genFoundryCode(existingCodes)
+    if (!c && mode === 'edit') c = initial!.code
     if (!nm) return setErr('กรุณากรอกชื่อรายการสินค้า')
     if (mode === 'add' && existingCodes.has(c)) return setErr(`รหัสสินค้า ${c} มีอยู่แล้ว`)
     /* Renaming the code in edit mode — only user-added products; references are
@@ -879,6 +891,15 @@ function ProductFormModal({
       renameProduct(initial!.code, c)
     }
     const u = unit.trim()
+    /* ราคา/หน่วย is optional for foundry products: blank ⇒ 0. A non-empty but
+       invalid (negative / non-numeric) value still errors. Returns null on error. */
+    const priceOpt = (v: string): number | null => {
+      const t = v.trim()
+      if (t === '') return 0
+      const n = Number(t)
+      if (!Number.isFinite(n) || n < 0) return null
+      return Math.round(n * 100) / 100
+    }
 
     if (site === 'plant') {
       if (category === 'concrete') {
@@ -916,24 +937,24 @@ function ProductFormModal({
       const t = customType.trim()
       if (!t) return setErr('กรุณากรอกชื่อประเภทสินค้าใหม่')
       if (!u) return setErr('กรุณากรอกหน่วยของสินค้า')
-      const pr = Number(price)
-      if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
+      const pr = priceOpt(price)
+      if (pr === null) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: pr, ...(discontinued ? { discontinued: true } : {}) })
       } else {
         updateProduct(c, { name: nm, unit: u, price: pr, discontinued })
       }
     } else if (kind === 'ipole') {
-      const ps = Number(priceSelf), pd = Number(priceDeliver)
-      if (!Number.isFinite(ps) || ps <= 0 || !Number.isFinite(pd) || pd <= 0) return setErr('กรุณากรอกราคารับเอง / จัดส่งให้ถูกต้อง')
+      const ps = priceOpt(priceSelf), pd = priceOpt(priceDeliver)
+      if (ps === null || pd === null) return setErr('กรุณากรอกราคารับเอง / จัดส่งให้ถูกต้อง')
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'ต้น', category: 'precast', site: 'foundry', kind, pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps, ...(discontinued ? { discontinued: true } : {}) })
       } else {
         updateProduct(c, { name: nm, unit: u || 'ต้น', pickupPrices: { 'รับเอง': ps, 'จัดส่ง': pd }, price: ps, discontinued })
       }
     } else {
-      const pr = Number(price)
-      if (!Number.isFinite(pr) || pr <= 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
+      const pr = priceOpt(price)
+      if (pr === null) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง')
       const isWall = kind === 'wallpanel'
       if (mode === 'add') {
         addProduct({ code: c, name: nm, strengthKsc: 0, unit: u || 'แผ่น', category: 'precast', site: 'foundry', kind: kind as FoundryKind, price: pr, ...(isWall ? { pickup } : {}), ...(discontinued ? { discontinued: true } : {}) })
@@ -1086,9 +1107,9 @@ function ProductFormModal({
                 <Field label="หน่วย" required hint={isCustom ? 'สินค้าประเภทใหม่ต้องระบุหน่วยเอง' : undefined}>
                   <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={isCustom ? 'เช่น ต้น / อัน / ชุด' : 'แผ่น / ต้น'} />
                 </Field>
-                <Field label="รหัสสินค้า" required hint={mode === 'edit' && !codeLocked ? 'แก้ไขรหัสได้ — ระบบจะอัปเดตการอ้างอิงให้' : undefined}>
+                <Field label="รหัสสินค้า" hint={mode === 'edit' ? (!codeLocked ? 'แก้ไขรหัสได้ — ระบบจะอัปเดตการอ้างอิงให้' : undefined) : 'ไม่บังคับ — เว้นว่างระบบออกรหัสให้'}>
                   <Input className="input mono" value={code} readOnly={codeLocked}
-                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} placeholder="เช่น KPCFDPL200" />
+                    onChange={(e) => { setCode(e.target.value); setCodeDirty(true) }} placeholder="เช่น KPCFDPL200 (เว้นว่างได้)" />
                 </Field>
                 {!isCustom && kind === 'wallpanel' && (
                   <Field label="การรับของ" required>
@@ -1104,16 +1125,16 @@ function ProductFormModal({
               </Field>
               {!isCustom && kind === 'ipole' ? (
                 <div className="grid g-2" style={{ gap: 12 }}>
-                  <Field label="ราคา · รับเอง (รวม VAT)" required>
-                    <Input type="number" min={0} value={priceSelf} onChange={(e) => setPriceSelf(e.target.value)} placeholder="เช่น 325" />
+                  <Field label="ราคา · รับเอง (รวม VAT)" hint="ไม่บังคับ">
+                    <Input type="number" min={0} value={priceSelf} onChange={(e) => setPriceSelf(e.target.value)} placeholder="เช่น 325 (เว้นว่างได้)" />
                   </Field>
-                  <Field label="ราคา · จัดส่ง (รวม VAT)" required>
-                    <Input type="number" min={0} value={priceDeliver} onChange={(e) => setPriceDeliver(e.target.value)} placeholder="เช่น 400" />
+                  <Field label="ราคา · จัดส่ง (รวม VAT)" hint="ไม่บังคับ">
+                    <Input type="number" min={0} value={priceDeliver} onChange={(e) => setPriceDeliver(e.target.value)} placeholder="เช่น 400 (เว้นว่างได้)" />
                   </Field>
                 </div>
               ) : (
-                <Field label="ราคา/หน่วย (รวม VAT)" required>
-                  <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 154" />
+                <Field label="ราคา/หน่วย (รวม VAT)" hint="ไม่บังคับ">
+                  <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="เช่น 154 (เว้นว่างได้)" />
                 </Field>
               )}
             </>

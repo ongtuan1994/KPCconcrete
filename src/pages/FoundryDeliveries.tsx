@@ -9,22 +9,17 @@ import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { FoundryDeliveryDoc } from '../components/documents/FoundryDeliveryDoc'
 import { IconPlus } from '../components/icons'
-import { PRODUCTS, CUSTOMER_MASTER } from '../data/real'
+import { CUSTOMER_MASTER, type Product } from '../data/real'
 import { cleanProductName as cleanName, monthName } from '../data/selectors'
 import { currentBuddhistYear, currentMonth } from '../utils/datetime'
 import {
-  useCreatedDocs, addFoundryDelivery, removeFoundryDelivery, CAN_DELETE,
+  useCreatedDocs, useProducts, addFoundryDelivery, removeFoundryDelivery, CAN_DELETE,
   type FoundryDelivery, type FoundryDeliveryItem,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-/* Foundry-only products feed the line-item picker. */
-const FOUNDRY_PRODUCTS = PRODUCTS.filter((p) => p.site === 'foundry')
-const PROD_BY_CODE = Object.fromEntries(FOUNDRY_PRODUCTS.map((p) => [p.code, p]))
-const optionLabel = (code: string) => {
-  const p = PROD_BY_CODE[code]
-  return p ? `${cleanName(p.name)} (${p.unit})` : code
-}
+/* Line-item picker label for a foundry product. */
+const optionLabel = (p: Product) => `${cleanName(p.name)} (${p.unit})`
 
 function todayIso(): string {
   const d = new Date()
@@ -187,14 +182,20 @@ export function FoundryDeliveries() {
 }
 
 type ItemDraft = { code: string; qty: string; pickup: 'รับเอง' | 'จัดส่ง' }
-const emptyItem = (): ItemDraft => ({ code: FOUNDRY_PRODUCTS[0]?.code ?? '', qty: '', pickup: 'รับเอง' })
+const emptyItem = (code = ''): ItemDraft => ({ code, qty: '', pickup: 'รับเอง' })
 
 function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: { open: boolean; onClose: () => void; existing: FoundryDelivery[]; initial?: FoundryDeliveryInitial | null; onSaved: (f: FoundryDelivery) => void }) {
+  /* Merged product list (seed + user-added), so foundry products added on the
+     ราคาสินค้าโรงหล่อ page show up in the picker here too. */
+  const allProducts = useProducts()
+  const foundryProducts = useMemo(() => allProducts.filter((p) => p.site === 'foundry'), [allProducts])
+  const prodByCode = useMemo(() => Object.fromEntries(foundryProducts.map((p) => [p.code, p])) as Record<string, Product>, [foundryProducts])
+  const firstCode = foundryProducts[0]?.code ?? ''
   const [fdNo, setFdNo] = useState('')
   const [date, setDate] = useState(todayIso())
   const [customer, setCustomer] = useState('')
   const [vehicle, setVehicle] = useState('')
-  const [items, setItems] = useState<ItemDraft[]>([emptyItem()])
+  const [items, setItems] = useState<ItemDraft[]>(() => [emptyItem(firstCode)])
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
 
@@ -203,18 +204,18 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
     setFdNo(''); setDate(todayIso()); setVehicle(''); setErr('')
     if (initial) {
       setCustomer(initial.customer)
-      const known = initial.items.filter((it) => PROD_BY_CODE[it.code])
-      setItems(known.length ? known.map((it) => ({ code: it.code, qty: String(it.qty), pickup: 'รับเอง' as const })) : [emptyItem()])
+      const known = initial.items.filter((it) => prodByCode[it.code])
+      setItems(known.length ? known.map((it) => ({ code: it.code, qty: String(it.qty), pickup: 'รับเอง' as const })) : [emptyItem(firstCode)])
       setNote(initial.note ?? '')
     } else {
-      setCustomer(''); setItems([emptyItem()]); setNote('')
+      setCustomer(''); setItems([emptyItem(firstCode)]); setNote('')
     }
-  }, [open, initial])
+  }, [open, initial]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setItem = (i: number, patch: Partial<ItemDraft>) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
-  const addItem = () => setItems((prev) => [...prev, emptyItem()])
-  const removeItem = (i: number) => setItems((prev) => (prev.length <= 1 ? [emptyItem()] : prev.filter((_, idx) => idx !== i)))
+  const addItem = () => setItems((prev) => [...prev, emptyItem(firstCode)])
+  const removeItem = (i: number) => setItems((prev) => (prev.length <= 1 ? [emptyItem(firstCode)] : prev.filter((_, idx) => idx !== i)))
 
   const submit = () => {
     setErr('')
@@ -226,7 +227,7 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
     if (filled.length === 0) return setErr('กรุณาเลือกรายการสินค้าอย่างน้อย 1 รายการ (พร้อมจำนวน)')
 
     const savedItems: FoundryDeliveryItem[] = filled.map((it) => {
-      const p = PROD_BY_CODE[it.code]
+      const p = prodByCode[it.code]
       return { code: p.code, name: cleanName(p.name), unit: p.unit, qty: Number(it.qty), pickup: p.pickupPrices ? it.pickup : undefined }
     })
     const fd: FoundryDelivery = {
@@ -273,12 +274,12 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
             <span style={{ width: 28 }} />
           </div>
           {items.map((it, i) => {
-            const byPickup = !!PROD_BY_CODE[it.code]?.pickupPrices
+            const byPickup = !!prodByCode[it.code]?.pickupPrices
             return (
               <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
                   <Select value={it.code} onChange={(e) => setItem(i, { code: e.target.value })}>
-                    {FOUNDRY_PRODUCTS.map((p) => <option key={p.code} value={p.code}>{optionLabel(p.code)}</option>)}
+                    {foundryProducts.map((p) => <option key={p.code} value={p.code}>{optionLabel(p)}</option>)}
                   </Select>
                 </div>
                 <div style={{ width: 130 }}>
