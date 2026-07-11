@@ -2,61 +2,100 @@ import { useRef, useState } from 'react'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, MonthSelect } from '../components/ui'
+import { Button, Badge, Select } from '../components/ui'
 import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
-import { monthTotals, productMix, dailyM3, customerAgg, MONTHLY_TREND, MONTHS, LATEST_MONTH, monthLabel, baht, bahtShort, qm } from '../data/selectors'
+import { INVOICES, prodShort, ticketYear, LATEST_MONTH, monthName, baht, bahtShort, qm } from '../data/selectors'
 import { AR_OUTSTANDING, AR_OUTSTANDING_TOTAL } from '../data/receivables'
-import { COMPANY, PRODUCT_MAP } from '../data/real'
-import { useCreatedDocs } from '../data/createdDocs'
+import { COMPANY, PRODUCT_MAP, DELIVERY_TICKETS } from '../data/real'
+import { CREDITOR_MASTER } from '../data/creditors'
+import { currentBuddhistYear, currentMonth } from '../utils/datetime'
+import { useCreatedDocs, useProducts } from '../data/createdDocs'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
 
-/** Rough estimate of how much of monthly cost rolls into payables — i.e.
-    cement / fuel / suppliers we owe at month-end. Adjust when a real
-    accounts-payable module exists. */
-const SUPPLIER_CREDIT_RATIO = 0.40
-
 export function MonthlyReport() {
-  /* `month` accepts either a numeric month (1-12) or 'all' to render the
-     full-year roll-up — replaces the separate YearlyReport page. */
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* ---------- Real data = seed history + user-created documents ---------- */
+  const created = useCreatedDocs()
+  const products = useProducts()
+  const priceOf = (code: string) => products.find((p) => p.code === code) ?? PRODUCT_MAP[code]
+  const mergedTickets = [...created.tickets, ...DELIVERY_TICKETS]
+  const mergedInvoices = [...created.invoices, ...INVOICES]
+
+  /* Available ปี (พ.ศ.) from the data, newest first. Default to the latest year,
+     and within it the latest month that actually has data. */
+  const years = [...new Set([currentBuddhistYear(), ...mergedTickets.map(ticketYear), ...mergedInvoices.map(ticketYear)])].sort((a, b) => b - a)
+  const latest = mergedTickets.reduce(
+    (best, tk) => { const y = ticketYear(tk); const key = y * 100 + tk.month; return key > best.key ? { key, year: y, month: tk.month } : best },
+    { key: 0, year: years[0], month: LATEST_MONTH },
+  )
+  const [year, setYear] = useState<number>(latest.year)
+  /* `month` accepts a numeric month (1-12) or 'all' for the full-year roll-up. */
+  const [month, setMonth] = useState<number | 'all'>(latest.month)
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const isYear = month === 'all'
-  const periodLabel = isYear ? 'ทั้งปี 2569' : monthLabel(month)
+  const periodLabel = isYear ? `ทั้งปี ${year}` : `${monthName(month)} ${year}`
   const reportTitle = isYear ? 'รายงานประจำปี' : 'รายงานประจำเดือน'
 
-  /* Totals — sum across every month when in "ทั้งปี" mode, else single month. */
+  /** "DD/MM/YY" delivery-ticket date → day number. */
+  const dayOf = (date: string) => { const m = date.match(/^(\d{1,2})\//); return m ? Number(m[1]) : 0 }
+  /** Buddhist year (พ.ศ.) of an ISO yyyy-mm-dd foundry date. */
+  const yearOfIso = (iso: string) => Number(iso.slice(0, 4)) + 543
+
+  /* Month totals from the merged ticket + invoice sets (seed + created) for a
+     given (ปี, เดือน) — so the trend can roll across year boundaries. */
+  const EN_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  const totalsOfYM = (y: number, mo: number) => {
+    const tix = mergedTickets.filter((tk) => ticketYear(tk) === y && tk.month === mo)
+    const sales = tix.filter((tk) => tk.amount > 0)
+    const invs = mergedInvoices.filter((i) => ticketYear(i) === y && i.month === mo)
+    return {
+      revenue: sales.reduce((s, tk) => s + tk.amount, 0),
+      m3All: tix.reduce((s, tk) => s + tk.m3, 0),
+      m3Sold: sales.reduce((s, tk) => s + tk.m3, 0),
+      tickets: tix.length,
+      credit: tix.filter((tk) => tk.pay === 'เครดิต').reduce((s, tk) => s + tk.amount, 0),
+      cash: tix.filter((tk) => tk.pay === 'เงินสด' || tk.pay === 'โอน' || tk.pay === 'เช็ค').reduce((s, tk) => s + tk.amount, 0),
+      invoices: invs.length,
+      overdueCount: invs.filter((i) => i.status === 'overdue').length,
+    }
+  }
+  const totalsOf = (mo: number) => totalsOfYM(year, mo)
+
+  /* Trend line = 6-month rolling window ending at the "anchor" month (the selected
+     month, or the current month when viewing ทั้งปี). Crosses year boundaries. */
+  const anchorMonth = isYear ? (year === currentBuddhistYear() ? currentMonth() : 12) : month
+  const trendData = Array.from({ length: 6 }, (_, i) => {
+    let m = anchorMonth - (5 - i), y = year
+    while (m <= 0) { m += 12; y -= 1 }
+    const tt = totalsOfYM(y, m)
+    return { year: y, month: m, label: EN_SHORT[m - 1], revenue: tt.revenue, m3: tt.m3All, tickets: tt.tickets }
+  })
+
+  /* Period totals — full selected YEAR when in "ทั้งปี" mode, else the single month. */
   const t = isYear
-    ? MONTHS.reduce(
-        (acc, m) => {
-          const mt = monthTotals(m.num)
-          acc.revenue += mt.revenue
-          acc.m3All += mt.m3All
-          acc.m3Sold += mt.m3Sold
-          acc.tickets += mt.tickets
-          acc.credit += mt.credit
-          acc.cash += mt.cash
-          acc.invoices += mt.invoices
-          acc.overdueCount += mt.overdueCount
+    ? Array.from({ length: 12 }, (_, i) => i + 1).reduce(
+        (acc, mo) => {
+          const mt = totalsOf(mo)
+          acc.revenue += mt.revenue; acc.m3All += mt.m3All; acc.m3Sold += mt.m3Sold; acc.tickets += mt.tickets
+          acc.credit += mt.credit; acc.cash += mt.cash; acc.invoices += mt.invoices; acc.overdueCount += mt.overdueCount
           return acc
         },
         { revenue: 0, m3All: 0, m3Sold: 0, tickets: 0, credit: 0, cash: 0, invoices: 0, overdueCount: 0 },
       )
-    : monthTotals(month)
+    : totalsOf(month)
   const net = t.revenue
   const vat = Math.round(net * 0.07 * 100) / 100
   const estCost = Math.round(net * 0.62)
   const grossProfit = net - estCost
 
   /* ---------- SITE breakdown ---------- */
-  const created = useCreatedDocs()
-  /* แพล้นปูน = the concrete business above (seed tickets/invoices). */
+  /* แพล้นปูน = the concrete business above (merged tickets/invoices). */
   const plant = { sales: net, m3All: t.m3All, m3Sold: t.m3Sold, tickets: t.tickets }
   /* โรงหล่อ = foundry deliveries + production, filtered to the selected period. */
   const monthOf = (iso: string) => Number(iso.slice(5, 7))
-  const inPeriod = (iso: string) => isYear || monthOf(iso) === month
+  const inPeriod = (iso: string) => yearOfIso(iso) === year && (isYear || monthOf(iso) === month)
   const foundry = (() => {
     let salesValue = 0, pieces = 0
     let notes = 0
@@ -65,7 +104,7 @@ export function MonthlyReport() {
       notes += 1
       for (const it of fd.items) {
         pieces += it.qty
-        const p = PRODUCT_MAP[it.code]
+        const p = priceOf(it.code)
         const price = (p?.pickupPrices && it.pickup) ? p.pickupPrices[it.pickup] : (p?.price ?? 0)
         salesValue += it.qty * price
       }
@@ -94,7 +133,7 @@ export function MonthlyReport() {
     const entries = [...map.entries()].sort((a, b) => b[1] - a[1])
     const total = entries.reduce((s, [, q]) => s + q, 0) || 1
     const segs: Seg[] = entries.slice(0, 5).map(([code, q], i) => ({
-      label: PRODUCT_MAP[code]?.name ?? code,
+      label: priceOf(code)?.name ?? code,
       pct: Math.round((q / total) * 100),
       color: FOUNDRY_COLORS[i],
     }))
@@ -103,18 +142,19 @@ export function MonthlyReport() {
     return segs
   })()
 
-  /* Foundry sales value per calendar month — drives the second trend line. */
-  const foundrySalesByMonth = (() => {
+  /* Foundry sales value keyed by (พ.ศ.×100 + month) — so the rolling trend can look
+     it up across year boundaries. */
+  const foundrySalesByYM = (() => {
     const map = new Map<number, number>()
     for (const fd of created.foundryDeliveries) {
-      const mo = Number(fd.date.slice(5, 7))
+      const key = yearOfIso(fd.date) * 100 + Number(fd.date.slice(5, 7))
       let v = 0
       for (const it of fd.items) {
-        const p = PRODUCT_MAP[it.code]
+        const p = priceOf(it.code)
         const price = p?.pickupPrices && it.pickup ? p.pickupPrices[it.pickup] : p?.price ?? 0
         v += it.qty * price
       }
-      map.set(mo, (map.get(mo) ?? 0) + v)
+      map.set(key, (map.get(key) ?? 0) + v)
     }
     return map
   })()
@@ -124,30 +164,33 @@ export function MonthlyReport() {
     { label: 'กำไรขั้นต้น (ประมาณ)', value: baht(grossProfit), invert: true },
   ]
 
-  /* Product mix — for "ทั้งปี" aggregate across every month's productMix. */
-  const mixRaw = isYear
-    ? (() => {
-        const map = new Map<string, { label: string; m3: number }>()
-        for (const m of MONTHS) {
-          for (const p of productMix(m.num)) {
-            const ex = map.get(p.code) ?? { label: p.label, m3: 0 }
-            ex.m3 += p.m3
-            map.set(p.code, ex)
-          }
-        }
-        const total = [...map.values()].reduce((s, p) => s + p.m3, 0) || 1
-        return [...map.entries()]
-          .map(([code, p]) => ({ code, label: p.label, m3: p.m3, pct: Math.round((p.m3 / total) * 100) }))
-          .sort((a, b) => b.m3 - a.m3)
-      })()
-    : productMix(month)
+  /* Product mix — m³ share per product from the merged tickets (period-aware). */
+  const mixRaw = (() => {
+    const byProd = new Map<string, number>()
+    for (const tk of mergedTickets) {
+      if (ticketYear(tk) !== year || !(isYear || tk.month === month)) continue
+      byProd.set(tk.prod, (byProd.get(tk.prod) ?? 0) + tk.m3)
+    }
+    const total = [...byProd.values()].reduce((a, b) => a + b, 0) || 1
+    return [...byProd.entries()].sort((a, b) => b[1] - a[1])
+      .map(([code, m3]) => ({ code, label: prodShort(code), m3, pct: Math.round((m3 / total) * 100) }))
+  })()
   const mix: Seg[] = mixRaw.slice(0, 5).map((p, i) => ({ label: p.label, pct: p.pct, color: MIX_COLORS[i] }))
   const restPct = mixRaw.slice(5).reduce((s, p) => s + p.pct, 0)
   if (restPct > 0) mix.push({ label: 'อื่นๆ', pct: restPct, color: MIX_COLORS[5] })
 
-  /* Daily breakdown still drives the Excel export. Empty in "ทั้งปี" mode —
+  /* Daily breakdown (merged) drives the Excel export. Empty in "ทั้งปี" mode —
      the monthly trend table replaces it. */
-  const daily = isYear ? [] : dailyM3(month)
+  const daily = isYear ? [] : (() => {
+    const byDay = new Map<number, { m3: number; sales: number }>()
+    for (const tk of mergedTickets.filter((x) => ticketYear(x) === year && x.month === month)) {
+      const d = dayOf(tk.date)
+      const e = byDay.get(d) ?? { m3: 0, sales: 0 }
+      e.m3 += tk.m3; e.sales += tk.amount
+      byDay.set(d, e)
+    }
+    return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, v]) => ({ day, m3: v.m3, sales: v.sales }))
+  })()
 
   /* ---------- ลูกหนี้ (AR) — REAL reconciled receivables snapshot ----------
      Sourced from the ลูกหนี้ page (AR_OUTSTANDING), NOT derived from invoices.
@@ -166,23 +209,32 @@ export function MonthlyReport() {
   const arOverdueAmt = arOverdueList.reduce((s, d) => s + d.amount, 0)
   const arOverdueCount = arOverdueList.length
 
-  /* ---------- Top 5 customers (sales) / debtors (real outstanding) ---------- */
-  const topCustomers = customerAgg(month).filter((c) => c.sales > 0).slice(0, 5)
-    .map((c) => ({ label: c.name, value: Math.round(c.sales * 1.07 * 100) / 100 }))
+  /* ---------- Top 5 customers (merged sales) / debtors (real outstanding) ---------- */
+  const topCustomers = (() => {
+    const map = new Map<string, number>()
+    for (const tk of mergedTickets) {
+      if (ticketYear(tk) !== year || !(isYear || tk.month === month) || tk.amount <= 0) continue
+      map.set(tk.customer, (map.get(tk.customer) ?? 0) + tk.amount)
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([name, sales]) => ({ label: name, value: Math.round(sales * 1.07 * 100) / 100 }))
+  })()
   const topDebtors = [...arList].filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5)
     .map((d) => ({ label: d.name, value: d.amount }))
 
-  /* ---------- AP (เงินที่บริษัทค้างจ่ายซัพพลายเออร์) — placeholder estimate ---------- */
-  const estPayablesCement = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.65) /* cement ≈ 65% of cost */
-  const estPayablesFuel   = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.20) /* fuel ≈ 20% of cost */
-  const estPayablesOther  = Math.round(estCost * SUPPLIER_CREDIT_RATIO * 0.15) /* misc ≈ 15% of cost */
-  const estPayablesTotal  = estPayablesCement + estPayablesFuel + estPayablesOther
+  /* ---------- AP (เงินที่บริษัทค้างจ่ายซัพพลายเออร์) — REAL creditor outstanding ---------- */
+  const creditors = [...created.suppliersAdded, ...CREDITOR_MASTER]
+  const apList = creditors.filter((c) => (c.outstanding ?? 0) > 0).sort((a, b) => (b.outstanding ?? 0) - (a.outstanding ?? 0))
+  const apTotal = Math.round(apList.reduce((s, c) => s + (c.outstanding ?? 0), 0) * 100) / 100
+  const apCreditorCount = apList.length
+  const apTop = apList.slice(0, 3).map((c) => ({ name: c.name, amount: c.outstanding ?? 0 }))
+  const apRest = Math.round((apTotal - apTop.reduce((s, c) => s + c.amount, 0)) * 100) / 100
 
-  /* File-name slug: "monthly-report-{month}-2569" or "yearly-report-2569".
+  /* File-name slug: "monthly-report-{month}-{year}" or "yearly-report-{year}".
      Avoid spaces / dots that could trip browsers' download handlers. */
   const slug = isYear
-    ? 'yearly-report-2569'
-    : `monthly-report-${monthLabel(month).replace(/\s+/g, '-').replace(/\./g, '')}`
+    ? `yearly-report-${year}`
+    : `monthly-report-${monthName(month).replace(/\s+/g, '-')}-${year}`
 
   const exportPdf = async () => {
     if (!reportRef.current || exporting) return
@@ -277,11 +329,10 @@ export function MonthlyReport() {
       rows.push(['เลยกำหนดชำระ', arOverdueCount, stripBaht(baht(arOverdueAmt))])
       rows.push([])
 
-      rows.push(['เจ้าหนี้ — บริษัทค้างจ่าย (ประมาณการ)'])
-      rows.push(['ค่าปูน/วัสดุ', stripBaht(baht(estPayablesCement))])
-      rows.push(['ค่าน้ำมัน/บำรุงรักษา', stripBaht(baht(estPayablesFuel))])
-      rows.push(['อื่นๆ', stripBaht(baht(estPayablesOther))])
-      rows.push(['รวมประมาณ', stripBaht(baht(estPayablesTotal))])
+      rows.push(['เจ้าหนี้ — บริษัทค้างจ่าย (ยอดจริงจากทะเบียนซัพพลายเออร์)'])
+      rows.push(['เจ้าหนี้คงค้าง', apCreditorCount, stripBaht(baht(apTotal))])
+      apTop.forEach((c) => rows.push([c.name, stripBaht(baht(c.amount))]))
+      if (apRest > 0) rows.push(['เจ้าหนี้อื่นๆ', stripBaht(baht(apRest))])
       rows.push([])
 
       rows.push(['ลูกค้ายอดสั่งสูงสุด 5 อันดับ'])
@@ -295,10 +346,11 @@ export function MonthlyReport() {
       rows.push([])
 
       if (isYear) {
-        rows.push(['ยอดขายรายเดือน'])
+        rows.push([`ยอดขายรายเดือน · ทั้งปี ${year}`])
         rows.push(['เดือน', 'ยอดขาย (บาท)', 'ปริมาณ (m³)', 'จำนวนใบจ่าย'])
-        for (const m of MONTHLY_TREND) {
-          rows.push([m.short, Math.round(m.revenue), Math.round(m.m3 * 100) / 100, m.tickets])
+        for (let mo = 1; mo <= 12; mo++) {
+          const mt = totalsOf(mo)
+          rows.push([monthName(mo), Math.round(mt.revenue), Math.round(mt.m3All * 100) / 100, mt.tickets])
         }
       } else {
         rows.push(['ปริมาณรายวัน'])
@@ -342,7 +394,13 @@ export function MonthlyReport() {
         sub={`${isYear ? 'Yearly Report' : 'Monthly Report'} · ${periodLabel}`}
         actions={
           <>
-            <MonthSelect value={month} onChange={setMonth} allowAll />
+            <Select value={String(year)} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 120 }}>
+              {years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </Select>
+            <Select value={String(month)} onChange={(e) => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))} style={{ width: 150 }}>
+              <option value="all">ทั้งปี</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+            </Select>
             <Button variant="secondary" onClick={exportPdf} disabled={!!exporting}>
               {exporting === 'pdf' ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
             </Button>
@@ -395,8 +453,8 @@ export function MonthlyReport() {
           <div className="card stack" style={{ gap: 6, padding: 12 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>ยอดขายรายเดือน · 2569</div>
-                <div className="card-meta">Jan–Jun · รวม {baht(MONTHLY_TREND.reduce((s, m) => s + m.revenue, 0))}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>ยอดขายรายเดือน · 6 เดือนล่าสุด</div>
+                <div className="card-meta">{trendData[0].label}–{trendData[trendData.length - 1].label} · รวม {baht(trendData.reduce((s, m) => s + m.revenue, 0))}</div>
               </div>
               <div className="row" style={{ gap: 14, alignItems: 'center' }}>
                 <span className="row" style={{ gap: 7, alignItems: 'center', fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>
@@ -408,14 +466,13 @@ export function MonthlyReport() {
               </div>
             </div>
             <LineChart
-              data={MONTHLY_TREND.map((m) => ({
-                label: m.short.toUpperCase().replace(/\./g, ''),
+              data={trendData.map((m) => ({
+                label: m.label,
                 value: m.revenue,
-                highlight: !isYear && m.month === month,
+                highlight: !isYear && m.month === month && m.year === year,
               }))}
-              /* TODO(mock): foundry trend seeded at ~half of plant revenue until real
-                 foundry deliveries accumulate; real values are added on top. */
-              series2={MONTHLY_TREND.map((m) => Math.round(m.revenue * 0.5) + (foundrySalesByMonth.get(m.month) ?? 0))}
+              /* Real foundry sales value per month (0 where none yet). */
+              series2={trendData.map((m) => foundrySalesByYM.get(m.year * 100 + m.month) ?? 0)}
             />
           </div>
         </div>
@@ -510,13 +567,14 @@ export function MonthlyReport() {
             <Row k="ลูกค้าเลยกำหนด" v={`${arOverdueCount} ราย`} />
           </FinanceCard>
 
-          {/* เจ้าหนี้ · บริษัทค้างจ่าย */}
-          <FinanceCard title="เจ้าหนี้ · บริษัทค้างจ่าย" tone="neutral" hint="ประมาณการจาก 40% ของต้นทุน (รอระบบเจ้าหนี้)">
-            <Row k="ค่าปูน/วัสดุ" v={baht(estPayablesCement)} />
-            <Row k="ค่าน้ำมัน/บำรุง" v={baht(estPayablesFuel)} />
-            <Row k="อื่นๆ (โสหุ้ย)" v={baht(estPayablesOther)} />
+          {/* เจ้าหนี้ · บริษัทค้างจ่าย — ยอดจริงจากทะเบียนซัพพลายเออร์ */}
+          <FinanceCard title="เจ้าหนี้ · บริษัทค้างจ่าย" tone="neutral" hint="ยอดคงค้างจริงจากทะเบียนซัพพลายเออร์ · ยอด ณ ปัจจุบัน">
+            {apTop.length === 0
+              ? <Row k="ไม่มียอดค้างจ่าย" v={baht(0)} />
+              : apTop.map((c) => <Row key={c.name} k={c.name} v={baht(c.amount)} />)}
+            {apRest > 0 && <Row k="เจ้าหนี้อื่นๆ" v={baht(apRest)} />}
             <div className="divider" />
-            <Row k="รวมประมาณ" v={baht(estPayablesTotal)} strong />
+            <Row k={`รวมคงค้าง (${apCreditorCount} ราย)`} v={baht(apTotal)} strong />
           </FinanceCard>
         </div>
 

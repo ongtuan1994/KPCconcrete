@@ -58,6 +58,8 @@ export interface Resource {
     under the same section headers as the sidebar (see nav.tsx). `/my-work` is
     intentionally ungated (personal page) and therefore has no row here. */
 export const RESOURCES: Resource[] = [
+  { key: 'plant-operation', route: '/plant-operation', label: 'Today Operation · การดำเนินงานวันนี้', section: 'ภาพรวม · Overview' },
+
   { key: 'monthly-report', route: '/monthly-report', label: 'รายงานประจำเดือน / ปี', section: 'รายงาน · Reports' },
   { key: 'tax-reports', route: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', section: 'รายงาน · Reports' },
   { key: 'general-reports', route: '/general-reports', label: 'รายงานทั่วไป', section: 'รายงาน · Reports' },
@@ -74,38 +76,38 @@ export const RESOURCES: Resource[] = [
   { key: 'purchase-orders', route: '/purchase-orders', label: 'ใบสั่งซื้อ', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'goods-payments', route: '/goods-payments', label: 'ใบสำคัญจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'payroll', route: '/payroll', label: 'เบิกและจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'leave-records', route: '/leave-records', label: 'บันทึกวันลา', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'mid-month-advance', route: '/mid-month-advance', label: 'เบิกเงินกลางเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'attendance', route: '/attendance', label: 'บันทึกลงเวลางาน', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'truck-trips', route: '/truck-trips', label: 'บันทึกเที่ยวรถโม่', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'commission', route: '/commission', label: 'บันทึกค่าคอมมิชชั่น', section: 'การซื้อ / การจ่าย · Purchasing' },
 
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
+  { key: 'foundry-materials', route: '/foundry-materials', label: 'คลังวัตถุดิบโรงหล่อ', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-boq', route: '/foundry-boq', label: 'ประเมินราคาสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
   { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ฐานข้อมูล · Database' },
   { key: 'pricing', route: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', section: 'ฐานข้อมูล · Database' },
-  { key: 'mix-design', route: '/mix-design', label: 'Mix Design', section: 'ฐานข้อมูล · Database' },
+  { key: 'foundry-formula', route: '/foundry-formula', label: 'สูตรผลิตโรงหล่อ', section: 'ฐานข้อมูล · Database' },
   { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'ฐานข้อมูล · Database' },
   { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'ฐานข้อมูล · Database' },
 
-  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้าง', section: 'ระบบ · System' },
+  { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้างเงินเดือน', section: 'ระบบ · System' },
   { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'ระบบ · System' },
 ]
 
-/** route → resource key, for guarding the router. */
+/** route → resource key, for guarding the router. Each resource maps its own
+    route; a few legacy / reconcile routes share a related gate. */
 export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
 /* Legacy direct วางบิล route shares the ใบกำกับภาษี / วางบิล gate. */
 ROUTE_RESOURCE['/billing'] = 'invoices'
-/* สูตรผลิตโรงหล่อ shares the Mix Design gate (both under ราคาสินค้า / ฐานข้อมูล). */
-ROUTE_RESOURCE['/foundry-formula'] = 'mix-design'
-/* คลังวัตถุดิบโรงหล่อ shares the คลังวัตถุดิบ gate. */
-ROUTE_RESOURCE['/foundry-materials'] = 'stock'
-/* ภาพรวมการทำงานแพล้นปูน reads plant stock — shares the คลังวัตถุดิบ gate. */
-ROUTE_RESOURCE['/plant-operation'] = 'stock'
-/* เบิกเงินกลางเดือน shares the เบิกและจ่ายเงินเดือน (payroll) gate. */
-ROUTE_RESOURCE['/mid-month-advance'] = 'payroll'
+/* Stock-reconcile history pages share their stock's gate. */
+ROUTE_RESOURCE['/stock-reconcile'] = 'stock'
+ROUTE_RESOURCE['/foundry-materials-reconcile'] = 'foundry-materials'
+ROUTE_RESOURCE['/foundry-stock-reconcile'] = 'foundry-stock'
 
 /** Hard per-resource role allowlist — overrides the permission matrix. When a
     resource key is listed here, ONLY these roles may view it, no matter what the
@@ -139,73 +141,42 @@ const E: Level = 'edit'
 const V: Level = 'view'
 const N: Level = 'none'
 
-/** Build a per-resource level map from an ordered list matching RESOURCES. */
-function row(levels: Level[]): Record<string, Level> {
+/** Build a per-resource level map: `base` for every resource, with `over`
+    per-key exceptions. Adding a resource to RESOURCES no longer shifts anything —
+    it inherits `base` until listed in `over`. */
+function roleRow(base: Level, over: Record<string, Level> = {}): Record<string, Level> {
   const m: Record<string, Level> = {}
-  RESOURCES.forEach((r, i) => { m[r.key] = levels[i] ?? N })
+  for (const r of RESOURCES) m[r.key] = over[r.key] ?? base
   return m
 }
 
-/* Column order for the arrays below — keep in sync with RESOURCES (sidebar order):
-   Reports:     monthly, tax, general, ledger, audit
-   Sales:       quotation, SO, delivery, foundryDelivery, invoice, receipt
-   Purchasing:  PO, goods, payroll, attendance, truckTrips, commission
-   Inventory:   stock, foundryStock, foundryBoq
-   Database:    custMaster, suppliers, pricing, mixDesign, transport, employees
-   System:      salaryStruct, settings */
-
-/** Default permission matrix — a sensible reading of the supplied chart.
-    Fully editable + persisted from the Settings page, so any cell can be
-    corrected there without touching code. The Audit report (column 5) is
-    restricted to Admin and Auditor. */
+/** Default permission matrix — fully editable + persisted from the Settings page,
+    so any cell can be corrected there without touching code. Newly-added resources
+    inherit each role's base level (mergePerms backfills stored matrices), so the
+    matrix stays complete as the menu grows. */
 export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
-  Admin: row([
-    E, E, E, E, E,          // reports
-    E, E, E, E, E, E,       // sales
-    E, E, E, E, E, E,       // purchasing
-    E, E, E,                // inventory
-    E, E, E, E, E, E,       // database
-    E, E,                   // system
-  ]),
-  /* Board — full access (owner), except audit + system settings. */
-  Board: row([
-    E, E, E, E, N,          // reports (no audit)
-    E, E, E, E, E, E,       // sales
-    E, E, E, E, E, E,       // purchasing
-    E, E, E,                // inventory
-    E, E, E, E, E, E,       // database
-    E, V,                   // system (settings read-only)
-  ]),
+  Admin: roleRow(E),
+  /* Board — full access (owner), except the Audit report and system settings. */
+  Board: roleRow(E, { 'audit-report': N, settings: V }),
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
-  Auditor: row([
-    V, V, V, V, E,          // reports (audit edit)
-    V, V, V, V, V, V,       // sales
-    V, V, V, V, V, V,       // purchasing
-    V, V, V,                // inventory
-    V, V, V, V, V, V,       // database
-    V, N,                   // system (no settings)
-  ]),
-  /* Manager — operational: edits sales + customers + time/trip/commission
-     recording, views the rest; no audit, no purchasing/payments, no settings. */
-  Manager: row([
-    V, V, V, V, N,          // reports (no audit)
-    E, E, E, E, V, V,       // sales (edits quotations/orders/deliveries, views invoices/receipts)
-    N, N, N, E, E, E,       // purchasing (records attendance/trips/commission only)
-    V, V, E,                // inventory (edits foundry BOQ takeoff)
-    E, V, V, V, V, V,       // database (edits customer master)
-    V, N,                   // system
-  ]),
-  /* Accountant — finance: edits all sales/purchasing/customers/reports,
-     views inventory & HR recording + the Audit report (read-only), no settings. */
-  Accountant: row([
-    E, E, E, E, V,          // reports (audit view)
-    E, E, E, E, E, E,       // sales
-    E, E, E, E, E, E,       // purchasing (edits PO/payments/payroll + attendance/trips/commission recording)
-    E, E, E,                // inventory
-    E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
-    V, N,                   // system
-  ]),
+  Auditor: roleRow(V, { 'audit-report': E, settings: N }),
+  /* Manager — operational: edits sales + customer master + time/leave/trip/
+     commission recording + foundry BOQ takeoff; views the rest; no audit, no
+     purchasing/payments, no settings. */
+  Manager: roleRow(V, {
+    'audit-report': N,
+    quotations: E, 'sales-orders': E, 'delivery-tickets': E, 'foundry-deliveries': E,
+    'purchase-orders': N, 'goods-payments': N, payroll: N, 'mid-month-advance': N,
+    'leave-records': E, attendance: E, 'truck-trips': E, commission: E,
+    'foundry-boq': E, 'customer-master': E, settings: N,
+  }),
+  /* Accountant — finance: edits all sales/purchasing/customers/suppliers/reports
+     + inventory; views pricing/formula/HR + the Audit report; no settings. */
+  Accountant: roleRow(E, {
+    'audit-report': V, pricing: V, 'foundry-formula': V, 'transport-pricing': V,
+    employees: V, 'salary-structure': V, settings: N,
+  }),
 }
 
 /* ───────── Activity log (login / logout monitoring) ───────── */
