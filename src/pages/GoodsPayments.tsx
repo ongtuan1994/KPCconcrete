@@ -11,9 +11,8 @@ import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { DocModal } from '../components/documents/DocModal'
 import { GoodsPaymentVoucherDoc } from '../components/documents/GoodsPaymentVoucherDoc'
 import { baht, monthName } from '../data/selectors'
-import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, useSuppliers, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
   type DeletedGoodsPayment,
@@ -367,7 +366,7 @@ const lineTotal = (it: ItemDraft) => {
 }
 
 function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; initial?: GoodsPaymentInitial | null; onSaved: (g: GoodsPayment) => void }) {
-  const created = useCreatedDocs()
+  const suppliers = useSuppliers()
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
   const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
@@ -514,8 +513,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
               <Button variant="tonal" size="sm" onClick={() => setShowAddSupplier(true)} title="เพิ่มซัพพลายเออร์ใหม่">+</Button>
             </div>
             <datalist id="kpc-supplier-list-gp">
-              {created.suppliersAdded.map((s) => <option key={s.id} value={s.name} />)}
-              {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
+              {suppliers.map((s) => <option key={s.id} value={s.name} />)}
             </datalist>
           </Field>
           <Field label="เลขที่ใบกำกับ" hint="ใบกำกับภาษีของผู้ขาย (ลง VAT)">

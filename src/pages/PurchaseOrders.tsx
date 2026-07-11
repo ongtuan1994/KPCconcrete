@@ -9,9 +9,8 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { baht } from '../data/selectors'
-import { CREDITOR_MASTER } from '../data/creditors'
 import {
-  useCreatedDocs, addPurchaseOrder, removePurchaseOrder, restorePurchaseOrder, markPurchaseOrderReceived,
+  useCreatedDocs, useSuppliers, addPurchaseOrder, removePurchaseOrder, restorePurchaseOrder, markPurchaseOrderReceived,
   type PurchaseOrder, type PurchaseOrderItem, type PurchaseStatus, type DeletedPurchaseOrder,
 } from '../data/createdDocs'
 import { useCan } from '../data/auth'
@@ -174,7 +173,7 @@ export function PurchaseOrders() {
 interface DraftItem { desc: string; qty: string; unit: string; price: string }
 
 function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: PurchaseOrder[]; onSaved: (po: PurchaseOrder) => void }) {
-  const created = useCreatedDocs()
+  const suppliers = useSuppliers()
   const [orderDate, setOrderDate] = useState(todayIso())
   const [dueDate, setDueDate] = useState('')
   const [supplier, setSupplier] = useState('')
@@ -240,8 +239,7 @@ function NewPurchaseOrderForm({ open, onClose, existing, onSaved }: { open: bool
             <Button variant="tonal" size="sm" onClick={() => setShowAddSupplier(true)} title="เพิ่มซัพพลายเออร์ใหม่">+ เพิ่มซัพพลายเออร์</Button>
           </div>
           <datalist id="kpc-supplier-list">
-            {created.suppliersAdded.map((s) => <option key={s.id} value={s.name} />)}
-            {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
+            {suppliers.map((s) => <option key={s.id} value={s.name} />)}
           </datalist>
         </Field>
       </div>

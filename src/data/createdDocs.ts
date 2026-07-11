@@ -11,7 +11,7 @@ import { CUSTOMER_MASTER, PRODUCTS, type DeliveryTicket, type Customer, type Pro
 import type { MixDesign } from './mixDesign'
 import type { FoundryFormula } from './foundryFormula'
 import type { Employee } from './employees'
-import type { Creditor } from './creditors'
+import { CREDITOR_MASTER, type Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
 import { createRemoteSync } from './supabase'
@@ -34,6 +34,10 @@ export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'cre
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
 export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'nationality' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
+
+/** Editable subset of Creditor (ซัพพลายเออร์) fields merged on top of the
+    creditor master (and suppliersAdded). Keyed by supplier id. */
+export type SupplierEdit = Partial<Pick<Creditor, 'name' | 'terms' | 'creditDays' | 'creditLimit' | 'note'>>
 
 /** Editable subset of Product fields merged on top of PRODUCTS (and productsAdded).
     Keyed by product code. Covers everything the เพิ่ม/แก้ไขสินค้า form can change
@@ -825,6 +829,8 @@ export interface CreatedDocs {
   customersAdded: Customer[]
   /** New suppliers added through quick-add forms (e.g. inside the ใบสั่งซื้อ / ใบสำคัญจ่าย forms). */
   suppliersAdded: Creditor[]
+  /** Per-supplier edits (keyed by Creditor.id) merged on top of CREDITOR_MASTER + suppliersAdded. */
+  supplierEdits: Record<string, SupplierEdit>
   /** New products added through the เพิ่มสินค้า form on the ราคาสินค้า page — newest first. */
   productsAdded: Product[]
   /** Per-product edits (keyed by Product.code) merged on top of PRODUCTS + productsAdded. */
@@ -894,7 +900,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -910,6 +916,7 @@ function read(): CreatedDocs {
       customerEdits: v.customerEdits ?? {},
       customersAdded: v.customersAdded ?? [],
       suppliersAdded: v.suppliersAdded ?? [],
+      supplierEdits: v.supplierEdits ?? {},
       productsAdded: v.productsAdded ?? [],
       productEdits: v.productEdits ?? {},
       mixDesignsAdded: v.mixDesignsAdded ?? [],
@@ -1366,6 +1373,20 @@ export function liveCustomerByName(name: string): Customer | undefined {
 export function addSupplier(c: Creditor) {
   commit({ ...state, suppliersAdded: [c, ...state.suppliersAdded] })
 }
+/** Merge an edit onto a supplier (by id) — works for both master and added
+    suppliers; the display list applies supplierEdits on top. Empty / undefined
+    values clear that key so display falls back to the base record. */
+export function updateSupplier(id: string, edit: SupplierEdit) {
+  const merged: SupplierEdit = { ...(state.supplierEdits[id] ?? {}), ...edit }
+  for (const k of Object.keys(merged) as (keyof SupplierEdit)[]) {
+    const v = merged[k]
+    if (v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v))) delete merged[k]
+  }
+  const next = { ...state.supplierEdits }
+  if (Object.keys(merged).length === 0) delete next[id]
+  else next[id] = merged
+  commit({ ...state, supplierEdits: next })
+}
 /** Next running supplier id (S0001, …) across the master + user-added list. */
 export function nextSupplierId(existing: Creditor[]): string {
   let max = 0
@@ -1602,6 +1623,18 @@ export function useProducts(): Product[] {
       return overrides[p.code] !== undefined ? { ...withEdit, price: overrides[p.code] } : withEdit
     })
   }, [s.productsAdded, s.productEdits, s.priceAdjustments, s.hidden.products])
+}
+
+/** The current merged supplier list — user-added first, then the creditor master,
+    with per-id edits (supplierEdits) applied. Single source of truth for
+    "what suppliers exist now", shared by the ทะเบียนซัพพลายเออร์ page and the
+    PO / payment supplier pickers. */
+export function useSuppliers(): Creditor[] {
+  const s = useCreatedDocs()
+  return useMemo(() => {
+    const base = [...s.suppliersAdded, ...CREDITOR_MASTER]
+    return base.map((c) => (s.supplierEdits[c.id] ? { ...c, ...s.supplierEdits[c.id] } : c))
+  }, [s.suppliersAdded, s.supplierEdits])
 }
 
 /* Build-time switch: in production builds, hide the delete UI entirely. */
