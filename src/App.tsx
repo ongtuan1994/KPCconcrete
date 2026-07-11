@@ -29,6 +29,7 @@ import { GeneralReports } from './pages/GeneralReports'
 import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
 import { FoundryStock } from './pages/FoundryStock'
+import { FoundryBoqEstimate } from './pages/FoundryBoqEstimate'
 import { StockReconcileHistory } from './pages/StockReconcileHistory'
 import { FoundryFormula } from './pages/FoundryFormula'
 import { Pricing } from './pages/Pricing'
@@ -110,6 +111,7 @@ export default function App() {
         <Route path="/stock" element={<Stock />} />
         <Route path="/foundry-materials" element={<Stock scope="foundry" />} />
         <Route path="/foundry-stock" element={<FoundryStock />} />
+        <Route path="/foundry-boq" element={<FoundryBoqEstimate />} />
         <Route path="/stock-reconcile" element={<StockReconcileHistory />} />
         <Route path="/foundry-stock-reconcile" element={<StockReconcileHistory scope="foundry" />} />
         <Route path="/foundry-materials-reconcile" element={<StockReconcileHistory scope="foundry-material" />} />

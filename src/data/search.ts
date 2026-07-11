@@ -13,12 +13,13 @@ import { INVOICES, BILLING_NOTES, RECEIPTS, baht } from './selectors'
 import type { CreatedDocs } from './createdDocs'
 
 /** Top-level grouping shown as a section header in the dropdown. */
-export type SearchCategory = 'sales' | 'purchasing' | 'customers'
+export type SearchCategory = 'sales' | 'purchasing' | 'customers' | 'inventory'
 
 export const CATEGORY_LABEL: Record<SearchCategory, string> = {
   sales: 'การขาย · Sales',
   purchasing: 'การซื้อ / การจ่าย · Purchasing',
   customers: 'ลูกค้า · Customers',
+  inventory: 'จัดการคลัง · Inventory',
 }
 
 export interface SearchHit {
@@ -162,6 +163,20 @@ function buildCreatedIndex(c: CreatedDocs): SearchHit[] {
     })
   }
 
+  /* Inventory — foundry BOQ estimates */
+  for (const b of c.foundryBoqs) {
+    hits.push({
+      key: `boq:${b.no}`,
+      category: 'inventory',
+      group: 'ประเมินราคาสินค้าโรงหล่อ',
+      label: b.no,
+      sub: `${b.project} · ${b.date}`,
+      route: '/foundry-boq',
+      resource: 'foundry-boq',
+      hay: lc(b.no, b.project, b.note, ...b.products.map((p) => `${p.type} ${p.code}`)),
+    })
+  }
+
   /* Sales — user-created delivery tickets */
   for (const t of c.tickets) {
     hits.push({
@@ -298,7 +313,7 @@ export function searchTransactions(
   const terms = q.split(/\s+/).filter(Boolean)
 
   const all = [...buildCreatedIndex(created), ...SEED_INDEX]
-  const order: SearchCategory[] = ['sales', 'purchasing', 'customers']
+  const order: SearchCategory[] = ['sales', 'purchasing', 'inventory', 'customers']
   const groups: SearchGroup[] = []
 
   for (const category of order) {

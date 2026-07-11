@@ -80,6 +80,7 @@ export const RESOURCES: Resource[] = [
 
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
+  { key: 'foundry-boq', route: '/foundry-boq', label: 'ประเมินราคาสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
   { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ฐานข้อมูล · Database' },
@@ -153,7 +154,7 @@ function row(levels: Level[]): Record<string, Level> {
    Reports:     monthly, tax, general, ledger, audit
    Sales:       quotation, SO, delivery, foundryDelivery, invoice, receipt
    Purchasing:  PO, goods, payroll, attendance, truckTrips, commission
-   Inventory:   stock, foundryStock
+   Inventory:   stock, foundryStock, foundryBoq
    Database:    custMaster, suppliers, pricing, mixDesign, transport, employees
    System:      salaryStruct, settings */
 
@@ -167,7 +168,7 @@ export const DEFAULT_PERMS: PermMatrix = {
     E, E, E, E, E,          // reports
     E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing
-    E, E,                   // inventory
+    E, E, E,                // inventory
     E, E, E, E, E, E,       // database
     E, E,                   // system
   ]),
@@ -176,7 +177,7 @@ export const DEFAULT_PERMS: PermMatrix = {
     E, E, E, E, N,          // reports (no audit)
     E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing
-    E, E,                   // inventory
+    E, E, E,                // inventory
     E, E, E, E, E, E,       // database
     E, V,                   // system (settings read-only)
   ]),
@@ -185,7 +186,7 @@ export const DEFAULT_PERMS: PermMatrix = {
     V, V, V, V, E,          // reports (audit edit)
     V, V, V, V, V, V,       // sales
     V, V, V, V, V, V,       // purchasing
-    V, V,                   // inventory
+    V, V, V,                // inventory
     V, V, V, V, V, V,       // database
     V, N,                   // system (no settings)
   ]),
@@ -195,7 +196,7 @@ export const DEFAULT_PERMS: PermMatrix = {
     V, V, V, V, N,          // reports (no audit)
     E, E, E, E, V, V,       // sales (edits quotations/orders/deliveries, views invoices/receipts)
     N, N, N, E, E, E,       // purchasing (records attendance/trips/commission only)
-    V, V,                   // inventory
+    V, V, E,                // inventory (edits foundry BOQ takeoff)
     E, V, V, V, V, V,       // database (edits customer master)
     V, N,                   // system
   ]),
@@ -205,7 +206,7 @@ export const DEFAULT_PERMS: PermMatrix = {
     E, E, E, E, V,          // reports (audit view)
     E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing (edits PO/payments/payroll + attendance/trips/commission recording)
-    E, E,                   // inventory
+    E, E, E,                // inventory
     E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
     V, N,                   // system
   ]),
@@ -229,7 +230,7 @@ const KEY = 'kpc.auth.v1'
 /** Bump when a permission migration must be force-applied to existing stored
     matrices (localStorage overrides code defaults, so new defaults alone don't
     reach browsers that already saved a matrix). */
-const PERMS_VERSION = 3
+const PERMS_VERSION = 4
 
 interface AuthState {
   users: User[]

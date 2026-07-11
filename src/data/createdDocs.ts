@@ -140,6 +140,54 @@ export interface Quotation {
   createdAt: string
 }
 
+/* ───────── Foundry BOQ (ประเมินราคาสินค้าโรงหล่อ) ───────── */
+
+/** Raw-material identifiers used in a foundry BOQ takeoff. See BOQ_MATERIALS in
+    ./foundryBoq for the display labels, units, input modes and kg/m factors. */
+export type FoundryMaterialKey =
+  | 'concrete' | 'db16' | 'db12' | 'rb9' | 'rb6'
+  | 'pcw4' | 'pcw5' | 'pcw7' | 'stir28' | 'stir4' | 'stir6'
+  | 'plate9' | 'plate6' | 'box24'
+
+/** One material takeoff line — stores the raw inputs the user typed; the output
+    quantity (per unit) is derived from the material's mode in ./foundryBoq. Only
+    the inputs relevant to that material's mode are set. */
+export interface FoundryBoqMaterial {
+  key: FoundryMaterialKey
+  value?: number       /* direct mode — output typed directly */
+  length?: number      /* lengthCount — ความยาวเหล็ก / ความยาวคาน */
+  count?: number       /* lengthCount / countFixed — จำนวนเส้น */
+  beamLength?: number  /* lengthSpacing — ความยาวคาน */
+  spacing?: number     /* lengthSpacing — ระยะห่าง */
+}
+
+/** Foundry product families a BOQ can be taken off for. */
+export type FoundryProductType = 'คาน' | 'เสาเข็ม' | 'เสาอาคาร'
+
+/** One product within a BOQ project — a product family, its code, the number of
+    units produced, and the per-unit material takeoff. Project total per material
+    = per-unit output × qty. */
+export interface FoundryBoqProduct {
+  id: string
+  type: FoundryProductType
+  code: string     /* เลขของสินค้า */
+  qty: number      /* จำนวนตัวที่ผลิต */
+  materials: FoundryBoqMaterial[]
+}
+
+/** A foundry material takeoff / cost estimate for one project or customer
+    (ประเมินราคาสินค้าโรงหล่อ). Persisted like other created docs. */
+export interface FoundryBoq {
+  id: string        /* same as no — stable key */
+  no: string        /* running document number, e.g. BOQ00001 */
+  project: string   /* ชื่อโครงการ / ลูกค้า */
+  date: string      /* ISO yyyy-mm-dd */
+  products: FoundryBoqProduct[]
+  note?: string
+  createdBy?: string
+  createdAt: string
+}
+
 /** A partial (installment) payment recorded against a tax invoice (ผ่อนชำระ).
     ยอดคงค้าง = invoice.total − Σ(payments for that invoice). */
 export interface InvoicePayment {
@@ -846,6 +894,7 @@ export interface DeletedTicket extends DeliveryTicket {
 /** Deleted records kept for their pages' audit-history tables (snapshot + who/when). */
 export interface DeletedSalesOrder extends SalesOrder { deletedAt: string; deletedBy: string }
 export interface DeletedQuotation extends Quotation { deletedAt: string; deletedBy: string }
+export interface DeletedFoundryBoq extends FoundryBoq { deletedAt: string; deletedBy: string }
 export interface DeletedPurchaseOrder extends PurchaseOrder { deletedAt: string; deletedBy: string }
 export interface DeletedGoodsPayment extends GoodsPayment { deletedAt: string; deletedBy: string }
 
@@ -885,6 +934,8 @@ export interface CreatedDocs {
   salesOrders: SalesOrder[]
   /** Price quotations (ใบเสนอราคา) — newest first. */
   quotations: Quotation[]
+  /** Foundry material takeoffs / BOQ estimates (ประเมินราคาสินค้าโรงหล่อ) — newest first. */
+  foundryBoqs: FoundryBoq[]
   /** Purchase orders (ใบสั่งซื้อ) — newest first. */
   purchaseOrders: PurchaseOrder[]
   /** Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ) — newest first. */
@@ -929,6 +980,8 @@ export interface CreatedDocs {
   deletedSalesOrders: DeletedSalesOrder[]
   /** Audit history of deleted ใบเสนอราคา — newest first. */
   deletedQuotations: DeletedQuotation[]
+  /** Audit history of deleted ประเมินราคาสินค้าโรงหล่อ — newest first. */
+  deletedFoundryBoqs: DeletedFoundryBoq[]
   /** Audit history of deleted ใบสั่งซื้อ — newest first. */
   deletedPurchaseOrders: DeletedPurchaseOrder[]
   /** Audit history of deleted ใบสำคัญจ่าย — newest first. */
@@ -936,7 +989,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -966,6 +1019,7 @@ function read(): CreatedDocs {
       /* Backfill status on orders saved before the field existed. */
       salesOrders: (v.salesOrders ?? []).map((s) => ({ ...s, status: s.status ?? 'รอผลิต' })),
       quotations: v.quotations ?? [],
+      foundryBoqs: v.foundryBoqs ?? [],
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
       foundryDeliveries: v.foundryDeliveries ?? [],
@@ -1009,6 +1063,7 @@ function read(): CreatedDocs {
       deletedTickets: v.deletedTickets ?? [],
       deletedSalesOrders: v.deletedSalesOrders ?? [],
       deletedQuotations: v.deletedQuotations ?? [],
+      deletedFoundryBoqs: v.deletedFoundryBoqs ?? [],
       deletedPurchaseOrders: v.deletedPurchaseOrders ?? [],
       deletedGoodsPayments: v.deletedGoodsPayments ?? [],
     }
@@ -1219,6 +1274,33 @@ export function restoreQuotation(qtNo: string) {
     ...state,
     deletedQuotations: state.deletedQuotations.filter((d) => d.qtNo !== qtNo),
     quotations: [unstampDeleted(rec) as Quotation, ...state.quotations],
+  })
+}
+
+/* Foundry BOQ estimates (ประเมินราคาสินค้าโรงหล่อ) — created docs only. */
+export function addFoundryBoq(b: FoundryBoq) {
+  commit({ ...state, foundryBoqs: [stamp(b), ...state.foundryBoqs] })
+}
+/** Replace an existing BOQ estimate (matched by no) with an edited version. */
+export function updateFoundryBoq(b: FoundryBoq) {
+  commit({ ...state, foundryBoqs: state.foundryBoqs.map((x) => (x.no === b.no ? b : x)) })
+}
+export function removeFoundryBoq(no: string) {
+  const rec = state.foundryBoqs.find((b) => b.no === no)
+  commit({
+    ...state,
+    foundryBoqs: state.foundryBoqs.filter((b) => b.no !== no),
+    deletedFoundryBoqs: rec ? [stampDeleted(rec), ...state.deletedFoundryBoqs.filter((d) => d.no !== no)] : state.deletedFoundryBoqs,
+  })
+}
+/** Undo a BOQ estimate deletion — re-add it to the list and drop the history row. */
+export function restoreFoundryBoq(no: string) {
+  const rec = state.deletedFoundryBoqs.find((d) => d.no === no)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedFoundryBoqs: state.deletedFoundryBoqs.filter((d) => d.no !== no),
+    foundryBoqs: [unstampDeleted(rec) as FoundryBoq, ...state.foundryBoqs],
   })
 }
 
