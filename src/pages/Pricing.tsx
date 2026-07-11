@@ -749,6 +749,9 @@ const FOUNDRY_KIND_OPTS: { id: FoundryKind; label: string; unit: string }[] = [
 ]
 /** Sentinel value in the ประเภทสินค้า dropdown for "add a brand-new type". */
 const CUSTOM_KIND = '__new__' as const
+/** Prefix marking a dropdown option that re-selects an existing custom type
+    (typeLabel) — e.g. "type:ท่อระบายน้ำ". */
+const TYPE_PREFIX = 'type:'
 type KindSel = FoundryKind | typeof CUSTOM_KIND
 
 /** เพิ่ม / แก้ไขสินค้า. Add mode forces a SITE choice (แพล้นปูน / โรงหล่อ) first, then
@@ -806,6 +809,34 @@ function ProductFormModal({
      (references get updated). Seed products keep their code. */
   const codeLocked = mode === 'edit' && !isAddedProduct(initial?.code ?? '')
   const isCustom = kind === CUSTOM_KIND /* custom foundry type — single price, manual unit */
+
+  /* Existing custom foundry types (typeLabel) across all products — so a type
+     added earlier shows up in the ประเภทสินค้า dropdown next time instead of only
+     "+ เพิ่มประเภทใหม่…". */
+  const allProducts = useProducts()
+  const foundryTypes = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of allProducts) if (p.site === 'foundry' && p.typeLabel) set.add(p.typeLabel)
+    return [...set].sort()
+  }, [allProducts])
+  /* The ประเภทสินค้า <select> value: a fixed kind, an existing custom type
+     (type:<label>), or the "+ เพิ่มประเภทใหม่…" sentinel. */
+  const kindSelectValue = isCustom
+    ? (customType && foundryTypes.includes(customType) ? TYPE_PREFIX + customType : CUSTOM_KIND)
+    : kind
+  const onKindSelect = (v: string) => {
+    if (v.startsWith(TYPE_PREFIX)) {
+      const label = v.slice(TYPE_PREFIX.length)
+      setKind(CUSTOM_KIND)
+      setCustomType(label)
+      /* Pre-fill the unit from an existing product of that type (still editable). */
+      const sample = allProducts.find((p) => p.site === 'foundry' && p.typeLabel === label)
+      if (sample?.unit) setUnit(sample.unit)
+    } else {
+      if (v === CUSTOM_KIND) setCustomType('')
+      changeKind(v as KindSel)
+    }
+  }
 
   /* Reset the form whenever it opens (edit → prefill from the row, add → blank). */
   useEffect(() => {
@@ -1094,8 +1125,9 @@ function ProductFormModal({
             <>
               <div className="grid g-2" style={{ gap: 12 }}>
                 <Field label="ประเภทสินค้า" required>
-                  <Select value={kind} disabled={readOnlyStructure} onChange={(e) => changeKind(e.target.value as KindSel)}>
+                  <Select value={kindSelectValue} disabled={readOnlyStructure} onChange={(e) => onKindSelect(e.target.value)}>
                     {FOUNDRY_KIND_OPTS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+                    {foundryTypes.map((t) => <option key={TYPE_PREFIX + t} value={TYPE_PREFIX + t}>{t}</option>)}
                     <option value={CUSTOM_KIND}>+ เพิ่มประเภทใหม่…</option>
                   </Select>
                 </Field>

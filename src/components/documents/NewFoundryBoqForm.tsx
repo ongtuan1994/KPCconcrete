@@ -259,15 +259,15 @@ export function NewFoundryBoqForm({
                             </Select>
                           </td>
                           <td>
-                            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                            <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                               {def.mode === 'direct' && (
                                 <SmallNum ph={`จำนวน (${def.unit})`} value={r.value} onChange={(v) => setMatRow(i, r.rowId, { value: v })} w={150} />
                               )}
                               {def.mode === 'lengthCount' && (
                                 <>
                                   <SmallNum ph={def.lengthLabel ?? 'ความยาว (m)'} value={r.length} onChange={(v) => setMatRow(i, r.rowId, { length: v })} w={150} />
-                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120} />
-                                  {def.factor != null && <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} kg/m</span>}
+                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120}
+                                    suffix={def.factor != null ? `× ${def.factor} kg/m` : undefined} />
                                 </>
                               )}
                               {def.mode === 'lengthSpacing' && (
@@ -277,10 +277,8 @@ export function NewFoundryBoqForm({
                                 </>
                               )}
                               {def.mode === 'countFixed' && (
-                                <>
-                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120} />
-                                  <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} m/เส้น</span>
-                                </>
+                                <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} w={120}
+                                  suffix={`× ${def.factor} m/เส้น`} />
                               )}
                             </div>
                           </td>
@@ -316,11 +314,16 @@ export function NewFoundryBoqForm({
   )
 }
 
-/** Compact numeric input used inside the takeoff table. */
-function SmallNum({ ph, value, onChange, w = 104 }: { ph: string; value?: string; onChange: (v: string) => void; w?: number }) {
+/** Compact numeric input used inside the takeoff table. An optional `suffix` (e.g.
+    the kg/m conversion factor) sits glued directly behind the field on the same
+    line — it never wraps to its own line, so the inputs don't bounce. */
+function SmallNum({ ph, value, onChange, w = 104, suffix }: { ph: string; value?: string; onChange: (v: string) => void; w?: number; suffix?: string }) {
   return (
-    <div style={{ width: w }}>
-      <Input type="number" step="0.01" min={0} placeholder={ph} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+      <div style={{ width: w }}>
+        <Input type="number" step="0.01" min={0} placeholder={ph} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      </div>
+      {suffix && <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', whiteSpace: 'nowrap' }}>{suffix}</span>}
     </div>
   )
 }

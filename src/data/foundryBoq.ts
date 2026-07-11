@@ -12,7 +12,12 @@
    Wire kg/m factors were confirmed with the user (2026-07): PCW 4=0.100 /
    5=0.150 / 7=0.300; Stir 2.8=0.050 / 4=0.100 / 6=0.222. */
 
+import { STOCK_MATERIALS, type Product } from './real'
 import type { FoundryBoqMaterial, FoundryMaterialKey, FoundryMaterial } from './createdDocs'
+
+/** Product the คอนกรีต material cost is pinned to: คอนกรีตกำลังอัด 400 กก./ตร.ซม.
+    (ปูน ดอกบัว). Falls back to any 400-ksc Dokbua concrete if the code changes. */
+export const CONCRETE_REF_CODE = 'KPCP2OSPP-1'
 
 export type BoqMode = 'direct' | 'lengthCount' | 'lengthSpacing' | 'countFixed'
 
@@ -51,6 +56,37 @@ export const BOQ_MATERIAL_MAP: Record<FoundryMaterialKey, BoqMaterialDef> =
     definition — always 'direct' mode (the quantity is typed straight in). */
 export function toBoqDef(m: FoundryMaterial): BoqMaterialDef {
   return { key: m.code, label: m.name, unit: m.unit, mode: 'direct' }
+}
+
+/** Merged BOQ material catalog: seed materials + user-added foundry materials. */
+export function boqMaterialDefs(added: FoundryMaterial[]): BoqMaterialDef[] {
+  return [...BOQ_MATERIALS, ...added.map(toBoqDef)]
+}
+
+/** Build a unit-cost resolver (ต้นทุน/หน่วย) for BOQ materials, keyed by material
+    key. Steel/wire costs come from the คลังวัตถุดิบโรงหล่อ stock (seed + added,
+    with any ตั้งราคาต้นทุน override, matched case-insensitively so BOQ keys like
+    "db16" resolve to stock codes like "DB16"). คอนกรีต is pinned to the price of
+    CONCRETE_REF_CODE (คอนกรีต 400 ksc ปูนดอกบัว) from the merged product list. */
+export function foundryCostResolver(
+  stockCosts: Record<string, number>,
+  added: FoundryMaterial[],
+  products: Product[],
+): (key: FoundryMaterialKey) => number {
+  const costByCode: Record<string, number> = {}
+  for (const m of STOCK_MATERIALS) {
+    if (m.site !== 'foundry') continue
+    const c = stockCosts[m.code] ?? m.cost
+    if (c != null) costByCode[m.code.toUpperCase()] = c
+  }
+  for (const m of added) {
+    const c = stockCosts[m.code] ?? m.cost
+    if (c != null) costByCode[m.code.toUpperCase()] = c
+  }
+  const concreteRef = products.find((p) => p.code === CONCRETE_REF_CODE)
+    ?? products.find((p) => p.category === 'concrete' && p.strengthKsc === 400 && /^KPC[RP]2/.test(p.code))
+  const concreteCost = concreteRef?.price ?? 0
+  return (key) => (key === 'concrete' ? concreteCost : (costByCode[String(key).toUpperCase()] ?? 0))
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000

@@ -60,7 +60,7 @@ export function StockReconcileHistory({ scope = 'material' }: { scope?: 'materia
   ]
 
   return (
-    <>
+    <div className={scope !== 'material' ? 'foundry-theme' : undefined}>
       <PageHeader
         title={cfg.title}
         sub={`Stock Reconciliation History · ${rows.length} ครั้ง`}
@@ -94,6 +94,6 @@ export function StockReconcileHistory({ scope = 'material' }: { scope?: 'materia
       >
         {active && <StockReconcileDoc rec={active} />}
       </DocModal>
-    </>
+    </div>
   )
 }

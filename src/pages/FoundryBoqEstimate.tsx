@@ -7,10 +7,11 @@ import { IconPlus } from '../components/icons'
 import { DocModal } from '../components/documents/DocModal'
 import { FoundryBoqDoc } from '../components/documents/FoundryBoqDoc'
 import { NewFoundryBoqForm } from '../components/documents/NewFoundryBoqForm'
-import { boqOutput } from '../data/foundryBoq'
-import { useCreatedDocs, removeFoundryBoq, restoreFoundryBoq, type FoundryBoq, type DeletedFoundryBoq } from '../data/createdDocs'
+import { boqOutput, boqMaterialDefs, foundryCostResolver } from '../data/foundryBoq'
+import { useCreatedDocs, useProducts, removeFoundryBoq, restoreFoundryBoq, type FoundryBoq, type DeletedFoundryBoq } from '../data/createdDocs'
 import { useCan } from '../data/auth'
 import { fmtThaiDateTime } from '../utils/datetime'
+import { downloadCsv } from '../utils/csv'
 
 /** ISO yyyy-mm-dd → d/m/พ.ศ. */
 function fmtDate(iso: string): string {
@@ -33,9 +34,47 @@ export function FoundryBoqEstimate() {
   const [editing, setEditing] = useState<FoundryBoq | null>(null)
   const [active, setActive] = useState<FoundryBoq | null>(null)
   const created = useCreatedDocs()
+  const products = useProducts()
   const canEdit = useCan('foundry-boq').edit
 
   const all = created.foundryBoqs
+
+  /* Full itemised export — one row per material takeoff line (per product, per
+     BOQ), with per-unit + total quantities and material cost. */
+  const exportExcel = () => {
+    const defs = boqMaterialDefs(created.foundryMaterialsAdded)
+    const defMap = Object.fromEntries(defs.map((d) => [d.key, d]))
+    const labelOf = (key: string) => defMap[key]?.label ?? key
+    const unitOf = (key: string) => defMap[key]?.unit ?? ''
+    const costOf = foundryCostResolver(created.stockCosts, created.foundryMaterialsAdded, products)
+    const r3 = (n: number) => Math.round(n * 1000) / 1000
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    const head = [
+      'เลขที่', 'วันที่', 'โครงการ/ลูกค้า', 'ลำดับสินค้า', 'ประเภทสินค้า', 'รายละเอียด', 'รหัสสินค้า',
+      'จำนวน (ตัว)', 'วัตถุดิบ', 'หน่วย', 'ปริมาณ/ตัว', 'ปริมาณรวม', 'ต้นทุน/หน่วย (บาท)', 'ต้นทุนรวม (บาท)', 'หมายเหตุ',
+    ]
+    const body: (string | number)[][] = []
+    for (const b of all) {
+      b.products.forEach((p, pi) => {
+        const used = p.materials.filter((m) => boqOutput(m) > 0)
+        if (used.length === 0) {
+          body.push([b.no, fmtDate(b.date), b.project, pi + 1, p.type, p.detail ?? '', p.code, p.qty, '—', '', '', '', '', '', b.note ?? ''])
+          return
+        }
+        for (const m of used) {
+          const per = boqOutput(m)
+          const totalQty = per * p.qty
+          const uc = costOf(m.key)
+          body.push([
+            b.no, fmtDate(b.date), b.project, pi + 1, p.type, p.detail ?? '', p.code, p.qty,
+            labelOf(m.key), unitOf(m.key), r3(per), r3(totalQty),
+            uc > 0 ? r2(uc) : '', uc > 0 ? r2(totalQty * uc) : '', b.note ?? '',
+          ])
+        }
+      })
+    }
+    downloadCsv('foundry-boq', [head, ...body])
+  }
 
   const rows = useMemo(
     () =>
@@ -85,14 +124,15 @@ export function FoundryBoqEstimate() {
   ]
 
   return (
-    <>
+    <div className="foundry-theme">
       <PageHeader
         title="ประเมินราคาสินค้าโรงหล่อ"
         sub={`Foundry BOQ · ${all.length} โครงการ`}
         actions={
-          canEdit
-            ? <Button variant="primary" onClick={() => { setEditing(null); setShowForm(true) }}><IconPlus /> สร้างใหม่</Button>
-            : undefined
+          <>
+            <Button variant="secondary" onClick={exportExcel} disabled={all.length === 0}>ส่งออก Excel</Button>
+            {canEdit && <Button variant="primary" onClick={() => { setEditing(null); setShowForm(true) }}><IconPlus /> สร้างใหม่</Button>}
+          </>
         }
       />
 
@@ -131,6 +171,6 @@ export function FoundryBoqEstimate() {
       <DocModal open={!!active} title={active ? `ประเมินราคา ${active.no}` : ''} onClose={() => setActive(null)} maxWidth={880}>
         {active && <FoundryBoqDoc boq={active} />}
       </DocModal>
-    </>
+    </div>
   )
 }

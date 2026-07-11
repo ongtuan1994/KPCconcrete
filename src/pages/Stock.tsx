@@ -273,7 +273,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   ]
 
   return (
-    <>
+    <div className={isFoundry ? 'foundry-theme' : undefined}>
       <PageHeader
         title={stockLabel}
         sub={isFoundry ? 'Foundry Raw Material Stock · วัสดุเสริมแรงงานหล่อ' : 'Raw Material Stock · คงเหลือ ณ มิถุนายน 2569'}
@@ -343,7 +343,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       <ReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} materials={materials} scope={rcScope} />
       <EditCostsModal open={showCosts} onClose={() => setShowCosts(false)} materials={materials} stockLabel={stockLabel} />
       <AddFoundryMaterialModal open={showAddMat} onClose={() => setShowAddMat(false)} existingCodes={scopeCodes} />
-    </>
+    </div>
   )
 }
 
