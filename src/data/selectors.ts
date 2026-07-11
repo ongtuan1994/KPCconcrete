@@ -84,6 +84,16 @@ export function prodShort(code: string) {
   return `${p.strengthKsc} ksc ${brand}`
 }
 
+/** Cement-brand suffix for a concrete/lean product — "(ดอกบัว)" or "(SCG)".
+    Returns '' for non-concrete items (เสาเข็ม/คาน ฯลฯ) which have no cement brand.
+    Brand is derived from the product code: KPCR2…/KPCP2… = ดอกบัว, else SCG —
+    same convention as prodShort. */
+export function cementBrandSuffix(code: string): string {
+  const p = PRODUCT_MAP[code]
+  if (p && p.category !== 'concrete' && p.category !== 'lean') return ''
+  return /^KPC[RP]2/.test(code) ? '(ดอกบัว)' : '(SCG)'
+}
+
 /* ---------- customer master ---------- */
 /** Split a combined customer name into ชื่อลูกค้า + หน่วยงาน at the FIRST space or
     "/" — everything after that separator becomes the หน่วยงาน. Migrates the legacy

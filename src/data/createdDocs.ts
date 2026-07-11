@@ -134,6 +134,12 @@ export interface Quotation {
   validDays?: number  /* วันยืนราคา — days the quoted price is held */
   /** true = show the VAT breakdown; false = hide it (prices are the final quote). */
   showVat: boolean
+  /** true = print the cement brand suffix "(ดอกบัว)" / "(SCG)" after each product
+      name in the doc. Defaults to false (brand hidden). */
+  showCementBrand?: boolean
+  /** true = print the ค่าขนส่งไม่เต็มเที่ยว schedule (surcharge for orders under
+      3 คิว/เที่ยว) on the doc. Defaults to false (hidden). */
+  showTransportFee?: boolean
   items: QuotationItem[]
   note?: string
   createdBy?: string

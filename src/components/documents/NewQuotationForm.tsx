@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, PRODUCTS } from '../../data/real'
-import { cleanProductName } from '../../data/selectors'
+import { CUSTOMER_MASTER, PRODUCTS, TRANSPORT_FEES, TRANSPORT_FULL_M3, transportFeeForM3In } from '../../data/real'
+import { cleanProductName, qm } from '../../data/selectors'
 import { addQuotation, updateQuotation, useCreatedDocs, type Quotation, type QuotationItem } from '../../data/createdDocs'
 import { NewCustomerForm } from './NewCustomerForm'
 
@@ -56,6 +56,8 @@ export function NewQuotationForm({
   const [creditDays, setCreditDays] = useState('')
   const [validDays, setValidDays] = useState('')
   const [showVat, setShowVat] = useState(true)
+  const [showCementBrand, setShowCementBrand] = useState(false)
+  const [showTransportFee, setShowTransportFee] = useState(false)
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()])
   const [note, setNote] = useState('')
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -75,11 +77,13 @@ export function NewQuotationForm({
       setCreditDays(editing.creditDays != null ? String(editing.creditDays) : '')
       setValidDays(editing.validDays != null ? String(editing.validDays) : '')
       setShowVat(editing.showVat)
+      setShowCementBrand(editing.showCementBrand ?? false)
+      setShowTransportFee(editing.showTransportFee ?? false)
       setLines(editing.items.map((it) => ({ code: it.code, qty: String(it.qty), price: String(it.price), discount: it.discount != null ? String(it.discount) : '' })))
       setNote(editing.note ?? '')
     } else {
       setDate(todayIso()); setCustomer(''); setTerms('เงินสด'); setCreditDays(''); setValidDays('')
-      setShowVat(true); setLines([emptyLine()]); setNote('')
+      setShowVat(true); setShowCementBrand(false); setShowTransportFee(false); setLines([emptyLine()]); setNote('')
     }
     setErr('')
   }, [open, editing])
@@ -95,7 +99,7 @@ export function NewQuotationForm({
   }
 
   const totals = useMemo(() => {
-    let gross = 0, discountTotal = 0, net = 0
+    let gross = 0, discountTotal = 0, net = 0, concreteQty = 0
     for (const l of lines) {
       const qty = Number(l.qty) || 0
       const price = Number(l.price) || 0
@@ -103,12 +107,18 @@ export function NewQuotationForm({
       gross += qty * price
       discountTotal += qty * disc
       net += qty * (price - disc)
+      if ((PRODUCTS.find((x) => x.code === l.code)?.unit ?? 'คิว') === 'คิว') concreteQty += qty
     }
-    gross = r2(gross); discountTotal = r2(discountTotal); net = r2(net)
+    /* ค่าขนส่งไม่เต็มเที่ยว (VAT-inclusive) — added on the total concrete volume
+       when it is under a full 3-คิว load; matches QuotationDoc. */
+    const fees = created.transportAdjustments[0]?.fees ?? TRANSPORT_FEES
+    const transportFee = showTransportFee ? transportFeeForM3In(concreteQty, fees) : 0
+    const transportShort = transportFee > 0 ? r2(TRANSPORT_FULL_M3 - Math.round(concreteQty * 4) / 4) : 0
+    gross = r2(gross + transportFee); discountTotal = r2(discountTotal); net = r2(net + transportFee)
     const preVat = showVat ? r2(net / 1.07) : net
     const vat = showVat ? r2(net - preVat) : 0
-    return { gross, discountTotal, net, preVat, vat }
-  }, [lines, showVat])
+    return { gross, discountTotal, net, preVat, vat, transportFee, transportShort }
+  }, [lines, showVat, showTransportFee, created.transportAdjustments])
 
   const submit = () => {
     setErr('')
@@ -145,6 +155,8 @@ export function NewQuotationForm({
       creditDays: terms === 'เครดิต' ? (creditDays.trim() ? Number(creditDays) : 30) : undefined,
       validDays: validDays.trim() ? Number(validDays) : 30,
       showVat,
+      showCementBrand,
+      showTransportFee,
       items: cleaned,
       note: note.trim() || undefined,
       createdAt: editing?.createdAt ?? new Date().toISOString(),
@@ -218,6 +230,18 @@ export function NewQuotationForm({
             <option value="novat">ไม่โชว์ VAT</option>
           </Select>
         </Field>
+        <Field label="ประเภทปูน" hint="ค่าเริ่มต้น = ไม่แสดง" style={{ gridColumn: '1 / -1' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '6px 0' }}>
+            <input type="checkbox" checked={showCementBrand} onChange={(e) => setShowCementBrand(e.target.checked)} />
+            แสดงประเภทปูนในใบเสนอราคา — ต่อท้ายชื่อสินค้าด้วย (ดอกบัว) หรือ (SCG)
+          </label>
+        </Field>
+        <Field label="ค่าขนส่งไม่เต็มเที่ยว" hint="ค่าเริ่มต้น = ไม่แสดง" style={{ gridColumn: '1 / -1' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '6px 0' }}>
+            <input type="checkbox" checked={showTransportFee} onChange={(e) => setShowTransportFee(e.target.checked)} />
+            คิดค่าขนส่งกรณีสั่งไม่ถึง 3 คิว/เที่ยว — เพิ่มเป็นรายการต่อท้าย ตามคิวที่ขาด
+          </label>
+        </Field>
       </div>
 
       {/* ---- Product line items ---- */}
@@ -280,6 +304,11 @@ export function NewQuotationForm({
         <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>
           <span>ส่วนลด</span><span className="mono">{totals.discountTotal ? num2(totals.discountTotal) : '-'}</span>
         </div>
+        {totals.transportFee > 0 && (
+          <div className="row" style={{ justifyContent: 'space-between', fontSize: 12, color: 'var(--kpc-text-faint)' }}>
+            <span>— รวมค่าขนส่งไม่เต็มเที่ยว (ขาด {qm(totals.transportShort)} คิว)</span><span className="mono">{num2(totals.transportFee)}</span>
+          </div>
+        )}
         {showVat && (
           <>
             <div className="row" style={{ justifyContent: 'space-between', fontSize: 13 }}>

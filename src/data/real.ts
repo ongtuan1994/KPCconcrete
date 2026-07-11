@@ -505,10 +505,18 @@ export const TRANSPORT_RATE_PRE_VAT = 400
 /** Look up the partial-load fee (VAT-inclusive) for a delivery quantity in คิว.
     Returns 0 for full loads (≥3 คิว) or zero/negative inputs. */
 export function transportFeeForM3(m3: number): number {
-  if (!m3 || m3 <= 0 || m3 >= TRANSPORT_FULL_M3) return 0
+  return transportFeeForM3In(m3, TRANSPORT_FEES)
+}
+
+/** Like transportFeeForM3 but looks up against a supplied fee schedule (the
+    current effective one from the adjustments log), rounding the quantity to the
+    nearest 0.25 คิว step. Returns 0 for full loads (≥3 คิว) or non-positive qty. */
+export function transportFeeForM3In(m3: number, fees: TransportFee[]): number {
+  if (!m3 || m3 <= 0) return 0
   /* Round to nearest 0.25 then look up the exact row. */
   const stepped = Math.round(m3 * 4) / 4
-  return TRANSPORT_FEES.find((f) => f.m3 === stepped)?.totalWithVat ?? 0
+  if (stepped <= 0 || stepped >= TRANSPORT_FULL_M3) return 0
+  return fees.find((f) => f.m3 === stepped)?.totalWithVat ?? 0
 }
 
 /** Pre-VAT under-load surcharge for invoice math. Returns the shortfall (in คิว
