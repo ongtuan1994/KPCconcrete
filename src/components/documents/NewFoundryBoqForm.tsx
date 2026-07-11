@@ -10,6 +10,10 @@ import {
 const PRODUCT_TYPES: FoundryProductType[] = ['คาน', 'เสาเข็ม', 'เสาอาคาร']
 const nq = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 3 })
 
+/* Monotonic ids for React row keys (form-local; resets are harmless). */
+let _uid = 0
+const rowUid = () => `m${++_uid}`
+
 function todayIso(): string {
   const d = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -26,11 +30,17 @@ function nextBoqNo(existing: FoundryBoq[]): string {
   return `BOQ${String(max + 1).padStart(5, '0')}`
 }
 
-/** Raw string inputs for one material row (only the mode-relevant ones are used). */
-interface DraftMat { value?: string; length?: string; count?: string; beamLength?: string; spacing?: string }
-interface DraftProduct { id: string; type: FoundryProductType; code: string; qty: string; mats: Record<string, DraftMat> }
+/** One editable material row — a chosen material plus its raw string inputs (only
+    the mode-relevant ones are used). Rows are a list, so a material may repeat. */
+interface DraftMatRow {
+  rowId: string
+  key: FoundryMaterialKey
+  value?: string; length?: string; count?: string; beamLength?: string; spacing?: string
+}
+interface DraftProduct { id: string; type: FoundryProductType; code: string; qty: string; materials: DraftMatRow[] }
 
-const emptyProduct = (id: string): DraftProduct => ({ id, type: 'คาน', code: '', qty: '1', mats: {} })
+const emptyRow = (key: FoundryMaterialKey = 'concrete'): DraftMatRow => ({ rowId: rowUid(), key })
+const emptyProduct = (id: string): DraftProduct => ({ id, type: 'คาน', code: '', qty: '1', materials: [emptyRow()] })
 
 const parse = (s?: string): number | undefined => {
   if (s == null || s.trim() === '') return undefined
@@ -38,28 +48,15 @@ const parse = (s?: string): number | undefined => {
   return Number.isNaN(n) ? undefined : n
 }
 
-/** Build a stored material line from its draft; null when it has no usable input. */
-function buildMat(key: FoundryMaterialKey, d: DraftMat): FoundryBoqMaterial | null {
-  const def = BOQ_MATERIAL_MAP[key]
-  let m: FoundryBoqMaterial
+/** Build a stored material line from a draft row (mode picks the inputs). */
+function toMaterial(r: DraftMatRow): FoundryBoqMaterial {
+  const def = BOQ_MATERIAL_MAP[r.key]
   switch (def.mode) {
-    case 'direct': m = { key, value: parse(d.value) }; break
-    case 'lengthCount': m = { key, length: parse(d.length), count: parse(d.count) }; break
-    case 'lengthSpacing': m = { key, beamLength: parse(d.beamLength), spacing: parse(d.spacing) }; break
-    case 'countFixed': m = { key, count: parse(d.count) }; break
+    case 'direct': return { key: r.key, value: parse(r.value) }
+    case 'lengthCount': return { key: r.key, length: parse(r.length), count: parse(r.count) }
+    case 'lengthSpacing': return { key: r.key, beamLength: parse(r.beamLength), spacing: parse(r.spacing) }
+    case 'countFixed': return { key: r.key, count: parse(r.count) }
   }
-  return boqOutput(m) > 0 ? m : null
-}
-
-/** Live per-unit output for a draft material row. */
-function draftOutput(key: FoundryMaterialKey, d: DraftMat): number {
-  const def = BOQ_MATERIAL_MAP[key]
-  const m: FoundryBoqMaterial =
-    def.mode === 'direct' ? { key, value: parse(d.value) }
-      : def.mode === 'lengthCount' ? { key, length: parse(d.length), count: parse(d.count) }
-        : def.mode === 'lengthSpacing' ? { key, beamLength: parse(d.beamLength), spacing: parse(d.spacing) }
-          : { key, count: parse(d.count) }
-  return boqOutput(m)
 }
 
 export function NewFoundryBoqForm({
@@ -90,31 +87,48 @@ export function NewFoundryBoqForm({
       setProject(editing.project)
       setDate(editing.date)
       setNote(editing.note ?? '')
-      setProducts(editing.products.map((p, i) => {
-        const mats: Record<string, DraftMat> = {}
-        for (const m of p.materials) {
-          mats[m.key] = {
-            value: m.value != null ? String(m.value) : undefined,
-            length: m.length != null ? String(m.length) : undefined,
-            count: m.count != null ? String(m.count) : undefined,
-            beamLength: m.beamLength != null ? String(m.beamLength) : undefined,
-            spacing: m.spacing != null ? String(m.spacing) : undefined,
-          }
-        }
-        return { id: p.id || `p${i + 1}`, type: p.type, code: p.code, qty: String(p.qty), mats }
-      }))
+      setProducts(editing.products.map((p, i) => ({
+        id: p.id || `p${i + 1}`,
+        type: p.type,
+        code: p.code,
+        qty: String(p.qty),
+        materials: (p.materials.length ? p.materials : [{ key: 'concrete' as FoundryMaterialKey }]).map((m) => ({
+          rowId: rowUid(),
+          key: m.key,
+          value: m.value != null ? String(m.value) : undefined,
+          length: m.length != null ? String(m.length) : undefined,
+          count: m.count != null ? String(m.count) : undefined,
+          beamLength: m.beamLength != null ? String(m.beamLength) : undefined,
+          spacing: m.spacing != null ? String(m.spacing) : undefined,
+        })),
+      })))
     } else {
       setProject(''); setDate(todayIso()); setNote(''); setProducts([emptyProduct('p1')])
     }
     setErr('')
   }, [open, editing])
 
-  const addProduct = () => setProducts((ps) => [...ps, emptyProduct(`p${ps.length + 1}_${ps.length}`)])
+  const addProduct = () => setProducts((ps) => [...ps, emptyProduct(`p${ps.length + 1}_${_uid}`)])
   const removeProduct = (i: number) => setProducts((ps) => (ps.length === 1 ? ps : ps.filter((_, idx) => idx !== i)))
   const setProduct = (i: number, patch: Partial<DraftProduct>) =>
     setProducts((ps) => ps.map((p, idx) => (idx === i ? { ...p, ...patch } : p)))
-  const setMat = (i: number, key: string, patch: Partial<DraftMat>) =>
-    setProducts((ps) => ps.map((p, idx) => (idx === i ? { ...p, mats: { ...p.mats, [key]: { ...p.mats[key], ...patch } } } : p)))
+
+  /* ── material-row ops (per product) ── */
+  const mutRows = (pi: number, fn: (rows: DraftMatRow[]) => DraftMatRow[]) =>
+    setProducts((ps) => ps.map((p, idx) => (idx === pi ? { ...p, materials: fn(p.materials) } : p)))
+  const addMatRow = (pi: number) => mutRows(pi, (rows) => [...rows, emptyRow()])
+  const removeMatRow = (pi: number, rowId: string) => mutRows(pi, (rows) => (rows.length === 1 ? rows : rows.filter((r) => r.rowId !== rowId)))
+  const duplicateMatRow = (pi: number, rowId: string) => mutRows(pi, (rows) => {
+    const at = rows.findIndex((r) => r.rowId === rowId)
+    if (at < 0) return rows
+    const copy = { ...rows[at], rowId: rowUid() }
+    return [...rows.slice(0, at + 1), copy, ...rows.slice(at + 1)]
+  })
+  const setMatRow = (pi: number, rowId: string, patch: Partial<DraftMatRow>) =>
+    mutRows(pi, (rows) => rows.map((r) => (r.rowId === rowId ? { ...r, ...patch } : r)))
+  /* Changing the material clears the inputs (fields differ per mode). */
+  const changeMatKey = (pi: number, rowId: string, key: FoundryMaterialKey) =>
+    mutRows(pi, (rows) => rows.map((r) => (r.rowId === rowId ? { rowId: r.rowId, key } : r)))
 
   const submit = () => {
     setErr('')
@@ -126,9 +140,9 @@ export function NewFoundryBoqForm({
       const qty = Number(p.qty)
       if (!qty || qty <= 0) return setErr(`กรุณาระบุจำนวน (ตัว) ของสินค้า "${p.type}" ให้มากกว่า 0`)
       const materials: FoundryBoqMaterial[] = []
-      for (const def of BOQ_MATERIALS) {
-        const built = buildMat(def.key, p.mats[def.key] ?? {})
-        if (built) materials.push(built)
+      for (const r of p.materials) {
+        const m = toMaterial(r)
+        if (boqOutput(m) > 0) materials.push(m)
       }
       if (materials.length === 0) continue /* skip products with no takeoff */
       cleaned.push({ id: p.id, type: p.type, code: p.code.trim(), qty, materials })
@@ -154,7 +168,7 @@ export function NewFoundryBoqForm({
       open={open}
       title={isEdit ? `แก้ไขประเมินราคา ${no}` : 'สร้างประเมินราคาสินค้าโรงหล่อ'}
       onClose={onClose}
-      maxWidth={920}
+      maxWidth={960}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>ยกเลิก</Button>
@@ -208,43 +222,48 @@ export function NewFoundryBoqForm({
               </div>
 
               <div style={{ overflowX: 'auto' }}>
-                <table className="doc-lines" style={{ minWidth: 640 }}>
+                <table className="doc-lines" style={{ minWidth: 720 }}>
                   <thead>
                     <tr>
-                      <th style={{ minWidth: 180 }}>วัตถุดิบ</th>
+                      <th style={{ minWidth: 210 }}>วัตถุดิบ</th>
                       <th style={{ minWidth: 240 }}>ข้อมูลที่ใช้ถอด</th>
-                      <th className="num" style={{ width: 96 }}>ต่อ 1 ตัว</th>
-                      <th className="num" style={{ width: 104 }}>รวม (×{qty || 0})</th>
+                      <th className="num" style={{ width: 88 }}>ต่อ 1 ตัว</th>
+                      <th className="num" style={{ width: 96 }}>รวม (×{qty || 0})</th>
+                      <th className="ctr" style={{ width: 78 }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {BOQ_MATERIALS.map((def) => {
-                      const d = p.mats[def.key] ?? {}
-                      const per = draftOutput(def.key, d)
+                    {p.materials.map((r) => {
+                      const def = BOQ_MATERIAL_MAP[r.key]
+                      const per = boqOutput(toMaterial(r))
                       return (
-                        <tr key={def.key}>
-                          <td className="th" style={{ fontSize: 12 }}>{def.label}<span style={{ color: 'var(--kpc-text-faint)' }}> ({def.unit})</span></td>
+                        <tr key={r.rowId}>
+                          <td>
+                            <Select value={r.key} onChange={(e) => changeMatKey(i, r.rowId, e.target.value as FoundryMaterialKey)}>
+                              {BOQ_MATERIALS.map((d) => <option key={d.key} value={d.key}>{d.label} ({d.unit})</option>)}
+                            </Select>
+                          </td>
                           <td>
                             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                               {def.mode === 'direct' && (
-                                <SmallNum ph={`จำนวน (${def.unit})`} value={d.value} onChange={(v) => setMat(i, def.key, { value: v })} w={120} />
+                                <SmallNum ph={`จำนวน (${def.unit})`} value={r.value} onChange={(v) => setMatRow(i, r.rowId, { value: v })} w={130} />
                               )}
                               {def.mode === 'lengthCount' && (
                                 <>
-                                  <SmallNum ph={def.lengthLabel ?? 'ความยาว (m)'} value={d.length} onChange={(v) => setMat(i, def.key, { length: v })} />
-                                  <SmallNum ph="จำนวนเส้น" value={d.count} onChange={(v) => setMat(i, def.key, { count: v })} />
+                                  <SmallNum ph={def.lengthLabel ?? 'ความยาว (m)'} value={r.length} onChange={(v) => setMatRow(i, r.rowId, { length: v })} />
+                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} />
                                   {def.factor != null && <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} kg/m</span>}
                                 </>
                               )}
                               {def.mode === 'lengthSpacing' && (
                                 <>
-                                  <SmallNum ph="ความยาวคาน (m)" value={d.beamLength} onChange={(v) => setMat(i, def.key, { beamLength: v })} />
-                                  <SmallNum ph="ระยะห่าง (m)" value={d.spacing} onChange={(v) => setMat(i, def.key, { spacing: v })} />
+                                  <SmallNum ph="ความยาวคาน (m)" value={r.beamLength} onChange={(v) => setMatRow(i, r.rowId, { beamLength: v })} />
+                                  <SmallNum ph="ระยะห่าง (m)" value={r.spacing} onChange={(v) => setMatRow(i, r.rowId, { spacing: v })} />
                                 </>
                               )}
                               {def.mode === 'countFixed' && (
                                 <>
-                                  <SmallNum ph="จำนวนเส้น" value={d.count} onChange={(v) => setMat(i, def.key, { count: v })} />
+                                  <SmallNum ph="จำนวนเส้น" value={r.count} onChange={(v) => setMatRow(i, r.rowId, { count: v })} />
                                   <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)', alignSelf: 'center' }}>× {def.factor} m/เส้น</span>
                                 </>
                               )}
@@ -252,11 +271,23 @@ export function NewFoundryBoqForm({
                           </td>
                           <td className="num mono" style={{ color: per > 0 ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>{per > 0 ? nq(per) : '—'}</td>
                           <td className="num mono" style={{ fontWeight: 600, color: per > 0 ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>{per > 0 ? nq(per * qty) : '—'}</td>
+                          <td className="ctr">
+                            <div className="row" style={{ gap: 2, justifyContent: 'center' }}>
+                              <button type="button" title="ทำซ้ำรายการนี้" onClick={() => duplicateMatRow(i, r.rowId)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--kpc-text-muted)', fontSize: 14, padding: '2px 4px' }}>⧉</button>
+                              <button type="button" title="ลบรายการนี้" onClick={() => removeMatRow(i, r.rowId)} disabled={p.materials.length === 1}
+                                style={{ background: 'none', border: 'none', cursor: p.materials.length === 1 ? 'default' : 'pointer', color: p.materials.length === 1 ? 'var(--kpc-text-faint)' : 'var(--kpc-danger)', fontSize: 14, padding: '2px 4px' }}>✕</button>
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <Button variant="tonal" size="sm" onClick={() => addMatRow(i)}>+ เพิ่มวัตถุดิบ</Button>
               </div>
             </div>
           )
