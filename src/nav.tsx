@@ -37,6 +37,7 @@ export const NAV: NavGroup[] = [
   {
     section: 'การขาย · Sales',
     items: [
+      { to: '/quotations', label: 'ใบเสนอราคา', en: 'Quotations', icon: <IconInvoice /> },
       { to: '/sales-orders', label: 'ใบสั่งขาย', en: 'Sales Orders', icon: <IconCart /> },
       { to: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', en: 'Delivery Tickets', icon: <IconOrder /> },
       { to: '/foundry-deliveries', label: 'ใบส่งสินค้าโรงหล่อ', en: 'Foundry Delivery Notes', icon: <IconOrder /> },

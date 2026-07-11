@@ -9,6 +9,7 @@ import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
 import { Commission } from './pages/Commission'
 import { SalesOrders } from './pages/SalesOrders'
+import { Quotations } from './pages/Quotations'
 import { FoundryDeliveries } from './pages/FoundryDeliveries'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { GoodsPayments } from './pages/GoodsPayments'
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="/" element={<Navigate to={landing} replace />} />
         {/* Legacy /overview links now land on the monthly report. */}
         <Route path="/overview" element={<Navigate to={landing} replace />} />
+        <Route path="/quotations" element={<Quotations />} />
         <Route path="/sales-orders" element={<SalesOrders />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />

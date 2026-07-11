@@ -109,6 +109,37 @@ export interface SalesOrder {
   createdAt: string  /* ISO timestamp of when the order was saved */
 }
 
+/** One priced line on a quotation (ใบเสนอราคา). */
+export interface QuotationItem {
+  code: string      /* product code from PRODUCTS */
+  name: string      /* snapshot of the product name at quote time */
+  qty: number
+  unit: string      /* unit snapshot (e.g. คิว) */
+  price: number     /* unit price as quoted — VAT-inclusive when showVat, else plain */
+  discount?: number /* per-unit discount (same basis as price) */
+  amount: number    /* qty × (price − discount) */
+}
+
+/** A price quotation (ใบเสนอราคา). Can be issued VAT-inclusive (showVat: the doc
+    breaks out ราคาก่อน VAT / VAT 7% / รวมทั้งสิ้น) or without VAT (those rows are
+    left blank and the quoted price is final). Persisted like other created docs. */
+export interface Quotation {
+  id: string          /* same as qtNo — stable key */
+  qtNo: string        /* document number, e.g. QT690710-001 */
+  date: string        /* ISO yyyy-mm-dd — issue date */
+  customer: string
+  /** เงื่อนไขการชำระ */
+  terms: 'เงินสด' | 'เครดิต'
+  creditDays?: number /* credit period in days (when terms === 'เครดิต') */
+  validDays?: number  /* วันยืนราคา — days the quoted price is held */
+  /** true = show the VAT breakdown; false = hide it (prices are the final quote). */
+  showVat: boolean
+  items: QuotationItem[]
+  note?: string
+  createdBy?: string
+  createdAt: string
+}
+
 /** A partial (installment) payment recorded against a tax invoice (ผ่อนชำระ).
     ยอดคงค้าง = invoice.total − Σ(payments for that invoice). */
 export interface InvoicePayment {
@@ -814,6 +845,7 @@ export interface DeletedTicket extends DeliveryTicket {
 
 /** Deleted records kept for their pages' audit-history tables (snapshot + who/when). */
 export interface DeletedSalesOrder extends SalesOrder { deletedAt: string; deletedBy: string }
+export interface DeletedQuotation extends Quotation { deletedAt: string; deletedBy: string }
 export interface DeletedPurchaseOrder extends PurchaseOrder { deletedAt: string; deletedBy: string }
 export interface DeletedGoodsPayment extends GoodsPayment { deletedAt: string; deletedBy: string }
 
@@ -851,6 +883,8 @@ export interface CreatedDocs {
   employeesAdded: Employee[]
   /** Customer advance orders (ใบสั่งขาย) — newest first. */
   salesOrders: SalesOrder[]
+  /** Price quotations (ใบเสนอราคา) — newest first. */
+  quotations: Quotation[]
   /** Purchase orders (ใบสั่งซื้อ) — newest first. */
   purchaseOrders: PurchaseOrder[]
   /** Goods/material payment vouchers (ใบทำจ่ายสินค้า/วัสดุ) — newest first. */
@@ -893,6 +927,8 @@ export interface CreatedDocs {
   deletedTickets: DeletedTicket[]
   /** Audit history of deleted ใบสั่งขาย (เฉพาะรอผลิต) — newest first. */
   deletedSalesOrders: DeletedSalesOrder[]
+  /** Audit history of deleted ใบเสนอราคา — newest first. */
+  deletedQuotations: DeletedQuotation[]
   /** Audit history of deleted ใบสั่งซื้อ — newest first. */
   deletedPurchaseOrders: DeletedPurchaseOrder[]
   /** Audit history of deleted ใบสำคัญจ่าย — newest first. */
@@ -900,7 +936,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
 
 function read(): CreatedDocs {
   try {
@@ -929,6 +965,7 @@ function read(): CreatedDocs {
       employeesAdded: v.employeesAdded ?? [],
       /* Backfill status on orders saved before the field existed. */
       salesOrders: (v.salesOrders ?? []).map((s) => ({ ...s, status: s.status ?? 'รอผลิต' })),
+      quotations: v.quotations ?? [],
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
       foundryDeliveries: v.foundryDeliveries ?? [],
@@ -971,6 +1008,7 @@ function read(): CreatedDocs {
       invoicePayments: v.invoicePayments ?? [],
       deletedTickets: v.deletedTickets ?? [],
       deletedSalesOrders: v.deletedSalesOrders ?? [],
+      deletedQuotations: v.deletedQuotations ?? [],
       deletedPurchaseOrders: v.deletedPurchaseOrders ?? [],
       deletedGoodsPayments: v.deletedGoodsPayments ?? [],
     }
@@ -1155,6 +1193,33 @@ export function updateSalesOrder(so: SalesOrder) {
 /** Flip a sales order to 'ผลิต' once a delivery ticket is issued from it. */
 export function markSalesOrderProduced(soNo: string) {
   commit({ ...state, salesOrders: state.salesOrders.map((s) => (s.soNo === soNo ? { ...s, status: 'ผลิต' } : s)) })
+}
+
+/* Quotations (ใบเสนอราคา) — created docs only, no seed data. */
+export function addQuotation(q: Quotation) {
+  commit({ ...state, quotations: [stamp(q), ...state.quotations] })
+}
+/** Replace an existing quotation (matched by qtNo) with an edited version. */
+export function updateQuotation(q: Quotation) {
+  commit({ ...state, quotations: state.quotations.map((x) => (x.qtNo === q.qtNo ? q : x)) })
+}
+export function removeQuotation(qtNo: string) {
+  const rec = state.quotations.find((q) => q.qtNo === qtNo)
+  commit({
+    ...state,
+    quotations: state.quotations.filter((q) => q.qtNo !== qtNo),
+    deletedQuotations: rec ? [stampDeleted(rec), ...state.deletedQuotations.filter((d) => d.qtNo !== qtNo)] : state.deletedQuotations,
+  })
+}
+/** Undo a ใบเสนอราคา deletion — re-add it to the list and drop the history row. */
+export function restoreQuotation(qtNo: string) {
+  const rec = state.deletedQuotations.find((d) => d.qtNo === qtNo)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedQuotations: state.deletedQuotations.filter((d) => d.qtNo !== qtNo),
+    quotations: [unstampDeleted(rec) as Quotation, ...state.quotations],
+  })
 }
 
 /* Purchase orders (ใบสั่งซื้อ). */

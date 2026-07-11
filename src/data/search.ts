@@ -148,6 +148,20 @@ function buildCreatedIndex(c: CreatedDocs): SearchHit[] {
     })
   }
 
+  /* Sales — quotations */
+  for (const q of c.quotations) {
+    hits.push({
+      key: `qt:${q.qtNo}`,
+      category: 'sales',
+      group: 'ใบเสนอราคา',
+      label: q.qtNo,
+      sub: `${q.customer} · ${q.date}`,
+      route: '/quotations',
+      resource: 'quotations',
+      hay: lc(q.qtNo, q.customer, q.note, ...q.items.map((i) => i.name)),
+    })
+  }
+
   /* Sales — user-created delivery tickets */
   for (const t of c.tickets) {
     hits.push({

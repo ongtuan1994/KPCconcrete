@@ -64,6 +64,7 @@ export const RESOURCES: Resource[] = [
   { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
   { key: 'audit-report', route: '/audit-report', label: 'รายงาน Audit', section: 'รายงาน · Reports' },
 
+  { key: 'quotations', route: '/quotations', label: 'ใบเสนอราคา', section: 'การขาย · Sales' },
   { key: 'sales-orders', route: '/sales-orders', label: 'ใบสั่งขาย', section: 'การขาย · Sales' },
   { key: 'delivery-tickets', route: '/delivery-tickets', label: 'ใบจ่ายคอนกรีต', section: 'การขาย · Sales' },
   { key: 'foundry-deliveries', route: '/foundry-deliveries', label: 'ใบส่งสินค้าโรงหล่อ', section: 'การขาย · Sales' },
@@ -150,7 +151,7 @@ function row(levels: Level[]): Record<string, Level> {
 
 /* Column order for the arrays below — keep in sync with RESOURCES (sidebar order):
    Reports:     monthly, tax, general, ledger, audit
-   Sales:       SO, delivery, foundryDelivery, invoice, receipt
+   Sales:       quotation, SO, delivery, foundryDelivery, invoice, receipt
    Purchasing:  PO, goods, payroll, attendance, truckTrips, commission
    Inventory:   stock, foundryStock
    Database:    custMaster, suppliers, pricing, mixDesign, transport, employees
@@ -164,7 +165,7 @@ export const DEFAULT_PERMS: PermMatrix = {
   /* Admin — full access everywhere. */
   Admin: row([
     E, E, E, E, E,          // reports
-    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing
     E, E,                   // inventory
     E, E, E, E, E, E,       // database
@@ -173,7 +174,7 @@ export const DEFAULT_PERMS: PermMatrix = {
   /* Board — full access (owner), except audit + system settings. */
   Board: row([
     E, E, E, E, N,          // reports (no audit)
-    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing
     E, E,                   // inventory
     E, E, E, E, E, E,       // database
@@ -182,7 +183,7 @@ export const DEFAULT_PERMS: PermMatrix = {
   /* Auditor — read-only across the board, plus the Audit report; no settings. */
   Auditor: row([
     V, V, V, V, E,          // reports (audit edit)
-    V, V, V, V, V,          // sales
+    V, V, V, V, V, V,       // sales
     V, V, V, V, V, V,       // purchasing
     V, V,                   // inventory
     V, V, V, V, V, V,       // database
@@ -192,7 +193,7 @@ export const DEFAULT_PERMS: PermMatrix = {
      recording, views the rest; no audit, no purchasing/payments, no settings. */
   Manager: row([
     V, V, V, V, N,          // reports (no audit)
-    E, E, E, V, V,          // sales (edits orders/deliveries, views invoices/receipts)
+    E, E, E, E, V, V,       // sales (edits quotations/orders/deliveries, views invoices/receipts)
     N, N, N, E, E, E,       // purchasing (records attendance/trips/commission only)
     V, V,                   // inventory
     E, V, V, V, V, V,       // database (edits customer master)
@@ -202,7 +203,7 @@ export const DEFAULT_PERMS: PermMatrix = {
      views inventory & HR recording + the Audit report (read-only), no settings. */
   Accountant: row([
     E, E, E, E, V,          // reports (audit view)
-    E, E, E, E, E,          // sales
+    E, E, E, E, E, E,       // sales
     E, E, E, E, E, E,       // purchasing (edits PO/payments/payroll + attendance/trips/commission recording)
     E, E,                   // inventory
     E, E, V, V, V, V,       // database (edits customers/suppliers, views pricing/HR)
@@ -228,7 +229,7 @@ const KEY = 'kpc.auth.v1'
 /** Bump when a permission migration must be force-applied to existing stored
     matrices (localStorage overrides code defaults, so new defaults alone don't
     reach browsers that already saved a matrix). */
-const PERMS_VERSION = 2
+const PERMS_VERSION = 3
 
 interface AuthState {
   users: User[]
