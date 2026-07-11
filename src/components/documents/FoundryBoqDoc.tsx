@@ -48,7 +48,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
   const hasCost = grandCost > 0
 
   return (
-    <DocShell docType="ประเมินราคาสินค้าโรงหล่อ (BOQ)" copyLabel="FOUNDRY BOQ / MATERIAL TAKEOFF">
+    <DocShell docType="ประเมินราคาสินค้าโรงหล่อ (BOQ)" copyLabel="FOUNDRY BOQ / MATERIAL TAKEOFF" sheetClass="boq">
       <div className="doc-meta-grid">
         <MetaRow k="โครงการ / ลูกค้า :" v={boq.project} />
         <MetaRow k="เลขที่ :" v={boq.no} mono />
@@ -60,7 +60,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
         const used = p.materials.filter((m) => boqOutput(m) > 0)
         const pCost = productCosts[pi]
         return (
-          <div key={p.id} style={{ marginTop: pi === 0 ? 4 : 14 }}>
+          <div key={p.id} className="boq-product" style={{ marginTop: pi === 0 ? 4 : 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 4 }}>
               {pi + 1}. {p.type}{p.detail ? ` · ${p.detail}` : ''} · รหัส {p.code || '—'} · จำนวน {nq(p.qty)} ตัว
             </div>
@@ -108,7 +108,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
       })}
 
       {summaryKeys.length > 0 && (
-        <div style={{ marginTop: 18 }}>
+        <div className="boq-summary" style={{ marginTop: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 4 }}>
             สรุปวัตถุดิบรวมทั้งโครงการ
           </div>

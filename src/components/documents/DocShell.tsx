@@ -6,13 +6,17 @@ export function DocShell({
   docType,
   copyLabel = 'ต้นฉบับ / Original',
   children,
+  sheetClass,
 }: {
   docType: string
   copyLabel?: string
   children: ReactNode
+  /** Extra class on the .doc-sheet — e.g. "boq" for the multi-page, per-page-margin
+      print layout instead of the fixed single-A4 sheet. */
+  sheetClass?: string
 }) {
   return (
-    <div className="doc-sheet">
+    <div className={['doc-sheet', sheetClass].filter(Boolean).join(' ')}>
       <div className="doc-top">
         <div className="co">
           <img src="/logo.jpg" alt="KPC กิจไพศาลคอนกรีต" className="doc-logo" />

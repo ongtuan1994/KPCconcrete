@@ -255,7 +255,37 @@
     padding: 16mm 14mm !important;
     box-sizing: border-box !important;
   }
+
+  /* Multi-page BOQ (ประเมินราคาสินค้าโรงหล่อ) — flows onto as many A4 pages as it
+     needs, with uniform paper margins on EVERY page (via the named @page), and
+     no table split across a page break (a table that doesn't fit starts a new
+     page instead). */
+  .doc-sheet.boq {
+    page: boqpage;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;              /* paper margins come from @page boqpage */
+    overflow: visible !important;
+  }
+  /* Keep each product (heading + takeoff table), the project summary, and the
+     signature block intact across page boundaries. */
+  .doc-sheet.boq .boq-product,
+  .doc-sheet.boq .boq-summary,
+  .doc-sheet.boq table.doc-lines,
+  .doc-sheet.boq .doc-sign { break-inside: avoid !important; page-break-inside: avoid !important; }
+  /* Signature flows after the last block instead of pinned to the sheet bottom. */
+  .doc-sheet.boq .doc-sign {
+    position: static !important;
+    left: auto !important; right: auto !important; bottom: auto !important;
+    margin-top: 22px !important;
+  }
 }
+
+/* Per-page A4 margins for the multi-page BOQ document. */
+@page boqpage { size: A4 portrait; margin: 14mm; }
 
 /* ============================================================
    Payroll pay slip (ใบทำจ่ายเงินเดือน)
