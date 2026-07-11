@@ -39,7 +39,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
         return (
           <div key={p.id} style={{ marginTop: pi === 0 ? 4 : 14 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-text-strong)', marginBottom: 4 }}>
-              {pi + 1}. {p.type} · รหัส {p.code || '—'} · จำนวน {nq(p.qty)} ตัว
+              {pi + 1}. {p.type}{p.detail ? ` · ${p.detail}` : ''} · รหัส {p.code || '—'} · จำนวน {nq(p.qty)} ตัว
             </div>
             <table className="doc-lines">
               <thead>

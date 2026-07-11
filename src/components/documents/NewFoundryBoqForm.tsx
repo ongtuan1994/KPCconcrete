@@ -37,10 +37,10 @@ interface DraftMatRow {
   key: FoundryMaterialKey
   value?: string; length?: string; count?: string; beamLength?: string; spacing?: string
 }
-interface DraftProduct { id: string; type: FoundryProductType; code: string; qty: string; materials: DraftMatRow[] }
+interface DraftProduct { id: string; type: FoundryProductType; detail: string; code: string; qty: string; materials: DraftMatRow[] }
 
 const emptyRow = (key: FoundryMaterialKey = 'concrete'): DraftMatRow => ({ rowId: rowUid(), key })
-const emptyProduct = (id: string): DraftProduct => ({ id, type: 'คาน', code: '', qty: '1', materials: [emptyRow()] })
+const emptyProduct = (id: string): DraftProduct => ({ id, type: 'คาน', detail: '', code: '', qty: '1', materials: [emptyRow()] })
 
 const parse = (s?: string): number | undefined => {
   if (s == null || s.trim() === '') return undefined
@@ -90,6 +90,7 @@ export function NewFoundryBoqForm({
       setProducts(editing.products.map((p, i) => ({
         id: p.id || `p${i + 1}`,
         type: p.type,
+        detail: p.detail ?? '',
         code: p.code,
         qty: String(p.qty),
         materials: (p.materials.length ? p.materials : [{ key: 'concrete' as FoundryMaterialKey }]).map((m) => ({
@@ -145,7 +146,7 @@ export function NewFoundryBoqForm({
         if (boqOutput(m) > 0) materials.push(m)
       }
       if (materials.length === 0) continue /* skip products with no takeoff */
-      cleaned.push({ id: p.id, type: p.type, code: p.code.trim(), qty, materials })
+      cleaned.push({ id: p.id, type: p.type, detail: p.detail.trim() || undefined, code: p.code.trim(), qty, materials })
     }
     if (cleaned.length === 0) return setErr('กรุณาถอดวัตถุดิบอย่างน้อย 1 รายการในสินค้าอย่างน้อย 1 ตัว')
 
@@ -201,18 +202,20 @@ export function NewFoundryBoqForm({
           return (
             <div key={p.id} className="card" style={{ padding: 14 }}>
               <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end', marginBottom: 10 }}>
-                <Field label="ประเภทสินค้า" style={{ width: 150 }}>
+                <Field label="ประเภทสินค้า" style={{ width: 140 }}>
                   <Select value={p.type} onChange={(e) => setProduct(i, { type: e.target.value as FoundryProductType })}>
                     {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </Select>
                 </Field>
-                <Field label="เลขที่/รหัสสินค้า" style={{ width: 160 }}>
+                <Field label="รายละเอียด" style={{ minWidth: 200, flex: 1 }}>
+                  <Input placeholder="เช่น คานรับพื้น ยาว 4 ม." value={p.detail} onChange={(e) => setProduct(i, { detail: e.target.value })} />
+                </Field>
+                <Field label="เลขที่/รหัสสินค้า" style={{ width: 150 }}>
                   <Input placeholder="เช่น B-01" value={p.code} onChange={(e) => setProduct(i, { code: e.target.value })} />
                 </Field>
-                <Field label="จำนวน (ตัว)" style={{ width: 120 }}>
+                <Field label="จำนวน (ตัว)" style={{ width: 110 }}>
                   <Input type="number" min={1} step="1" value={p.qty} onChange={(e) => setProduct(i, { qty: e.target.value })} />
                 </Field>
-                <div style={{ flex: 1 }} />
                 <Button
                   variant="ghost" size="sm" onClick={() => removeProduct(i)} disabled={products.length === 1}
                   style={{ color: products.length === 1 ? 'var(--kpc-text-faint)' : 'var(--kpc-danger)' }}

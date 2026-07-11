@@ -170,6 +170,7 @@ export type FoundryProductType = 'คาน' | 'เสาเข็ม' | 'เส
 export interface FoundryBoqProduct {
   id: string
   type: FoundryProductType
+  detail?: string  /* รายละเอียด — free-text description of the product */
   code: string     /* เลขของสินค้า */
   qty: number      /* จำนวนตัวที่ผลิต */
   materials: FoundryBoqMaterial[]
