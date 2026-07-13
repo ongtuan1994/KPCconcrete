@@ -526,6 +526,27 @@ export interface StockReceipt {
   createdAt?: string
 }
 
+/** Movement direction in the manual per-material stock card. */
+export type StockMovementKind = 'in' | 'out'
+/** One line in the manual plant raw-material stock card (บันทึกวัตถุดิบแยกประเภท):
+    a รับเข้า (kind 'in', with unit price + amount) or จ่ายออก (kind 'out') for one
+    plant material, mirroring the paper stock card. The running คงเหลือ is derived
+    (ยอดยกมา + Σรับ − Σจ่าย); it is not stored on the row. */
+export interface StockMovement {
+  id: string
+  code: string           /* StockMaterial.code (plant material) */
+  kind: StockMovementKind
+  date: string           /* ISO yyyy-mm-dd */
+  qty: number            /* positive quantity moved */
+  unitPrice?: number     /* หน่วยละ (บาท/หน่วย) — รับเข้า only */
+  amount?: number        /* จำนวนเงิน = qty × unitPrice — รับเข้า only */
+  supplier?: string      /* ผู้จำหน่าย — รับเข้า only, optional, editable later */
+  voucherNo?: string     /* เลขที่ใบสำคัญ — editable after the fact */
+  note?: string          /* หมายเหตุ */
+  createdBy?: string
+  createdAt?: string
+}
+
 /** One material line in a stock reconciliation (กระทบยอดคงคลัง). */
 export interface StockReconcileLine {
   code: string
@@ -996,6 +1017,11 @@ export interface CreatedDocs {
   todoNotes: TodoNote[]
   /** Raw-material stock receipts (รับเข้าวัตถุดิบ) — newest first. */
   stockReceipts: StockReceipt[]
+  /** Manual plant raw-material stock-card movements (บันทึกวัตถุดิบแยกประเภท) —
+      รับเข้า + จ่ายออก, newest first. */
+  stockMovements: StockMovement[]
+  /** ยอดยกมา (opening balance) per plant material code for the stock-card ledger. */
+  stockOpenings: Record<string, number>
   /** Foundry finished-goods stock receipts (รับเข้าสต๊อกสินค้าโรงหล่อ) — newest first. */
   foundryReceipts: StockReceipt[]
   /** Stock reconciliations (กระทบยอดคงคลัง) — newest first. */
@@ -1034,7 +1060,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 function read(): CreatedDocs {
   try {
@@ -1099,6 +1125,8 @@ function read(): CreatedDocs {
       appointments: v.appointments ?? [],
       todoNotes: v.todoNotes ?? [],
       stockReceipts: v.stockReceipts ?? [],
+      stockMovements: v.stockMovements ?? [],
+      stockOpenings: v.stockOpenings ?? {},
       foundryReceipts: v.foundryReceipts ?? [],
       stockReconciles: v.stockReconciles ?? [],
       stockCosts: v.stockCosts ?? {},
@@ -1506,6 +1534,27 @@ export function addStockReceipt(r: Omit<StockReceipt, 'createdBy' | 'createdAt'>
 }
 export function removeStockReceipt(id: string) {
   commit({ ...state, stockReceipts: state.stockReceipts.filter((r) => r.id !== id) })
+}
+
+/* ── Manual plant stock-card movements (บันทึกวัตถุดิบแยกประเภท) ── */
+export function addStockMovement(m: Omit<StockMovement, 'createdBy' | 'createdAt'>) {
+  commit({ ...state, stockMovements: [stamp(m as StockMovement), ...state.stockMovements] })
+}
+/** Patch a movement in place — used to correct the เลขที่ใบสำคัญ (or other fields)
+    after it was saved. */
+export function updateStockMovement(id: string, patch: Partial<Pick<StockMovement, 'date' | 'qty' | 'unitPrice' | 'amount' | 'supplier' | 'voucherNo' | 'note'>>) {
+  commit({ ...state, stockMovements: state.stockMovements.map((m) => (m.id === id ? { ...m, ...patch } : m)) })
+}
+export function removeStockMovement(id: string) {
+  commit({ ...state, stockMovements: state.stockMovements.filter((m) => m.id !== id) })
+}
+/** Set (or clear) the ยอดยกมา (opening balance) for a plant material's stock card,
+    keyed by StockMaterial.code. Pass undefined / non-finite to clear (⇒ 0). */
+export function setStockOpening(code: string, opening: number | undefined) {
+  const next = { ...state.stockOpenings }
+  if (opening === undefined || !Number.isFinite(opening)) delete next[code]
+  else next[code] = opening
+  commit({ ...state, stockOpenings: next })
 }
 /** Set (or clear) the stored unit cost (ต้นทุน/หน่วย · บาท) for a stock material,
     keyed by StockMaterial.code. Pass undefined / a non-finite / negative value to

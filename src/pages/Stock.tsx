@@ -89,12 +89,15 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
      balance reflects the end of the selected period); empty `to` = all-time. */
   const upTo = (iso: string) => !to || iso <= to
 
-  /* Sum received quantity per material code (this scope only), added onto the seed balance. */
+  /* Sum received quantity per material code (this scope only), added onto the seed
+     balance. Plant receipts recorded on the บันทึกวัตถุดิบแยกประเภท page (stock-card
+     movements) count here too, so รับเข้า there flows into คลังวัตถุดิบแพล้นปูน. */
   const receivedByCode = useMemo(() => {
     const m: Record<string, number> = {}
     for (const r of created.stockReceipts) if (scopeCodes.has(r.code) && upTo(r.date)) m[r.code] = (m[r.code] ?? 0) + r.qty
+    if (!isFoundry) for (const mv of created.stockMovements) if (mv.kind === 'in' && scopeCodes.has(mv.code) && upTo(mv.date)) m[mv.code] = (m[mv.code] ?? 0) + mv.qty
     return m
-  }, [created.stockReceipts, to, scopeCodes])
+  }, [created.stockReceipts, created.stockMovements, to, scopeCodes, isFoundry])
 
   /* Approved reconciliations (this stock's scope) adjust the balance by their per-line diff. */
   const adjustByCode = useMemo(() => {
@@ -111,6 +114,8 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   const issuedByCode = useMemo(() => {
     const m: Record<string, number> = {}
     if (isFoundry) return m
+    /* จ่ายออก of the plant stock comes ONLY from delivery tickets (ใบ DT) via mix
+       design. Manual จ่ายออก on the บันทึกวัตถุดิบแยกประเภท page stays on that page. */
     for (const t of created.tickets) {
       if (!upTo(ticketIso(t.date))) continue
       for (const c of ticketConsumption(t)) m[c.code] = (m[c.code] ?? 0) + c.qty
@@ -156,11 +161,19 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
           out.push({ key: `out_${t.dtNo}_${c.code}`, date: t.date, iso: ticketIso(t.date), sortAt: t.createdAt ?? t.date, kind: 'out', material: mat?.name ?? c.code, unit: mat?.unit ?? 'ตัน', qty: c.qty, ref: t.dtNo, detail: `${t.customer} · ${prodShort(t.prod)}`, by: t.createdBy, at: t.createdAt })
         }
       }
+      /* Manual รับเข้า from the บันทึกวัตถุดิบแยกประเภท stock card adds to the balance
+         + history. Its จ่ายออก is NOT reflected here — that page keeps its own manual
+         จ่ายออก for cross-checking against the ใบ DT auto-issue. */
+      for (const mv of created.stockMovements) {
+        if (mv.kind !== 'in' || !scopeCodes.has(mv.code)) continue
+        const mat = MAT_BY_CODE[mv.code]
+        out.push({ key: `mov_${mv.id}`, date: fmtDate(mv.date), iso: mv.date, sortAt: mv.createdAt ?? mv.date, kind: 'in', material: mat?.name ?? mv.code, unit: mat?.unit ?? '', qty: mv.qty, ref: mv.voucherNo ?? '', detail: [mv.supplier, mv.note].filter(Boolean).join(' · ') || undefined, by: mv.createdBy, at: mv.createdAt })
+      }
     }
     return out
       .filter((mv) => (!from || mv.iso >= from) && (!to || mv.iso <= to))
       .sort((a, b) => b.sortAt.localeCompare(a.sortAt))
-  }, [created.stockReceipts, created.tickets, from, to, scopeCodes, isFoundry])
+  }, [created.stockReceipts, created.tickets, created.stockMovements, from, to, scopeCodes, isFoundry])
 
   const moveColumns: Column<Movement>[] = [
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
@@ -187,7 +200,11 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
     const inRange = (iso: string) => (!from || iso >= from) && (!to || iso <= to)
     const recv: Record<string, number> = {}, iss: Record<string, number> = {}
     for (const r of created.stockReceipts) if (scopeCodes.has(r.code) && inRange(r.date)) recv[r.code] = (recv[r.code] ?? 0) + r.qty
-    if (!isFoundry) for (const t of created.tickets) if (inRange(ticketIso(t.date))) for (const c of ticketConsumption(t)) iss[c.code] = (iss[c.code] ?? 0) + c.qty
+    if (!isFoundry) {
+      for (const t of created.tickets) if (inRange(ticketIso(t.date))) for (const c of ticketConsumption(t)) iss[c.code] = (iss[c.code] ?? 0) + c.qty
+      /* Ledger รับเข้า adds to received; จ่ายออก of this stock stays ใบ DT only. */
+      for (const mv of created.stockMovements) if (mv.kind === 'in' && scopeCodes.has(mv.code) && inRange(mv.date)) recv[mv.code] = (recv[mv.code] ?? 0) + mv.qty
+    }
     const report: StockReport = {
       id: `gr_${Date.now()}`,
       kind: 'stock',
@@ -289,9 +306,9 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
             <Button variant="tonal" onClick={() => setShowCosts(true)}>ตั้งราคาต้นทุน</Button>
             <Button variant="tonal" onClick={() => setShowReconcile(true)}>กระทบยอดคงคลัง</Button>
             {isFoundry && <Button variant="tonal" onClick={() => setShowAddMat(true)}><IconPlus /> เพิ่มวัตถุดิบใหม่</Button>}
-            <Button variant="primary" onClick={() => setShowReceive(true)}>
-              <IconPlus /> รับเข้าวัตถุดิบ
-            </Button>
+            {isFoundry
+              ? <Button variant="primary" onClick={() => setShowReceive(true)}><IconPlus /> รับเข้าวัตถุดิบ</Button>
+              : <Button variant="primary" onClick={() => navigate('/material-ledger')}><IconPlus /> บันทึกรับเข้า/จ่ายออก</Button>}
           </>
         }
       />
@@ -327,7 +344,9 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
         </div>
         {movements.length === 0 ? (
           <div className="card" style={{ padding: 16, textAlign: 'center', color: 'var(--kpc-text-faint)', fontSize: 13 }}>
-            ยังไม่มีการเคลื่อนไหว — รับเข้าวัตถุดิบ หรือออกใบจ่ายคอนกรีตเพื่อบันทึก
+            {isFoundry
+              ? 'ยังไม่มีการเคลื่อนไหว — รับเข้าวัตถุดิบเพื่อบันทึก'
+              : 'ยังไม่มีการเคลื่อนไหว — บันทึกรับเข้าที่หน้า “บันทึกวัตถุดิบแยกประเภท” หรือออกใบจ่ายคอนกรีต'}
           </div>
         ) : (
           <DataTable columns={moveColumns} rows={movements} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการ`} />
@@ -336,7 +355,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       <p className="page-sub" style={{ marginTop: 10, fontSize: 12 }}>
         {isFoundry
           ? '* รับเข้าวัตถุดิบด้วยการบันทึกด้วยตนเอง — ตะแกรงไวร์เมช / เหล็กปลอก / ลวดอัดแรง ใช้ตามสูตรผลิตโรงหล่อของแต่ละสินค้า'
-          : <>* จ่ายออกอัตโนมัติเมื่อออกใบจ่ายคอนกรีต ตาม<strong>สูตร Mix Design</strong>ของสินค้านั้น (ปูน/ทราย/หิน + น้ำยา) — สินค้าที่ยังไม่มีสูตรจะใช้ค่าประมาณการ (ปูน {MIX_PER_M3.cement} · ทราย {MIX_PER_M3.SAN} · หิน {MIX_PER_M3.AGG} ตัน/คิว)</>}
+          : <>* <strong>รับเข้า</strong>ที่บันทึกในหน้า <strong>“บันทึกวัตถุดิบแยกประเภท”</strong> จะรวมเข้าคลังนี้ · <strong>จ่ายออก</strong>คิดจากใบจ่ายคอนกรีต (ใบ DT) ตาม<strong>สูตร Mix Design</strong>ของสินค้านั้น (ปูน/ทราย/หิน + น้ำยา) — สินค้าที่ยังไม่มีสูตรจะใช้ค่าประมาณการ (ปูน {MIX_PER_M3.cement} · ทราย {MIX_PER_M3.SAN} · หิน {MIX_PER_M3.AGG} ตัน/คิว) · จ่ายออกแบบ manual ในหน้าบันทึกวัตถุดิบฯ เก็บไว้ cross-check แยกต่างหาก</>}
       </p>
 
       <ReceiveStockModal open={showReceive} onClose={() => setShowReceive(false)} receivedByCode={receivedByCode} materials={universe} />

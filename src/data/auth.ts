@@ -83,6 +83,7 @@ export const RESOURCES: Resource[] = [
   { key: 'commission', route: '/commission', label: 'บันทึกค่าคอมมิชชั่น', section: 'การซื้อ / การจ่าย · Purchasing' },
 
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
+  { key: 'material-ledger', route: '/material-ledger', label: 'บันทึกวัตถุดิบแยกประเภท', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-materials', route: '/foundry-materials', label: 'คลังวัตถุดิบโรงหล่อ', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-boq', route: '/foundry-boq', label: 'ถอดแบบ BOQ โรงหล่อ', section: 'จัดการคลัง · Inventory' },

@@ -28,6 +28,7 @@ import { TaxReports } from './pages/TaxReports'
 import { GeneralReports } from './pages/GeneralReports'
 import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
+import { MaterialLedger } from './pages/MaterialLedger'
 import { FoundryStock } from './pages/FoundryStock'
 import { FoundryBoqEstimate } from './pages/FoundryBoqEstimate'
 import { StockReconcileHistory } from './pages/StockReconcileHistory'
@@ -109,6 +110,7 @@ export default function App() {
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to={landing} replace />} />
         <Route path="/stock" element={<Stock />} />
+        <Route path="/material-ledger" element={<MaterialLedger />} />
         <Route path="/foundry-materials" element={<Stock scope="foundry" />} />
         <Route path="/foundry-stock" element={<FoundryStock />} />
         <Route path="/foundry-boq" element={<FoundryBoqEstimate />} />
