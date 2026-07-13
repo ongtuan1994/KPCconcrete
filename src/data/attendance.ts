@@ -159,6 +159,144 @@ export function clearAttendance() {
   commit([])
 }
 
+/* ───────── scan-name → employee mapping (user-editable aliases) ─────────
+   The fingerprint scanner's enrolled names don't always match the roster, and a
+   brand-new employee will scan under a name the system can't resolve. The mapping
+   tab lets staff attach such a scanner identity to the right employee; the alias
+   is persisted so future imports (and existing unmatched rows) resolve to that
+   person. Wins over the built-in SCAN_ALIAS + name heuristics. */
+
+/** A user-defined mapping from a scanner identity to an employee. */
+export interface ScanAlias {
+  scanName: string   /* raw scanner name as it appears in the file (display + key) */
+  userId?: string    /* raw scanner user id, when the file carries one */
+  empId: string      /* assigned employee id */
+}
+/** A distinct scanner identity seen while importing — surfaced on the mapping tab
+    so it can be assigned even after the punches were grouped into records. */
+export interface ScanIdentity {
+  key: string        /* identityKey(userId, name) */
+  userId: string
+  name: string
+  lastSeen: string   /* ISO date last seen in an import ('' when only registered) */
+}
+interface ScanMap { aliases: ScanAlias[]; identities: ScanIdentity[] }
+
+const SCAN_MAP_KEY = 'kpc.attendanceScan.v1'
+function readScanMap(): ScanMap {
+  try {
+    const raw = localStorage.getItem(SCAN_MAP_KEY)
+    if (!raw) return { aliases: [], identities: [] }
+    const v = JSON.parse(raw)
+    return { aliases: Array.isArray(v?.aliases) ? v.aliases : [], identities: Array.isArray(v?.identities) ? v.identities : [] }
+  } catch {
+    return { aliases: [], identities: [] }
+  }
+}
+let scanMap: ScanMap = readScanMap()
+const scanListeners = new Set<() => void>()
+const notifyScan = () => scanListeners.forEach((l) => l())
+let pushScanRemote: (data: ScanMap) => void = () => {}
+function commitScan(next: ScanMap) {
+  scanMap = next
+  try { localStorage.setItem(SCAN_MAP_KEY, JSON.stringify(scanMap)) } catch { /* quota */ }
+  notifyScan()
+  pushScanRemote(scanMap)
+}
+const scanRemote = createRemoteSync<ScanMap>(
+  'attendanceScan',
+  (data) => {
+    scanMap = { aliases: Array.isArray(data?.aliases) ? data.aliases : [], identities: Array.isArray(data?.identities) ? data.identities : [] }
+    try { localStorage.setItem(SCAN_MAP_KEY, JSON.stringify(scanMap)) } catch { /* quota */ }
+    notifyScan()
+  },
+  () => scanMap,
+)
+pushScanRemote = scanRemote.push
+scanRemote.start()
+
+export function useScanMap(): ScanMap {
+  return useSyncExternalStore(
+    (l) => { scanListeners.add(l); return () => scanListeners.delete(l) },
+    () => scanMap,
+    () => scanMap,
+  )
+}
+
+/** Stable key for a scanner identity — prefers the (normalised) name, which is
+    what the reference sheet + heuristics use; falls back to the user id. */
+export function identityKey(userId: string, name: string): string {
+  const nm = normName(name)
+  if (nm) return `nm:${nm}`
+  const uid = (userId || '').trim().toLowerCase()
+  return uid ? `id:${uid}` : ''
+}
+
+/** The employee a user alias assigns to this scanner identity, if any. */
+function aliasEmpFor(userId: string, name: string, employees: Employee[]): Employee | undefined {
+  const key = identityKey(userId, name)
+  if (!key) return undefined
+  const a = scanMap.aliases.find((x) => identityKey(x.userId ?? '', x.scanName) === key)
+  return a ? employees.find((e) => e.id === a.empId) : undefined
+}
+
+/** Current match for a scanner identity + how it was resolved. 'manual' = user
+    alias, 'auto' = built-in alias / id / name heuristic, 'none' = unmatched. */
+export function matchScanIdentity(userId: string, name: string, employees: Employee[]): { empId?: string; via: 'manual' | 'auto' | 'none' } {
+  const manual = aliasEmpFor(userId, name, employees)
+  if (manual) return { empId: manual.id, via: 'manual' }
+  const auto = resolveEmployee(userId, name, employees)
+  return auto ? { empId: auto.id, via: 'auto' } : { via: 'none' }
+}
+
+/** Upsert a scanner identity into the registry (keeps the newest lastSeen). */
+function registerIdentity(list: ScanIdentity[], id: { key: string; userId: string; name: string; lastSeen: string }): ScanIdentity[] {
+  const ex = list.find((x) => x.key === id.key)
+  if (!ex) return [id, ...list]
+  return list.map((x) => x.key === id.key
+    ? { ...x, userId: x.userId || id.userId, name: x.name || id.name, lastSeen: id.lastSeen > x.lastSeen ? id.lastSeen : x.lastSeen }
+    : x)
+}
+
+/** Re-key existing UNMATCHED scan rows for `key` onto the assigned employee, so a
+    new mapping also fixes already-imported days. On a date collision with an
+    existing (matched) record the unmatched duplicate is dropped. */
+function rekeyRecords(key: string, empId: string, empName: string) {
+  const existingIds = new Set(state.map((r) => r.id))
+  let changed = false
+  const next: AttendanceRecord[] = []
+  for (const r of state) {
+    if (r.source === 'scan' && r.empId !== empId && identityKey(r.empId, r.empName) === key) {
+      const newId = `${empId}__${r.date}`
+      if (newId !== r.id && existingIds.has(newId)) { changed = true; continue }
+      next.push({ ...r, id: newId, empId, empName })
+      changed = true
+    } else {
+      next.push(r)
+    }
+  }
+  if (changed) commit(next)
+}
+
+/** Assign (or reassign) a scanner identity to an employee. Persists the alias and
+    re-keys existing unmatched rows for that identity. */
+export function setScanAlias(scanName: string, userId: string, empId: string, empName: string) {
+  const key = identityKey(userId, scanName)
+  if (!key || !empId) return
+  const aliases = [
+    { scanName, userId: userId || undefined, empId },
+    ...scanMap.aliases.filter((a) => identityKey(a.userId ?? '', a.scanName) !== key),
+  ]
+  const identities = registerIdentity(scanMap.identities, { key, userId, name: scanName, lastSeen: '' })
+  commitScan({ aliases, identities })
+  rekeyRecords(key, empId, empName)
+}
+
+/** Remove a user alias (falls back to auto matching for future imports). */
+export function clearScanAlias(key: string) {
+  commitScan({ ...scanMap, aliases: scanMap.aliases.filter((a) => identityKey(a.userId ?? '', a.scanName) !== key) })
+}
+
 /* ───────── fingerprint CSV parsing ───────── */
 
 export interface ScanPunch { userId: string; name: string; at: Date }
@@ -325,6 +463,9 @@ const SCAN_ALIAS: Record<string, string> = Object.fromEntries(
 )
 
 function resolveEmployee(userId: string, name: string, employees: Employee[]): Employee | undefined {
+  /* 0. User-defined mapping (จับคู่ชื่อสแกน tab) — wins over everything below. */
+  const manual = aliasEmpFor(userId, name, employees)
+  if (manual) return manual
   /* 1. Explicit scanner-name alias (from the reference sheet) — authoritative. */
   const aliasId = SCAN_ALIAS[normName(name)]
   if (aliasId) {
@@ -360,8 +501,7 @@ const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
     days are NEVER cleared; a day that re-appears in a new scan OVERWRITES the
     stored record (duplicate → replace), and days absent from the import are
     left untouched. */
-export function importScanFiles(files: { name: string; text: string }[]): ImportSummary {
-  const employees = EMPLOYEES
+export function importScanFiles(files: { name: string; text: string }[], employees: Employee[] = EMPLOYEES): ImportSummary {
   const errors: string[] = []
   const allPunches: ScanPunch[] = []
   for (const f of files) {
@@ -381,12 +521,20 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
   /* Group punches → per employee per day. */
   const byKey = new Map<string, { date: string; empId: string; empName: string; min: Date; max: Date }>()
   const unmatchedIds = new Set<string>()
+  /* Every distinct scanner identity encountered → registered for the mapping tab. */
+  const seenIdent = new Map<string, ScanIdentity>()
   for (const p of usablePunches) {
     const emp = resolveEmployee(p.userId, p.name, employees)
     if (!emp) unmatchedIds.add(p.userId || p.name)
     const empId = emp?.id ?? p.userId
     const empName = emp?.name ?? p.name ?? p.userId
     const date = isoDate(p.at)
+    const ikey = identityKey(p.userId, p.name)
+    if (ikey) {
+      const ex = seenIdent.get(ikey)
+      if (!ex) seenIdent.set(ikey, { key: ikey, userId: p.userId, name: p.name, lastSeen: date })
+      else if (date > ex.lastSeen) ex.lastSeen = date
+    }
     const key = `${empId}__${date}`
     const g = byKey.get(key)
     if (!g) byKey.set(key, { date, empId, empName, min: p.at, max: p.at })
@@ -428,6 +576,13 @@ export function importScanFiles(files: { name: string; text: string }[]): Import
     recordCount++
   }
   commit(next)
+
+  /* Register every scanner identity seen so the mapping tab can list them. */
+  if (seenIdent.size) {
+    let ids = scanMap.identities
+    for (const id of seenIdent.values()) ids = registerIdentity(ids, id)
+    commitScan({ ...scanMap, identities: ids })
+  }
 
   return { files: files.length, punches: usablePunches.length, records: recordCount, unmatched: unmatchedIds.size, errors }
 }

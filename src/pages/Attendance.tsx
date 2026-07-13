@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, Checkbox, SearchInput, Field, Input, Select, MonthPeriodSelect } from '../components/ui'
+import { Button, Badge, Pill, Checkbox, SearchInput, Field, Input, Select, MonthPeriodSelect, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -13,6 +13,7 @@ import { useCan } from '../data/auth'
 import {
   useAttendance, importScanFiles, upsertManual, removeAttendance, clearAttendance,
   computeAttendance, resolvePunches, SHIFT_START_MIN, SHIFT_END_MIN, type AttendanceRecord, type HalfDayLeave,
+  useScanMap, matchScanIdentity, setScanAlias, clearScanAlias, identityKey,
 } from '../data/attendance'
 import { downloadCsv } from '../utils/csv'
 
@@ -66,6 +67,8 @@ export function Attendance() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
+  /* Which tab is showing — the time records, or the scan-name ↔ employee mapping. */
+  const [view, setView] = useState<'records' | 'mapping'>('records')
   /* Default range: ตั้งแต่ = วันที่ 1 ของเดือนนี้, จนถึง = วันนี้. */
   const [from, setFrom] = useState(monthStartIso)
   const [to, setTo] = useState(todayIso)
@@ -223,7 +226,7 @@ export function Attendance() {
   const onFiles = async (list: FileList | null) => {
     if (!list || list.length === 0) return
     const files = await Promise.all(Array.from(list).map(async (f) => ({ name: f.name, text: await f.text() })))
-    const s = importScanFiles(files)
+    const s = importScanFiles(files, employees)
     if (fileRef.current) fileRef.current.value = ''
     alert(
       `นำเข้า ${s.files} ไฟล์ · อ่านรายการสแกน ${s.punches} ครั้ง · บันทึก ${s.records} วันทำงาน` +
@@ -316,16 +319,25 @@ export function Attendance() {
       <PageHeader
         title="บันทึกลงเวลางาน"
         sub={`Time Attendance · กะ ${SHIFT_LABEL} · ${records.length} รายการ`}
-        actions={
+        actions={view === 'records' ? (
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport} disabled={rows.length === 0}>สร้างรายงาน</Button>
             {canEdit && <Button variant="secondary" onClick={() => setAdding(true)}><IconPlus /> บันทึกเข้า/ออก</Button>}
             {canEdit && <Button variant="primary" onClick={() => fileRef.current?.click()}>นำเข้าไฟล์สแกนนิ้ว (.csv)</Button>}
           </>
-        }
+        ) : undefined}
       />
 
+      <div className="pills" style={{ marginBottom: 20 }}>
+        <Pill active={view === 'records'} onClick={() => setView('records')}>ลงเวลางาน</Pill>
+        <Pill active={view === 'mapping'} onClick={() => setView('mapping')}>จับคู่ชื่อสแกน ↔ พนักงาน</Pill>
+      </div>
+
+      {view === 'mapping' && <ScanNameMapping employees={employees} canEdit={canEdit} />}
+
+      {view === 'records' && (
+        <>
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="วันทำงาน · Records" value={totals.days.toString()} note="ในช่วงที่เลือก" />
         <KpiCard label="พนักงาน · Employees" value={totals.emps.toString()} note="ที่มีข้อมูล" />
@@ -436,6 +448,8 @@ export function Attendance() {
           </div>
         </div>
       )}
+        </>
+      )}
 
       <ManualForm
         open={!!editing || adding}
@@ -443,6 +457,138 @@ export function Attendance() {
         employees={employees}
         onClose={() => { setEditing(null); setAdding(false) }}
       />
+    </>
+  )
+}
+
+const VIA_TONE: Record<'manual' | 'auto' | 'none', { th: string; tone: Tone }> = {
+  manual: { th: 'จับคู่เอง', tone: 'success' },
+  auto: { th: 'อัตโนมัติ', tone: 'info' },
+  none: { th: 'ยังไม่จับคู่', tone: 'danger' },
+}
+
+/** จับคู่ชื่อสแกน ↔ พนักงาน — lists every fingerprint-scanner identity seen and lets
+    the user attach it to an employee (for new hires whose scanner name doesn't
+    match the roster). Assigning also re-keys existing unmatched rows. */
+function ScanNameMapping({ employees, canEdit }: { employees: Employee[]; canEdit: boolean }) {
+  const scanMap = useScanMap()
+  const records = useAttendance()
+  const [query, setQuery] = useState('')
+  const [onlyUnmatched, setOnlyUnmatched] = useState(false)
+
+  const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees])
+  const knownIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees])
+
+  /* Merge identity sources: registered (from imports) + current unmatched scan
+     rows + aliased identities — deduped by identityKey. */
+  const identities = useMemo(() => {
+    const map = new Map<string, { key: string; userId: string; name: string; lastSeen: string }>()
+    const put = (key: string, userId: string, name: string, lastSeen: string) => {
+      if (!key) return
+      const ex = map.get(key)
+      if (!ex) { map.set(key, { key, userId, name, lastSeen }); return }
+      if (!ex.userId && userId) ex.userId = userId
+      if (!ex.name && name) ex.name = name
+      if (lastSeen > ex.lastSeen) ex.lastSeen = lastSeen
+    }
+    for (const id of scanMap.identities) put(id.key, id.userId, id.name, id.lastSeen || '')
+    for (const a of scanMap.aliases) put(identityKey(a.userId ?? '', a.scanName), a.userId ?? '', a.scanName, '')
+    for (const r of records) {
+      if (r.source !== 'scan' || knownIds.has(r.empId)) continue
+      put(identityKey(r.empId, r.empName), r.empId, r.empName, r.date)
+    }
+    return [...map.values()]
+  }, [scanMap, records, knownIds])
+
+  const decorated = useMemo(() =>
+    identities.map((id) => ({
+      ...id,
+      match: matchScanIdentity(id.userId, id.name, employees),
+      aliasEmpId: scanMap.aliases.find((a) => identityKey(a.userId ?? '', a.scanName) === id.key)?.empId ?? '',
+    })), [identities, employees, scanMap.aliases])
+
+  const rows = useMemo(() =>
+    decorated
+      .filter((r) => {
+        if (onlyUnmatched && r.match.via !== 'none') return false
+        if (query && !`${r.name} ${r.userId}`.toLowerCase().includes(query.toLowerCase())) return false
+        return true
+      })
+      .sort((a, b) => {
+        const rank = (v: string) => (v === 'none' ? 0 : v === 'manual' ? 1 : 2)
+        return rank(a.match.via) - rank(b.match.via) || a.name.localeCompare(b.name, 'th')
+      }), [decorated, onlyUnmatched, query])
+
+  const unmatchedCount = decorated.filter((r) => r.match.via === 'none').length
+  const manualCount = decorated.filter((r) => r.match.via === 'manual').length
+
+  const assign = (r: { key: string; name: string; userId: string }, empId: string) => {
+    if (empId) { const e = empById.get(empId); if (e) setScanAlias(r.name, r.userId, e.id, e.name) }
+    else clearScanAlias(r.key)
+  }
+
+  return (
+    <>
+      <div className="grid g-3" style={{ marginBottom: 20 }}>
+        <KpiCard label="ชื่อจากไฟล์สแกน · Identities" value={decorated.length.toString()} note="ที่พบทั้งหมด" />
+        <KpiCard label="ยังไม่จับคู่ · Unmatched" value={unmatchedCount.toString()} note="ต้องจับคู่พนักงาน" invert />
+        <KpiCard label="จับคู่เอง · Manual" value={manualCount.toString()} note="ผู้ใช้กำหนดเอง" />
+      </div>
+
+      <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12, alignItems: 'center' }}>
+        <Checkbox checked={onlyUnmatched} onChange={() => setOnlyUnmatched((v) => !v)}>เฉพาะที่ยังไม่จับคู่</Checkbox>
+        <div style={{ width: 260 }}>
+          <SearchInput placeholder="ชื่อจากไฟล์สแกน / รหัส" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      </div>
+
+      <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: -4, marginBottom: 16 }}>
+        เลือกพนักงานให้ตรงกับชื่อจากเครื่องสแกน — ระบบจะจดจำไว้ใช้กับไฟล์ที่นำเข้าครั้งต่อไป และปรับรายการลงเวลาที่ค้างอยู่ให้เป็นชื่อพนักงานที่จับคู่ทันที
+      </p>
+
+      {decorated.length === 0 ? (
+        <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--kpc-text-muted)' }}>
+          <p style={{ margin: 0, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>ยังไม่พบชื่อจากไฟล์สแกน</p>
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>นำเข้าไฟล์สแกนนิ้ว (.csv) ก่อน แล้วชื่อที่จับคู่พนักงานไม่ได้จะมาแสดงที่นี่ให้จับคู่</p>
+        </div>
+      ) : (
+        <div className="card flush" style={{ overflowX: 'auto' }}>
+          <table className="data" style={{ minWidth: 720 }}>
+            <thead>
+              <tr>
+                <th>ชื่อจากไฟล์สแกน</th>
+                <th style={{ width: 120 }}>รหัสสแกน</th>
+                <th className="ctr" style={{ width: 120 }}>สถานะ</th>
+                <th style={{ width: 130 }}>เห็นล่าสุด</th>
+                <th style={{ width: 280 }}>จับคู่กับพนักงาน</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const matchedEmp = r.match.empId ? empById.get(r.match.empId) : undefined
+                return (
+                  <tr key={r.key}>
+                    <td className="th" style={{ color: 'var(--kpc-text-strong)' }}>{r.name || <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}</td>
+                    <td className="mono">{r.userId || <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}</td>
+                    <td className="ctr"><Badge tone={VIA_TONE[r.match.via].tone} pip={false} square>{VIA_TONE[r.match.via].th}</Badge></td>
+                    <td className="mono" style={{ color: r.lastSeen ? 'var(--kpc-text-muted)' : 'var(--kpc-text-faint)' }}>{r.lastSeen ? fmtDate(r.lastSeen) : '—'}</td>
+                    <td>
+                      {canEdit ? (
+                        <Select value={r.aliasEmpId} onChange={(e) => assign(r, e.target.value)}>
+                          <option value="">{r.match.via === 'auto' && matchedEmp ? `อัตโนมัติ → ${matchedEmp.name}` : '— ยังไม่จับคู่ —'}</option>
+                          {employees.map((e) => <option key={e.id} value={e.id}>{e.id} · {e.name}</option>)}
+                        </Select>
+                      ) : (
+                        <span>{matchedEmp ? `${matchedEmp.id} · ${matchedEmp.name}` : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
 }

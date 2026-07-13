@@ -27,10 +27,6 @@ const SITE_TONE: Record<Site, 'info' | 'success' | 'warning' | 'neutral' | 'dang
   foundry: 'warning',
 }
 
-/* Order departments deterministically for both the filter pills and the table
-   sort (managers first, then back-office, then ops/labor). */
-const DEPARTMENT_ORDER: Department[] = ['manager', 'accounting', 'production', 'labor', 'transport', 'intern']
-
 function mergeEmployee(e: Employee, edits: Record<string, EmployeeEdit>): Employee {
   const edit = edits[e.id]
   if (!edit) return e
@@ -78,11 +74,12 @@ export function Employees() {
       return true
     })
     return [...base].sort((a, b) => {
-      const da = DEPARTMENT_ORDER.indexOf(a.department)
-      const db = DEPARTMENT_ORDER.indexOf(b.department)
-      return da - db || a.id.localeCompare(b.id)
+      /* Active first, then by รหัส ascending (E001 → …); พ้นสภาพ sink to the bottom. */
+      const ta = terminatedSet.has(a.id) ? 1 : 0
+      const tb = terminatedSet.has(b.id) ? 1 : 0
+      return ta - tb || a.id.localeCompare(b.id, undefined, { numeric: true })
     })
-  }, [list, filter, siteFilter, query])
+  }, [list, filter, siteFilter, query, terminatedSet])
 
   const cnt = (d: Department) => list.filter((e) => e.department === d).length
   const siteCnt = (s: Site) => list.filter((e) => e.site === s).length
