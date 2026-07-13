@@ -9,6 +9,7 @@ import { AR_OUTSTANDING, AR_OUTSTANDING_TOTAL } from '../data/receivables'
 import { COMPANY, PRODUCT_MAP, DELIVERY_TICKETS } from '../data/real'
 import { CREDITOR_MASTER } from '../data/creditors'
 import { currentBuddhistYear, currentMonth } from '../utils/datetime'
+import { canSharePdf, deliverPdf } from '../utils/sharePdf'
 import { useCreatedDocs, useProducts } from '../data/createdDocs'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
@@ -31,7 +32,7 @@ export function MonthlyReport() {
   const [year, setYear] = useState<number>(latest.year)
   /* `month` accepts a numeric month (1-12) or 'all' for the full-year roll-up. */
   const [month, setMonth] = useState<number | 'all'>(latest.month)
-  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | 'share' | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const isYear = month === 'all'
@@ -236,9 +237,10 @@ export function MonthlyReport() {
     ? `yearly-report-${year}`
     : `monthly-report-${monthName(month).replace(/\s+/g, '-')}-${year}`
 
-  const exportPdf = async () => {
+  const exportPdf = (mode: 'save' | 'share' = 'save') => runPdf(mode)
+  const runPdf = async (mode: 'save' | 'share') => {
     if (!reportRef.current || exporting) return
-    setExporting('pdf')
+    setExporting(mode === 'share' ? 'share' : 'pdf')
     /* Let React paint the `.report-pdf-snapshot` class before capture. */
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     try {
@@ -279,7 +281,13 @@ export function MonthlyReport() {
         renderedHpx += sliceHpx
         first = false
       }
-      pdf.save(`${slug}.pdf`)
+      if (mode === 'share') {
+        /* Share the same PDF via the phone's native share sheet (LINE, email, …),
+           falling back to a download where sharing isn't supported. */
+        await deliverPdf(pdf.output('blob'), `${reportTitle} ${periodLabel}`)
+      } else {
+        pdf.save(`${slug}.pdf`)
+      }
     } catch (err) {
       console.error('Monthly report PDF export failed', err)
     } finally {
@@ -401,9 +409,14 @@ export function MonthlyReport() {
               <option value="all">ทั้งปี</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
             </Select>
-            <Button variant="secondary" onClick={exportPdf} disabled={!!exporting}>
+            <Button variant="secondary" onClick={() => exportPdf('save')} disabled={!!exporting}>
               {exporting === 'pdf' ? 'กำลังสร้าง PDF...' : 'พิมพ์ PDF'}
             </Button>
+            {canSharePdf() && (
+              <Button variant="secondary" onClick={() => exportPdf('share')} disabled={!!exporting}>
+                {exporting === 'share' ? 'กำลังสร้าง...' : 'แชร์ PDF'}
+              </Button>
+            )}
             <Button variant="secondary" onClick={exportExcel} disabled={!!exporting}>
               {exporting === 'excel' ? 'กำลังสร้าง Excel...' : 'ส่งออก Excel'}
             </Button>
