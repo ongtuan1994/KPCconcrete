@@ -6,16 +6,13 @@ import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
-import { PRODUCTS, type FoundryKind, type Product } from '../data/real'
+import { type FoundryKind, type Product } from '../data/real'
 import { cleanProductName as cleanName, baht, qm } from '../data/selectors'
 import {
-  useCreatedDocs, addFoundryReceipt, removeFoundryReceipt, addStockReconcile, addGeneralReport,
+  useCreatedDocs, useProducts, addFoundryReceipt, removeFoundryReceipt, addStockReconcile, addGeneralReport,
   CAN_DELETE, type StockReconcileLine, type StockReport,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
-
-const FOUNDRY_PRODUCTS = PRODUCTS.filter((p) => p.site === 'foundry')
-const PROD_BY_CODE: Record<string, Product> = Object.fromEntries(FOUNDRY_PRODUCTS.map((p) => [p.code, p]))
 
 const KIND_LABEL: Record<FoundryKind, { th: string; tone: Tone }> = {
   plank: { th: 'แผ่นพื้น', tone: 'info' },
@@ -61,6 +58,12 @@ export function FoundryStock() {
   const created = useCreatedDocs()
   const navigate = useNavigate()
 
+  /* Reactive foundry product list (seed + user-added, with edits) — so products
+     added on the ราคาสินค้าโรงหล่อ page show up in the stock table + รับเข้า picker. */
+  const allProducts = useProducts()
+  const foundryProducts = useMemo(() => allProducts.filter((p) => p.site === 'foundry'), [allProducts])
+  const prodByCode = useMemo(() => Object.fromEntries(foundryProducts.map((p) => [p.code, p])) as Record<string, Product>, [foundryProducts])
+
   const upTo = (iso: string) => !to || iso <= to
 
   const receivedByCode = useMemo(() => {
@@ -89,7 +92,7 @@ export function FoundryStock() {
   }, [created.stockReconciles, to])
 
   const items: FoundryStockRow[] = useMemo(
-    () => FOUNDRY_PRODUCTS.map((p) => {
+    () => foundryProducts.map((p) => {
       const received = receivedByCode[p.code] ?? 0
       const delivered = deliveredByCode[p.code] ?? 0
       return {
@@ -97,7 +100,7 @@ export function FoundryStock() {
         received, delivered, balance: Math.round((received - delivered + (adjustByCode[p.code] ?? 0)) * 100) / 100,
       }
     }),
-    [receivedByCode, deliveredByCode, adjustByCode],
+    [foundryProducts, receivedByCode, deliveredByCode, adjustByCode],
   )
 
   const rows = useMemo(
@@ -249,21 +252,22 @@ export function FoundryStock() {
         )}
       </div>
 
-      <ReceiveFoundryModal open={showReceive} onClose={() => setShowReceive(false)} balanceByCode={Object.fromEntries(items.map((r) => [r.code, r.balance]))} />
-      <FoundryReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} items={items} />
+      <ReceiveFoundryModal open={showReceive} onClose={() => setShowReceive(false)} balanceByCode={Object.fromEntries(items.map((r) => [r.code, r.balance]))} products={foundryProducts} prodByCode={prodByCode} />
+      <FoundryReconcileModal open={showReconcile} onClose={() => setShowReconcile(false)} items={items} prodByCode={prodByCode} />
     </div>
   )
 }
 
 /* ───────── รับเข้าสต๊อก ───────── */
 type RcvLine = { code: string; qty: string }
-const emptyLine = (): RcvLine => ({ code: FOUNDRY_PRODUCTS[0]?.code ?? '', qty: '' })
-const optionLabel = (code: string) => {
-  const p = PROD_BY_CODE[code]
-  return p ? `${cleanName(p.name)} (${p.unit})` : code
-}
 
-function ReceiveFoundryModal({ open, onClose, balanceByCode }: { open: boolean; onClose: () => void; balanceByCode: Record<string, number> }) {
+function ReceiveFoundryModal({ open, onClose, balanceByCode, products, prodByCode }: { open: boolean; onClose: () => void; balanceByCode: Record<string, number>; products: Product[]; prodByCode: Record<string, Product> }) {
+  const firstCode = products[0]?.code ?? ''
+  const emptyLine = (): RcvLine => ({ code: firstCode, qty: '' })
+  const optionLabel = (code: string) => {
+    const p = prodByCode[code]
+    return p ? `${cleanName(p.name)} (${p.unit})` : code
+  }
   const [lines, setLines] = useState<RcvLine[]>([emptyLine()])
   const [date, setDate] = useState(todayIso())
   const [reportBook, setReportBook] = useState('')
@@ -289,7 +293,7 @@ function ReceiveFoundryModal({ open, onClose, balanceByCode }: { open: boolean; 
     if (filled.length === 0) return setErr('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ (พร้อมจำนวน > 0)')
     const ts = Date.now()
     filled.forEach((l, i) => {
-      const p = PROD_BY_CODE[l.code]
+      const p = prodByCode[l.code]
       addFoundryReceipt({
         id: `fr_${ts}_${i}`,
         code: p.code, material: cleanName(p.name), unit: p.unit, qty: Math.round(Number(l.qty) * 100) / 100, date,
@@ -341,7 +345,7 @@ function ReceiveFoundryModal({ open, onClose, balanceByCode }: { open: boolean; 
               <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
                   <Select value={l.code} onChange={(e) => setLine(i, { code: e.target.value })}>
-                    {FOUNDRY_PRODUCTS.map((p) => <option key={p.code} value={p.code}>{optionLabel(p.code)}</option>)}
+                    {products.map((p) => <option key={p.code} value={p.code}>{optionLabel(p.code)}</option>)}
                   </Select>
                 </div>
                 <Input style={{ width: 96, textAlign: 'right' }} type="number" step="0.01" min={0} placeholder="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
@@ -362,7 +366,7 @@ function ReceiveFoundryModal({ open, onClose, balanceByCode }: { open: boolean; 
 const tdSt: CSSProperties = { padding: '5px 8px', borderBottom: '1px solid var(--kpc-border-soft, #f1f5f9)' }
 const thSt: CSSProperties = { padding: '8px', borderBottom: '1px solid var(--kpc-border)', color: 'var(--kpc-text-muted)', fontSize: 11.5, fontWeight: 600 }
 
-function FoundryReconcileModal({ open, onClose, items }: { open: boolean; onClose: () => void; items: FoundryStockRow[] }) {
+function FoundryReconcileModal({ open, onClose, items, prodByCode }: { open: boolean; onClose: () => void; items: FoundryStockRow[]; prodByCode: Record<string, Product> }) {
   const [date, setDate] = useState(todayIso())
   const [counted, setCounted] = useState<Record<string, string>>({})
   const [costs, setCosts] = useState<Record<string, string>>({})
@@ -373,7 +377,7 @@ function FoundryReconcileModal({ open, onClose, items }: { open: boolean; onClos
     if (!open) return
     setDate(todayIso()); setCounted({}); setNotes({}); setOverall('')
     const c: Record<string, string> = {}
-    for (const m of items) c[m.code] = String(PROD_BY_CODE[m.code]?.price ?? '')
+    for (const m of items) c[m.code] = String(prodByCode[m.code]?.price ?? '')
     setCosts(c)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 

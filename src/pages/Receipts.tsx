@@ -12,7 +12,9 @@ import { ReceiptPdfDownload } from '../components/documents/ReceiptPdfDownload'
 import { ReceiptZipDownload } from '../components/documents/ReceiptZipDownload'
 import { IconDownload } from '../components/icons'
 import { RECEIPTS, baht, LATEST_MONTH, monthName, ticketYear, type Receipt } from '../data/selectors'
-import { useCreatedDocs, removeReceipt, CAN_DELETE } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { fmtThaiDateTime } from '../utils/datetime'
+import { useCreatedDocs, removeReceipt, restoreReceipt, type DeletedReceipt } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning', เช็ค: 'warning' }
@@ -29,6 +31,7 @@ export function Receipts() {
   const [zipQueue, setZipQueue] = useState<Receipt[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
+  const canDelete = useCan('receipts').edit
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -111,14 +114,37 @@ export function Receipts() {
         </Button>
       ),
     },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
       cell: (r: Receipt) => (
         <Button variant="ghost" size="sm" onClick={() => {
-          if (confirm(`ลบใบเสร็จ ${r.no} ?\n(เฉพาะโหมดทดสอบ)`)) removeReceipt(r.no)
+          if (confirm(`ลบใบเสร็จ ${r.no} ?\nระบบจะเก็บประวัติการลบไว้ตรวจสอบย้อนหลัง`)) removeReceipt(r)
         }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
+  ]
+
+  /* Deleted-receipt history for the current period — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedReceipts.filter((d) => ticketYear(d) === year && (month === 'all' || d.month === month)),
+    [created.deletedReceipts, year, month],
+  )
+  const deletedColumns: Column<DeletedReceipt>[] = [
+    { key: 'no', header: 'เลขที่ใบเสร็จ', cell: (r) => r.no, className: 'docno' },
+    { key: 'date', header: 'วันที่รับเงิน', cell: (r) => r.date, className: 'date' },
+    { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'inv', header: 'อ้างอิงใบกำกับ', cell: (r) => <span className="mono" style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.invoiceNos.join(', ')}</span> },
+    { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => baht(r.amount), className: 'amt' },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore',
+      header: '',
+      align: 'center' as const,
+      cell: (r: DeletedReceipt) => (
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบเสร็จ ${r.no} ?`)) restoreReceipt(r.no) }}>กู้คืน</Button>
       ),
     }] : []),
   ]
@@ -182,6 +208,17 @@ export function Receipts() {
       )}
 
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบเสร็จ`} />
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบเสร็จรับเงิน</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
+      )}
 
       <DocModal open={!!active} title={active ? `ใบเสร็จรับเงิน ${active.no}` : ''} onClose={() => setActive(null)}>
         {active && <ReceiptDoc rc={active} />}

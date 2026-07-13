@@ -924,6 +924,9 @@ export interface DeletedQuotation extends Quotation { deletedAt: string; deleted
 export interface DeletedFoundryBoq extends FoundryBoq { deletedAt: string; deletedBy: string }
 export interface DeletedPurchaseOrder extends PurchaseOrder { deletedAt: string; deletedBy: string }
 export interface DeletedGoodsPayment extends GoodsPayment { deletedAt: string; deletedBy: string }
+export interface DeletedInvoice extends Invoice { deletedAt: string; deletedBy: string }
+export interface DeletedReceipt extends Receipt { deletedAt: string; deletedBy: string }
+export interface DeletedFoundryDelivery extends FoundryDelivery { deletedAt: string; deletedBy: string }
 
 export interface CreatedDocs {
   invoices: Invoice[]
@@ -1022,10 +1025,16 @@ export interface CreatedDocs {
   deletedPurchaseOrders: DeletedPurchaseOrder[]
   /** Audit history of deleted ใบสำคัญจ่าย — newest first. */
   deletedGoodsPayments: DeletedGoodsPayment[]
+  /** Audit history of deleted ใบกำกับภาษี — newest first. */
+  deletedInvoices: DeletedInvoice[]
+  /** Audit history of deleted ใบเสร็จรับเงิน — newest first. */
+  deletedReceipts: DeletedReceipt[]
+  /** Audit history of deleted ใบส่งสินค้าโรงหล่อ — newest first. */
+  deletedFoundryDeliveries: DeletedFoundryDelivery[]
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 function read(): CreatedDocs {
   try {
@@ -1105,6 +1114,9 @@ function read(): CreatedDocs {
       deletedFoundryBoqs: v.deletedFoundryBoqs ?? [],
       deletedPurchaseOrders: v.deletedPurchaseOrders ?? [],
       deletedGoodsPayments: v.deletedGoodsPayments ?? [],
+      deletedInvoices: v.deletedInvoices ?? [],
+      deletedReceipts: v.deletedReceipts ?? [],
+      deletedFoundryDeliveries: v.deletedFoundryDeliveries ?? [],
     }
   } catch {
     return empty
@@ -1192,12 +1204,29 @@ export function nextSoNo(existing: SalesOrder[]): string {
 }
 
 /* Removal — works on both user-created docs (removed from list) and seed docs (hidden). */
-export function removeInvoice(no: string) {
-  const wasCreated = state.invoices.some((i) => i.no === no)
+/** Delete a tax invoice (ใบกำกับภาษี) and keep an audit snapshot. Takes the full
+    record so a seed/imported invoice (which has no store entry) can still be
+    snapshotted; created ones are removed from the list, seed ones hidden by no. */
+export function removeInvoice(inv: Invoice) {
+  const wasCreated = state.invoices.some((i) => i.no === inv.no)
   commit({
     ...state,
-    invoices: state.invoices.filter((i) => i.no !== no),
-    hidden: wasCreated ? state.hidden : { ...state.hidden, invoices: [...state.hidden.invoices, no] },
+    invoices: state.invoices.filter((i) => i.no !== inv.no),
+    hidden: wasCreated ? state.hidden : { ...state.hidden, invoices: [...state.hidden.invoices, inv.no] },
+    deletedInvoices: [stampDeleted(inv), ...state.deletedInvoices.filter((d) => d.no !== inv.no)],
+  })
+}
+/** Undo a removeInvoice — re-adds a user-created invoice or un-hides a seed one,
+    and drops it from the deletion history. */
+export function restoreInvoice(no: string) {
+  const rec = state.deletedInvoices.find((d) => d.no === no)
+  if (!rec) return
+  const wasSeed = state.hidden.invoices.includes(no)
+  commit({
+    ...state,
+    deletedInvoices: state.deletedInvoices.filter((d) => d.no !== no),
+    hidden: wasSeed ? { ...state.hidden, invoices: state.hidden.invoices.filter((x) => x !== no) } : state.hidden,
+    invoices: wasSeed ? state.invoices : [unstampDeleted(rec) as Invoice, ...state.invoices],
   })
 }
 export function removeBillingNote(no: string) {
@@ -1208,12 +1237,27 @@ export function removeBillingNote(no: string) {
     hidden: wasCreated ? state.hidden : { ...state.hidden, billingNotes: [...state.hidden.billingNotes, no] },
   })
 }
-export function removeReceipt(no: string) {
-  const wasCreated = state.receipts.some((r) => r.no === no)
+/** Delete a receipt (ใบเสร็จรับเงิน) and keep an audit snapshot. Full record so a
+    seed receipt (no store entry) can still be snapshotted. */
+export function removeReceipt(rc: Receipt) {
+  const wasCreated = state.receipts.some((r) => r.no === rc.no)
   commit({
     ...state,
-    receipts: state.receipts.filter((r) => r.no !== no),
-    hidden: wasCreated ? state.hidden : { ...state.hidden, receipts: [...state.hidden.receipts, no] },
+    receipts: state.receipts.filter((r) => r.no !== rc.no),
+    hidden: wasCreated ? state.hidden : { ...state.hidden, receipts: [...state.hidden.receipts, rc.no] },
+    deletedReceipts: [stampDeleted(rc), ...state.deletedReceipts.filter((d) => d.no !== rc.no)],
+  })
+}
+/** Undo a removeReceipt — re-adds a user-created receipt or un-hides a seed one. */
+export function restoreReceipt(no: string) {
+  const rec = state.deletedReceipts.find((d) => d.no === no)
+  if (!rec) return
+  const wasSeed = state.hidden.receipts.includes(no)
+  commit({
+    ...state,
+    deletedReceipts: state.deletedReceipts.filter((d) => d.no !== no),
+    hidden: wasSeed ? { ...state.hidden, receipts: state.hidden.receipts.filter((x) => x !== no) } : state.hidden,
+    receipts: wasSeed ? state.receipts : [unstampDeleted(rec) as Receipt, ...state.receipts],
   })
 }
 export function removeTicket(t: DeliveryTicket) {
@@ -1404,8 +1448,24 @@ export function restoreGoodsPayment(gpNo: string) {
 export function addFoundryDelivery(fd: FoundryDelivery) {
   commit({ ...state, foundryDeliveries: [stamp(fd), ...state.foundryDeliveries] })
 }
-export function removeFoundryDelivery(fdNo: string) {
-  commit({ ...state, foundryDeliveries: state.foundryDeliveries.filter((f) => f.fdNo !== fdNo) })
+/** Delete a foundry goods-delivery note (ใบส่งสินค้าโรงหล่อ) and keep an audit
+    snapshot. These are all user-created (no seed data). */
+export function removeFoundryDelivery(fd: FoundryDelivery) {
+  commit({
+    ...state,
+    foundryDeliveries: state.foundryDeliveries.filter((f) => f.fdNo !== fd.fdNo),
+    deletedFoundryDeliveries: [stampDeleted(fd), ...state.deletedFoundryDeliveries.filter((d) => d.fdNo !== fd.fdNo)],
+  })
+}
+/** Undo a removeFoundryDelivery — re-adds the note and drops it from history. */
+export function restoreFoundryDelivery(fdNo: string) {
+  const rec = state.deletedFoundryDeliveries.find((d) => d.fdNo === fdNo)
+  if (!rec) return
+  commit({
+    ...state,
+    deletedFoundryDeliveries: state.deletedFoundryDeliveries.filter((d) => d.fdNo !== fdNo),
+    foundryDeliveries: [unstampDeleted(rec) as FoundryDelivery, ...state.foundryDeliveries],
+  })
 }
 
 /* Employee terminations (สิ้นสภาพพนักงาน) — notifies Board users. */

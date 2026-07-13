@@ -69,17 +69,34 @@ export function CustomerSummary() {
     return m
   }, [created.invoices])
 
-  /* Outstanding is the real current AR snapshot (everyone not listed = cleared),
-     overlaid on the month-aware sales aggregation. Debtors with a balance but no
-     sales in the period are appended so they still appear on the list. */
+  /* Outstanding = the real AR snapshot, kept up-to-date with in-app documents:
+     new unpaid ใบกำกับ issued in the app ADD to a customer's debt, and ใบเสร็จ
+     collected in the app REDUCE it (netted, floored at 0). Overlaid on the
+     month-aware sales aggregation; a customer with a live balance but no sales in
+     the period is still appended so they appear on the list. */
   const all = useMemo(() => {
+    /* Per-customer in-app deltas — not month-scoped: outstanding is an as-of-now
+       figure, same as the snapshot (only the sales/tickets columns are monthly). */
+    const inAppDebt = new Map<string, number>()   /* +unpaid in-app invoices */
+    for (const inv of created.invoices) {
+      if (inv.status !== 'paid') inAppDebt.set(inv.customer, (inAppDebt.get(inv.customer) ?? 0) + inv.total)
+    }
+    const inAppPaid = new Map<string, number>()    /* −receipts collected in-app */
+    for (const rc of created.receipts) inAppPaid.set(rc.customer, (inAppPaid.get(rc.customer) ?? 0) + rc.amount)
+    const outFor = (name: string) =>
+      Math.max(0, (AR_OUTSTANDING[name]?.amount ?? 0) + (inAppDebt.get(name) ?? 0) - (inAppPaid.get(name) ?? 0))
+
     const base = customerAgg(month)
-    const byName = new Map<string, CustomerAgg>(base.map((c) => [c.name, { ...c, outstanding: AR_OUTSTANDING[c.name]?.amount ?? 0 }]))
-    for (const [name, rec] of Object.entries(AR_OUTSTANDING)) {
-      if (!byName.has(name)) byName.set(name, { name, type: 'ขายลูกค้า', tickets: 0, m3: 0, sales: 0, outstanding: rec.amount, lastDate: '—', months: 0 })
+    const byName = new Map<string, CustomerAgg>(base.map((c) => [c.name, { ...c, outstanding: outFor(c.name) }]))
+    /* Names with a live balance (snapshot or in-app) but not in the period's sales. */
+    const extraNames = new Set<string>([...Object.keys(AR_OUTSTANDING), ...inAppDebt.keys(), ...inAppPaid.keys()])
+    for (const name of extraNames) {
+      if (byName.has(name)) continue
+      const o = outFor(name)
+      if (o > 0) byName.set(name, { name, type: 'ขายลูกค้า', tickets: 0, m3: 0, sales: 0, outstanding: o, lastDate: '—', months: 0 })
     }
     return [...byName.values()].sort((a, b) => b.outstanding - a.outstanding || b.sales - a.sales)
-  }, [month])
+  }, [month, created.invoices, created.receipts])
   const rows = useMemo(() => all.filter((c) => !query || c.name.toLowerCase().includes(query.toLowerCase())), [all, query])
   const totalSales = all.reduce((s, c) => s + c.sales, 0)
   const totalOut = all.reduce((s, c) => s + c.outstanding, 0)
@@ -245,7 +262,8 @@ export function CustomerSummary() {
         {detail && (() => {
           const list = AR_INVOICES[detail] ?? []
           const sum = list.reduce((s, x) => s + x.amount, 0)
-          const balance = AR_OUTSTANDING[detail]?.amount ?? sum
+          /* Live netted balance (after in-app invoices/receipts), falling back to the snapshot. */
+          const balance = all.find((c) => c.name === detail)?.outstanding ?? AR_OUTSTANDING[detail]?.amount ?? sum
           return (
             <>
               <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12, fontSize: 13 }}>

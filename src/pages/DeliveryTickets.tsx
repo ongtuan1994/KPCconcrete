@@ -97,8 +97,10 @@ export function DeliveryTickets() {
      becomes re-issuable. removeInvoice removes a user-created one or hides a seed one. */
   const cancelInvoice = (no: string) => {
     if (!no) return
+    const inv = invoiceByNo(no)
+    if (!inv) return
     if (confirm(`ยกเลิกใบกำกับภาษี ${no} ?\nใบจ่ายที่เกี่ยวข้องจะกลับมาออกใบกำกับใหม่ได้`)) {
-      removeInvoice(no)
+      removeInvoice(inv)
       setViewInvoice(null)
     }
   }

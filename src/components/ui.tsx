@@ -117,13 +117,17 @@ export function SearchInput(props: InputHTMLAttributes<HTMLInputElement>) {
 }
 
 import { MONTHS } from '../data/real'
-/** Month picker (มกราคม–มิถุนายน 2569) plus an optional "ทั้งปี" option. */
+import { currentBuddhistYear, currentMonth } from '../utils/datetime'
+/** Month picker plus an optional "ทั้งปี" option. Options = the seed months
+    (ม.ค.–มิ.ย. 2569) extended through the current calendar month while we're still
+    in พ.ศ. 2569, so the picker keeps covering the present month (ก.ค. เป็นต้นไป)
+    as time passes without hand-editing the seed. */
 export function MonthSelect({ value, onChange, allowAll = true }: { value: number | 'all'; onChange: (v: number | 'all') => void; allowAll?: boolean }) {
   return (
     <div className="select-wrap" style={{ width: 168 }}>
       <select className="select" value={String(value)} onChange={(e) => onChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
         {allowAll && <option value="all">ทั้งปี 2569</option>}
-        {MONTHS.map((m) => (
+        {pickerMonths().map((m) => (
           <option key={m.num} value={m.num}>{m.label}</option>
         ))}
       </select>
@@ -133,6 +137,19 @@ export function MonthSelect({ value, onChange, allowAll = true }: { value: numbe
 }
 
 const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+
+/** Month options for MonthSelect: the seed MONTHS, extended forward through the
+    current calendar month while the Buddhist year is 2569 (so ก.ค. and later are
+    offered as time passes). Months beyond the seed get a generated Thai label. */
+function pickerMonths(): { num: number; label: string }[] {
+  const base = MONTHS.map((m) => ({ num: m.num, label: m.label }))
+  const maxSeed = base.length ? base[base.length - 1].num : 0
+  const upTo = currentBuddhistYear() === 2569 ? currentMonth() : maxSeed
+  for (let m = maxSeed + 1; m <= upTo && m <= 12; m++) {
+    base.push({ num: m, label: `${THAI_MONTHS_FULL[m - 1]} 2569` })
+  }
+  return base
+}
 
 /** First & last day (ISO yyyy-mm-dd) of a "YYYY-MM" month. */
 export function monthBoundsIso(ym: string): [string, string] {

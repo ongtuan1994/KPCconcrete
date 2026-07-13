@@ -431,7 +431,7 @@ export function MonthlyReport() {
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>การเงิน-การผลิต (รวม) · {periodLabel}</span>
           <Badge tone="info" pip={false} square>กิจไพศาลคอนกรีต</Badge>
         </div>
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
+        <div className="grid g-2" style={{ gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
           {/* left half — combined finance/production KPI cards */}
           <div className="grid g-2" style={{ gap: 8 }}>
             {summary.map((s) => (
@@ -482,7 +482,7 @@ export function MonthlyReport() {
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>การเงิน-การผลิต แยกตาม SITE · {periodLabel}</span>
           <Badge tone="neutral" pip={false} square>แพล้นปูน + โรงหล่อ</Badge>
         </div>
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div className="grid g-2" style={{ gap: 12, marginBottom: 12 }}>
           <div className="card stack" style={{ gap: 8, padding: 12, borderTop: '3px solid var(--kpc-primary)' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-primary-ink)' }}>แพล้นปูน · Concrete Plant</div>
             <div className="grid g-2" style={{ gap: 8 }}>
@@ -504,7 +504,7 @@ export function MonthlyReport() {
         </div>
 
         {/* Product mix donuts — concrete plant vs foundry, aligned by site. */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div className="grid g-2" style={{ gap: 16, marginBottom: 16 }}>
           <div className="card row" style={{ gap: 20, borderTop: '3px solid var(--kpc-primary)' }}>
             <Donut segments={mix} />
             <div className="stack" style={{ gap: 11, flex: 1 }}>
@@ -579,7 +579,7 @@ export function MonthlyReport() {
         </div>
 
         {/* Top 5 customers (sales) + top 5 debtors (outstanding) — horizontal bars. */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+        <div className="grid g-2" style={{ gap: 16, marginTop: 16 }}>
           <div className="card stack" style={{ gap: 10, padding: 16, borderTop: '3px solid #16a34a' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', letterSpacing: 0.1 }}>

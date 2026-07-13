@@ -103,6 +103,18 @@
   padding: 20px;
   box-sizing: border-box;
 }
+/* During PDF capture the report must keep its desktop multi-column layout even
+   when exported from a phone (the responsive collapse below would otherwise
+   apply). Higher specificity than the media-query rules, so columns are kept. */
+.report-pdf-snapshot .g-2 { grid-template-columns: repeat(2, 1fr); }
+.report-pdf-snapshot .g-3 { grid-template-columns: repeat(3, 1fr); }
+/* On phones the report header stacks instead of squeezing into one row. */
+@media (max-width: 860px) {
+  .report-header { flex-wrap: wrap; }
+  .report-header .rh-title { margin-left: 0; text-align: left; width: 100%; }
+}
+.report-pdf-snapshot .report-header { flex-wrap: nowrap; }
+.report-pdf-snapshot .report-header .rh-title { margin-left: auto; text-align: right; width: auto; }
 
 /* PDF snapshot wrapper — mirrors the @media print layout but applies as a
    regular class so html2canvas can capture it off-screen. Height is set

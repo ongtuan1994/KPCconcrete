@@ -8,7 +8,7 @@ import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
 import { baht } from '../data/selectors'
 import { useCan } from '../data/auth'
 import { AuditButton } from '../components/AuditButton'
-import { addGeneralReport, type LedgerReport } from '../data/createdDocs'
+import { addGeneralReport, useCreatedDocs, type LedgerReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'credit' | 'cash' | 'overdue'
@@ -55,8 +55,19 @@ export function Creditors() {
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
   const canPay = useCan('goods-payments').edit
+  const created = useCreatedDocs()
 
-  const list = CREDITOR_MASTER
+  /* Keep payable up-to-date: ใบสำคัญจ่าย (goods payments) issued in the app REDUCE
+     the standing outstanding, matched by supplier name (netted, floored at 0). */
+  const list = useMemo(() => {
+    const paidBySupplier = new Map<string, number>()
+    for (const gp of created.goodsPayments) paidBySupplier.set(gp.supplier, (paidBySupplier.get(gp.supplier) ?? 0) + gp.amount)
+    if (paidBySupplier.size === 0) return CREDITOR_MASTER
+    return CREDITOR_MASTER.map((c) => {
+      const paid = paidBySupplier.get(c.name) ?? 0
+      return paid > 0 ? { ...c, outstanding: Math.max(0, (c.outstanding ?? 0) - paid) } : c
+    })
+  }, [created.goodsPayments])
 
   const rows = useMemo(
     () =>

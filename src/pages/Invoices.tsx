@@ -14,9 +14,10 @@ import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
-import { currentBuddhistYear, currentMonth } from '../utils/datetime'
+import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
 import { PRODUCT_MAP } from '../data/real'
-import { useCreatedDocs, removeInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, CAN_DELETE, type InvoicePayment } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { useCreatedDocs, removeInvoice, restoreInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, type InvoicePayment, type DeletedInvoice } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
@@ -66,6 +67,7 @@ export function Invoices() {
   const [zipQueue, setZipQueue] = useState<Invoice[] | null>(null)
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null)
   const created = useCreatedDocs()
+  const canDelete = useCan('invoices').edit
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -162,14 +164,36 @@ export function Invoices() {
         </Button>
       ),
     },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
       cell: (r: Invoice) => (
         <Button variant="ghost" size="sm" onClick={() => {
-          if (confirm(`ลบใบกำกับ ${r.no} ?\n(เฉพาะโหมดทดสอบ)`)) removeInvoice(r.no)
+          if (confirm(`ลบใบกำกับ ${r.no} ?\nระบบจะเก็บประวัติการลบไว้ตรวจสอบย้อนหลัง`)) removeInvoice(r)
         }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
+  ]
+
+  /* Deleted-invoice history for the current period — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedInvoices.filter((d) => ticketYear(d) === year && (month === 'all' || d.month === month)),
+    [created.deletedInvoices, year, month],
+  )
+  const deletedColumns: Column<DeletedInvoice>[] = [
+    { key: 'no', header: 'เลขที่ใบกำกับ', cell: (r) => r.no, className: 'docno' },
+    { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
+    { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore',
+      header: '',
+      align: 'center' as const,
+      cell: (r: DeletedInvoice) => (
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบกำกับ ${r.no} ?`)) restoreInvoice(r.no) }}>กู้คืน</Button>
       ),
     }] : []),
   ]
@@ -245,6 +269,17 @@ export function Invoices() {
       )}
 
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบกำกับ`} />
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบกำกับภาษี</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
+      )}
 
       <DocModal
         open={!!active}

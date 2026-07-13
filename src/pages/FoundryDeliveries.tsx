@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
+import { Button, Badge, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { FoundryDeliveryDoc } from '../components/documents/FoundryDeliveryDoc'
+import { NewCustomerForm } from '../components/documents/NewCustomerForm'
 import { IconPlus } from '../components/icons'
 import { CUSTOMER_MASTER, type Product } from '../data/real'
 import { cleanProductName as cleanName, monthName } from '../data/selectors'
-import { currentBuddhistYear, currentMonth } from '../utils/datetime'
+import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
+import { useCan } from '../data/auth'
 import {
-  useCreatedDocs, useProducts, addFoundryDelivery, removeFoundryDelivery, CAN_DELETE,
-  type FoundryDelivery, type FoundryDeliveryItem,
+  useCreatedDocs, useProducts, addFoundryDelivery, removeFoundryDelivery, restoreFoundryDelivery, addProduct,
+  type FoundryDelivery, type FoundryDeliveryItem, type DeletedFoundryDelivery,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
@@ -47,6 +49,7 @@ export function FoundryDeliveries() {
   const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
   const created = useCreatedDocs()
+  const canDelete = useCan('foundry-deliveries').edit
   const location = useLocation()
   const navigate = useNavigate()
   const all = created.foundryDeliveries
@@ -105,10 +108,30 @@ export function FoundryDeliveries() {
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบส่งสินค้าโรงหล่อ', ref: r.fdNo, label: r.fdNo, sub: `${r.customer} · ${r.items.length} รายการ`, route: '/foundry-deliveries' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del', header: '', align: 'center' as const,
       cell: (r: FoundryDelivery) => (
-        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบส่งสินค้า ${r.fdNo} ?`)) removeFoundryDelivery(r.fdNo) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบใบส่งสินค้า ${r.fdNo} ?\nระบบจะเก็บประวัติการลบไว้ตรวจสอบย้อนหลัง`)) removeFoundryDelivery(r) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
+  ]
+
+  /* Deleted foundry-delivery history for the current period — appended below the list. */
+  const deletedRows = useMemo(
+    () => created.deletedFoundryDeliveries.filter((d) => feYear(d) === year && (month === 'all' || feMonth(d) === month)),
+    [created.deletedFoundryDeliveries, year, month],
+  )
+  const deletedColumns: Column<DeletedFoundryDelivery>[] = [
+    { key: 'no', header: 'เลขที่ส่งสินค้า', cell: (r) => <span className="mono">{r.fdNo}</span>, className: 'docno' },
+    { key: 'date', header: 'วันที่', cell: (r) => fmtDate(r.date), className: 'date' },
+    { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'items', header: 'รายการ', align: 'right', cell: (r) => <span className="mono">{r.items.length} รายการ</span> },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore', header: '', align: 'center' as const,
+      cell: (r: DeletedFoundryDelivery) => (
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบส่งสินค้า ${r.fdNo} ?`)) restoreFoundryDelivery(r.fdNo) }}>กู้คืน</Button>
       ),
     }] : []),
   ]
@@ -159,6 +182,17 @@ export function FoundryDeliveries() {
         <DataTable columns={columns} rows={rows} pageSize={15} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบ`} />
       )}
 
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบส่งสินค้าโรงหล่อ</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
+      )}
+
       <NewFoundryDeliveryForm
         open={showForm}
         onClose={() => { setShowForm(false); setPrefill(null) }}
@@ -187,9 +221,11 @@ const emptyItem = (code = ''): ItemDraft => ({ code, qty: '', pickup: 'รับ
 function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: { open: boolean; onClose: () => void; existing: FoundryDelivery[]; initial?: FoundryDeliveryInitial | null; onSaved: (f: FoundryDelivery) => void }) {
   /* Merged product list (seed + user-added), so foundry products added on the
      ราคาสินค้าโรงหล่อ page show up in the picker here too. */
+  const created = useCreatedDocs()
   const allProducts = useProducts()
   const foundryProducts = useMemo(() => allProducts.filter((p) => p.site === 'foundry'), [allProducts])
   const prodByCode = useMemo(() => Object.fromEntries(foundryProducts.map((p) => [p.code, p])) as Record<string, Product>, [foundryProducts])
+  const allCodes = useMemo(() => new Set(allProducts.map((p) => p.code)), [allProducts])
   const firstCode = foundryProducts[0]?.code ?? ''
   const [fdNo, setFdNo] = useState('')
   const [date, setDate] = useState(todayIso())
@@ -198,6 +234,8 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
   const [items, setItems] = useState<ItemDraft[]>(() => [emptyItem(firstCode)])
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [showAddProduct, setShowAddProduct] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -216,6 +254,12 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
   const addItem = () => setItems((prev) => [...prev, emptyItem(firstCode)])
   const removeItem = (i: number) => setItems((prev) => (prev.length <= 1 ? [emptyItem(firstCode)] : prev.filter((_, idx) => idx !== i)))
+  /* A just-created product drops into the first empty row (else a new row). */
+  const selectNewProduct = (code: string) =>
+    setItems((prev) => {
+      const idx = prev.findIndex((it) => !it.qty)
+      return idx >= 0 ? prev.map((it, i) => (i === idx ? { ...it, code } : it)) : [...prev, emptyItem(code)]
+    })
 
   const submit = () => {
     setErr('')
@@ -250,21 +294,28 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
         <Field label="วันที่" required hint="ค่าเริ่มต้น = วันนี้">
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="ชื่อลูกค้า" required style={{ gridColumn: '1 / -1' }}>
-          <Input list="kpc-customer-list-fd" placeholder="พิมพ์หรือเลือกลูกค้า" value={customer} onChange={(e) => setCustomer(e.target.value)} />
+        <Field label="ทะเบียนรถ" hint="เลขทะเบียนรถที่นำส่ง">
+          <Input placeholder="เช่น 70-1234 ระนอง" value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
+        </Field>
+        <Field label="ชื่อลูกค้า" required>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+            <Input list="kpc-customer-list-fd" placeholder="พิมพ์หรือเลือกลูกค้า" value={customer} onChange={(e) => setCustomer(e.target.value)} style={{ flex: 1 }} />
+            <Button variant="tonal" size="sm" onClick={() => setShowAddCustomer(true)} title="เพิ่มลูกค้า/หน่วยงานใหม่">+ เพิ่มลูกค้าใหม่</Button>
+          </div>
           <datalist id="kpc-customer-list-fd">
+            {created.customersAdded.map((c) => <option key={c.id} value={c.name} />)}
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
-        </Field>
-        <Field label="ทะเบียนรถ" style={{ gridColumn: '1 / -1' }} hint="เลขทะเบียนรถที่นำส่ง">
-          <Input placeholder="เช่น 70-1234 ระนอง" value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
         </Field>
       </div>
 
       <div style={{ marginTop: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>รายการสินค้า (เฉพาะโรงหล่อ)</label>
-          <Button variant="ghost" size="sm" onClick={addItem}>+ เพิ่มรายการ</Button>
+          <div className="row" style={{ gap: 8 }}>
+            <Button variant="tonal" size="sm" onClick={() => setShowAddProduct(true)} title="เพิ่มประเภทสินค้าโรงหล่อใหม่">+ เพิ่มประเภทใหม่</Button>
+            <Button variant="ghost" size="sm" onClick={addItem}>+ เพิ่มรายการ</Button>
+          </div>
         </div>
         <div className="stack" style={{ gap: 8 }}>
           <div className="row" style={{ gap: 8, fontSize: 11, color: 'var(--kpc-text-muted)', fontWeight: 600 }}>
@@ -301,6 +352,82 @@ function NewFoundryDeliveryForm({ open, onClose, existing, initial, onSaved }: {
       <div className="grid g-2" style={{ gap: 12, marginTop: 12 }}>
         <Field label="หมายเหตุ" style={{ gridColumn: '1 / -1' }}>
           <Input placeholder="รายละเอียดเพิ่มเติม" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+      </div>
+
+      <NewCustomerForm
+        open={showAddCustomer}
+        onClose={() => setShowAddCustomer(false)}
+        initialName={customer}
+        onCreated={(c) => { setCustomer(c.name); setShowAddCustomer(false) }}
+      />
+      <NewFoundryProductForm
+        open={showAddProduct}
+        onClose={() => setShowAddProduct(false)}
+        existingCodes={allCodes}
+        onCreated={selectNewProduct}
+      />
+    </Modal>
+  )
+}
+
+/** Auto-generate a unique foundry product code (KPCF0001, …). Mirrors the
+    generator on the ราคาสินค้าโรงหล่อ page so hand-added codes never collide. */
+function genFoundryCode(existing: Set<string>): string {
+  let n = 1
+  let code = `KPCF${String(n).padStart(4, '0')}`
+  while (existing.has(code)) { n++; code = `KPCF${String(n).padStart(4, '0')}` }
+  return code
+}
+
+/** Quick-add modal for a brand-new foundry product type (ประเภทสินค้าโรงหล่อใหม่) —
+    the user supplies a type label, product name, unit and an optional price. The
+    product is saved with site 'foundry' so it flows into the delivery picker,
+    ราคาสินค้าโรงหล่อ and สต๊อกสินค้าโรงหล่อ. `onCreated` returns the new code so the
+    caller can select it straight away. */
+function NewFoundryProductForm({ open, onClose, existingCodes, onCreated }: { open: boolean; onClose: () => void; existingCodes: Set<string>; onCreated: (code: string) => void }) {
+  const [typeLabel, setTypeLabel] = useState('')
+  const [name, setName] = useState('')
+  const [unit, setUnit] = useState('')
+  const [price, setPrice] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setTypeLabel(''); setName(''); setUnit(''); setPrice(''); setErr('')
+  }, [open])
+
+  const submit = () => {
+    setErr('')
+    const t = typeLabel.trim(), nm = name.trim(), u = unit.trim()
+    if (!t) return setErr('กรุณากรอกชื่อประเภทสินค้าใหม่')
+    if (!nm) return setErr('กรุณากรอกชื่อสินค้า')
+    if (!u) return setErr('กรุณากรอกหน่วยของสินค้า')
+    const pt = price.trim()
+    const pr = pt === '' ? 0 : Number(pt)
+    if (!Number.isFinite(pr) || pr < 0) return setErr('กรุณากรอกราคา/หน่วยให้ถูกต้อง (เว้นว่าง = 0)')
+    const code = genFoundryCode(existingCodes)
+    addProduct({ code, name: nm, strengthKsc: 0, unit: u, category: 'precast', site: 'foundry', typeLabel: t, price: Math.round(pr * 100) / 100 })
+    onCreated(code)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} title="เพิ่มประเภทสินค้าโรงหล่อใหม่" onClose={onClose} maxWidth={520}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>บันทึกสินค้า</Button></>}>
+      {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
+      <div className="grid g-2" style={{ gap: 12 }}>
+        <Field label="ชื่อประเภท" required hint="เช่น ท่อระบายน้ำ / บ่อพัก" style={{ gridColumn: '1 / -1' }}>
+          <Input placeholder="ชื่อประเภทสินค้าใหม่" value={typeLabel} onChange={(e) => setTypeLabel(e.target.value)} />
+        </Field>
+        <Field label="ชื่อสินค้า" required style={{ gridColumn: '1 / -1' }}>
+          <Input placeholder="เช่น ท่อ คสล. Ø0.30 ม." value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="หน่วย" required hint="เช่น ท่อน / ต้น / แผ่น / อัน">
+          <Input placeholder="หน่วย" value={unit} onChange={(e) => setUnit(e.target.value)} />
+        </Field>
+        <Field label="ราคา/หน่วย (บาท)" hint="ไม่บังคับ — เว้นว่าง = 0">
+          <Input type="number" min={0} step="any" placeholder="0" value={price} onChange={(e) => setPrice(e.target.value)} />
         </Field>
       </div>
     </Modal>
