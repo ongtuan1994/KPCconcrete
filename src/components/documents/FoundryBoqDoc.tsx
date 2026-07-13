@@ -13,7 +13,7 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${Number(y) + 543}`
 }
 
-/** Printable foundry BOQ takeoff (ประเมินราคาสินค้าโรงหล่อ) — per-product material
+/** Printable foundry BOQ takeoff (ถอดแบบ BOQ โรงหล่อ) — per-product material
     takeoff plus a project-wide material summary. */
 export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
   const created = useCreatedDocs()
@@ -48,7 +48,7 @@ export function FoundryBoqDoc({ boq }: { boq: FoundryBoq }) {
   const hasCost = grandCost > 0
 
   return (
-    <DocShell docType="ประเมินราคาสินค้าโรงหล่อ (BOQ)" copyLabel="FOUNDRY BOQ / MATERIAL TAKEOFF" sheetClass="boq">
+    <DocShell docType="ถอดแบบ BOQ โรงหล่อ" copyLabel="FOUNDRY BOQ / MATERIAL TAKEOFF" sheetClass="boq">
       <div className="doc-meta-grid">
         <MetaRow k="โครงการ / ลูกค้า :" v={boq.project} />
         <MetaRow k="เลขที่ :" v={boq.no} mono />

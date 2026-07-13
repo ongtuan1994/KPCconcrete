@@ -150,7 +150,7 @@ export interface Quotation {
   createdAt: string
 }
 
-/* ───────── Foundry BOQ (ประเมินราคาสินค้าโรงหล่อ) ───────── */
+/* ───────── Foundry BOQ (ถอดแบบ BOQ โรงหล่อ) ───────── */
 
 /** Raw-material identifiers used in a foundry BOQ takeoff. See BOQ_MATERIALS in
     ./foundryBoq for the seed labels, units, input modes and kg/m factors.
@@ -164,7 +164,7 @@ export type FoundryMaterialKey =
   | (string & {})
 
 /** A user-added foundry raw material — shared between the คลังวัตถุดิบโรงหล่อ stock
-    page (as a stock row) and the ประเมินราคาสินค้าโรงหล่อ BOQ page (as a direct-mode
+    page (as a stock row) and the ถอดแบบ BOQ โรงหล่อ BOQ page (as a direct-mode
     takeoff material). `code` is the stable key used on both. */
 export interface FoundryMaterial {
   code: string
@@ -203,7 +203,7 @@ export interface FoundryBoqProduct {
 }
 
 /** A foundry material takeoff / cost estimate for one project or customer
-    (ประเมินราคาสินค้าโรงหล่อ). Persisted like other created docs. */
+    (ถอดแบบ BOQ โรงหล่อ). Persisted like other created docs. */
 export interface FoundryBoq {
   id: string        /* same as no — stable key */
   no: string        /* running document number, e.g. BOQ00001 */
@@ -964,7 +964,7 @@ export interface CreatedDocs {
   salesOrders: SalesOrder[]
   /** Price quotations (ใบเสนอราคา) — newest first. */
   quotations: Quotation[]
-  /** Foundry material takeoffs / BOQ estimates (ประเมินราคาสินค้าโรงหล่อ) — newest first. */
+  /** Foundry material takeoffs / BOQ estimates (ถอดแบบ BOQ โรงหล่อ) — newest first. */
   foundryBoqs: FoundryBoq[]
   /** Purchase orders (ใบสั่งซื้อ) — newest first. */
   purchaseOrders: PurchaseOrder[]
@@ -1004,7 +1004,7 @@ export interface CreatedDocs {
       merged on top of the seed `cost`. Editable from the คลังวัตถุดิบ page. */
   stockCosts: Record<string, number>
   /** User-added foundry raw materials (คลังวัตถุดิบโรงหล่อ) — also surface on the
-      ประเมินราคาสินค้าโรงหล่อ page. Newest first. */
+      ถอดแบบ BOQ โรงหล่อ page. Newest first. */
   foundryMaterialsAdded: FoundryMaterial[]
   /** Codes of seed foundry stock materials the user removed (hides them from the
       คลังวัตถุดิบโรงหล่อ list). */
@@ -1019,7 +1019,7 @@ export interface CreatedDocs {
   deletedSalesOrders: DeletedSalesOrder[]
   /** Audit history of deleted ใบเสนอราคา — newest first. */
   deletedQuotations: DeletedQuotation[]
-  /** Audit history of deleted ประเมินราคาสินค้าโรงหล่อ — newest first. */
+  /** Audit history of deleted ถอดแบบ BOQ โรงหล่อ — newest first. */
   deletedFoundryBoqs: DeletedFoundryBoq[]
   /** Audit history of deleted ใบสั่งซื้อ — newest first. */
   deletedPurchaseOrders: DeletedPurchaseOrder[]
@@ -1360,7 +1360,7 @@ export function restoreQuotation(qtNo: string) {
   })
 }
 
-/* Foundry BOQ estimates (ประเมินราคาสินค้าโรงหล่อ) — created docs only. */
+/* Foundry BOQ estimates (ถอดแบบ BOQ โรงหล่อ) — created docs only. */
 export function addFoundryBoq(b: FoundryBoq) {
   commit({ ...state, foundryBoqs: [stamp(b), ...state.foundryBoqs] })
 }
@@ -1517,7 +1517,7 @@ export function setStockCost(code: string, cost: number | undefined) {
   commit({ ...state, stockCosts: next })
 }
 /** Add a new foundry raw material (คลังวัตถุดิบโรงหล่อ). Also appears on the
-    ประเมินราคาสินค้าโรงหล่อ page. If `code` was previously a hidden seed material,
+    ถอดแบบ BOQ โรงหล่อ page. If `code` was previously a hidden seed material,
     un-hide it instead of adding a duplicate. */
 export function addFoundryMaterial(m: FoundryMaterial) {
   const isSeed = STOCK_SEED_FOUNDRY_CODES.has(m.code)

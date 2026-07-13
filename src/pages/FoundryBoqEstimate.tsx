@@ -106,7 +106,7 @@ export function FoundryBoqEstimate() {
           {canEdit && <Button variant="ghost" size="sm" onClick={() => openEdit(b)}>แก้ไข</Button>}
           {canEdit && (
             <Button variant="ghost" size="sm" style={{ color: 'var(--kpc-danger)' }}
-              onClick={() => { if (confirm(`ลบประเมินราคา ${b.no} ?`)) removeFoundryBoq(b.no) }}>
+              onClick={() => { if (confirm(`ลบถอดแบบ BOQ ${b.no} ?`)) removeFoundryBoq(b.no) }}>
               ลบ
             </Button>
           )}
@@ -126,7 +126,7 @@ export function FoundryBoqEstimate() {
   return (
     <div className="foundry-theme">
       <PageHeader
-        title="ประเมินราคาสินค้าโรงหล่อ"
+        title="ถอดแบบ BOQ โรงหล่อ"
         sub={`Foundry BOQ · ${all.length} โครงการ`}
         actions={
           <>
@@ -150,7 +150,7 @@ export function FoundryBoqEstimate() {
 
       {all.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>ยังไม่มีการประเมินราคา</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--kpc-text-strong)' }}>ยังไม่มีการถอดแบบ BOQ</div>
           <div style={{ fontSize: 13, color: 'var(--kpc-text-muted)', marginTop: 6 }}>
             กดปุ่ม <strong>สร้างใหม่</strong> เพื่อถอด BOQ วัตถุดิบของโครงการแรก
           </div>
@@ -168,7 +168,7 @@ export function FoundryBoqEstimate() {
 
       <NewFoundryBoqForm open={showForm} editing={editing} onClose={closeForm} onSaved={() => closeForm()} />
 
-      <DocModal open={!!active} title={active ? `ประเมินราคา ${active.no}` : ''} onClose={() => setActive(null)} maxWidth={880}>
+      <DocModal open={!!active} title={active ? `ถอดแบบ BOQ ${active.no}` : ''} onClose={() => setActive(null)} maxWidth={880}>
         {active && <FoundryBoqDoc boq={active} />}
       </DocModal>
     </div>

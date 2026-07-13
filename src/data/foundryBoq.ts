@@ -1,4 +1,4 @@
-/* Foundry BOQ (ประเมินราคาสินค้าโรงหล่อ) — raw-material takeoff catalog.
+/* Foundry BOQ (ถอดแบบ BOQ โรงหล่อ) — raw-material takeoff catalog.
 
    Each foundry product (คาน / เสาเข็ม / เสาอาคาร) is built from a fixed list of
    raw materials. A material's `mode` decides which inputs the takeoff form asks

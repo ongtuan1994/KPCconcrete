@@ -85,7 +85,7 @@ export const RESOURCES: Resource[] = [
   { key: 'stock', route: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-materials', route: '/foundry-materials', label: 'คลังวัตถุดิบโรงหล่อ', section: 'จัดการคลัง · Inventory' },
   { key: 'foundry-stock', route: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
-  { key: 'foundry-boq', route: '/foundry-boq', label: 'ประเมินราคาสินค้าโรงหล่อ', section: 'จัดการคลัง · Inventory' },
+  { key: 'foundry-boq', route: '/foundry-boq', label: 'ถอดแบบ BOQ โรงหล่อ', section: 'จัดการคลัง · Inventory' },
 
   { key: 'customer-master', route: '/customer-master', label: 'ทะเบียนลูกค้า', section: 'ฐานข้อมูล · Database' },
   { key: 'suppliers', route: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', section: 'ฐานข้อมูล · Database' },

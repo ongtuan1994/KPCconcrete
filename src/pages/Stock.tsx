@@ -263,7 +263,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
           <Button
             variant="ghost" size="sm" style={{ color: 'var(--kpc-danger)' }} aria-label="ลบวัตถุดิบ"
             onClick={() => {
-              const extra = isAdded ? '\n(รายการนี้จะหายจากหน้าประเมินราคาสินค้าโรงหล่อด้วย)' : ''
+              const extra = isAdded ? '\n(รายการนี้จะหายจากหน้าถอดแบบ BOQ โรงหล่อด้วย)' : ''
               if (confirm(`ลบวัตถุดิบ "${r.name}" ออกจากคลัง?${extra}`)) removeFoundryMaterial(r.code)
             }}
           >ลบ</Button>
@@ -582,7 +582,7 @@ function ReconcileModal({ open, onClose, materials, scope }: { open: boolean; on
 }
 
 /** เพิ่มวัตถุดิบใหม่ — add a new foundry raw material. It is persisted (shared with
-    the ประเมินราคาสินค้าโรงหล่อ page). Code must be unique within this stock. */
+    the ถอดแบบ BOQ โรงหล่อ page). Code must be unique within this stock. */
 function AddFoundryMaterialModal({ open, onClose, existingCodes }: { open: boolean; onClose: () => void; existingCodes: Set<string> }) {
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -640,7 +640,7 @@ function AddFoundryMaterialModal({ open, onClose, existingCodes }: { open: boole
         </Field>
       </div>
       <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 12, marginBottom: 0 }}>
-        * ยอดคงเหลือเริ่มต้น = 0 (รับเข้าภายหลังผ่านปุ่มรับเข้าวัตถุดิบ) · วัตถุดิบนี้จะไปแสดงในหน้าประเมินราคาสินค้าโรงหล่อโดยกรอกจำนวนได้โดยตรง
+        * ยอดคงเหลือเริ่มต้น = 0 (รับเข้าภายหลังผ่านปุ่มรับเข้าวัตถุดิบ) · วัตถุดิบนี้จะไปแสดงในหน้าถอดแบบ BOQ โรงหล่อโดยกรอกจำนวนได้โดยตรง
       </p>
     </Modal>
   )

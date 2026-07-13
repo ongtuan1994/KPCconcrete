@@ -179,7 +179,7 @@ export function NewFoundryBoqForm({
   return (
     <Modal
       open={open}
-      title={isEdit ? `แก้ไขประเมินราคา ${no}` : 'สร้างประเมินราคาสินค้าโรงหล่อ'}
+      title={isEdit ? `แก้ไขถอดแบบ BOQ ${no}` : 'สร้างถอดแบบ BOQ โรงหล่อ'}
       onClose={onClose}
       maxWidth={960}
       footer={

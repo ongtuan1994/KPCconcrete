@@ -72,7 +72,7 @@ export const NAV: NavGroup[] = [
       { to: '/stock', label: 'คลังวัตถุดิบแพล้นปูน', en: 'Plant Raw Material Stock', icon: <IconStock /> },
       { to: '/foundry-materials', label: 'คลังวัตถุดิบโรงหล่อ', en: 'Foundry Raw Material Stock', icon: <IconStock /> },
       { to: '/foundry-stock', label: 'สต๊อกสินค้าโรงหล่อ', en: 'Foundry Product Stock', icon: <IconStock /> },
-      { to: '/foundry-boq', label: 'ประเมินราคาสินค้าโรงหล่อ', en: 'Foundry BOQ Estimate', icon: <IconTag /> },
+      { to: '/foundry-boq', label: 'ถอดแบบ BOQ โรงหล่อ', en: 'Foundry BOQ Estimate', icon: <IconTag /> },
     ],
   },
   {

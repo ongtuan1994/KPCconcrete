@@ -168,7 +168,7 @@ function buildCreatedIndex(c: CreatedDocs): SearchHit[] {
     hits.push({
       key: `boq:${b.no}`,
       category: 'inventory',
-      group: 'ประเมินราคาสินค้าโรงหล่อ',
+      group: 'ถอดแบบ BOQ โรงหล่อ',
       label: b.no,
       sub: `${b.project} · ${b.date}`,
       route: '/foundry-boq',

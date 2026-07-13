@@ -268,7 +268,7 @@
     box-sizing: border-box !important;
   }
 
-  /* Multi-page BOQ (ประเมินราคาสินค้าโรงหล่อ) — flows onto as many A4 pages as it
+  /* Multi-page BOQ (ถอดแบบ BOQ โรงหล่อ) — flows onto as many A4 pages as it
      needs, with uniform paper margins on EVERY page (via the named @page), and
      no table split across a page break (a table that doesn't fit starts a new
      page instead). */
