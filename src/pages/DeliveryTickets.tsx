@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Checkbox, Select, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, Select, SortDateToggle, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -30,6 +30,7 @@ export function DeliveryTickets() {
   const [year, setYear] = useState(currentBuddhistYear())
   const [month, setMonth] = useState<number | 'all'>(currentMonth())
   const [filter, setFilter] = useState<Filter>('all')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -131,13 +132,18 @@ export function DeliveryTickets() {
     [year, month, allTickets],
   )
   const rows = useMemo(
-    () =>
-      monthRows.filter((t) => {
+    () => {
+      const filtered = monthRows.filter((t) => {
         if (filter !== 'all' && t.type !== filter) return false
         if (query && !`${t.dtNo} ${t.customer} ${t.prod}`.toLowerCase().includes(query.toLowerCase())) return false
         return true
-      }),
-    [monthRows, filter, query],
+      })
+      /* Sort by full date (ปี→เดือน→วันที่) so it holds across the ทุกเดือน view too. */
+      const dnum = (d: string) => parseInt(d.slice(0, 2), 10) || 0
+      const key = (t: DeliveryTicket) => ticketYear(t) * 10000 + t.month * 100 + dnum(t.date)
+      return [...filtered].sort((a, b) => (sortDir === 'asc' ? key(a) - key(b) : key(b) - key(a)))
+    },
+    [monthRows, filter, query, sortDir],
   )
 
   /* Deleted-ticket history for the current period — appended below the list. */
@@ -340,6 +346,7 @@ export function DeliveryTickets() {
             <Pill active={filter === 'โรงหล่อ'} onClick={() => setFilter('โรงหล่อ')}>โรงหล่อ {cnt('โรงหล่อ')}</Pill>
             <Pill active={filter === 'ใช้เอง'} onClick={() => setFilter('ใช้เอง')}>ใช้เอง {cnt('ใช้เอง')}</Pill>
           </div>
+          <SortDateToggle dir={sortDir} onToggle={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} />
         </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="เลขที่ใบจ่าย / ลูกค้า / รหัสสินค้า" value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -49,15 +49,20 @@ export function MonthlyReport() {
   const EN_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
   const totalsOfYM = (y: number, mo: number) => {
     const tix = mergedTickets.filter((tk) => ticketYear(tk) === y && tk.month === mo)
-    const sales = tix.filter((tk) => tk.amount > 0)
+    /* ปริมาณขาย = concrete delivered on customer-sale tickets (ขายลูกค้า), whether or
+       not they have been invoiced/priced yet — volume sold is recognized at delivery. */
+    const custSales = tix.filter((tk) => tk.type === 'ขายลูกค้า')
+    /* ยอดขาย = pre-VAT value of the tax invoices raised for the month (the billed
+       source of truth), NOT the raw ticket amounts. credit/cash split the same
+       invoice subtotals by pay method so they reconcile with ยอดขายสุทธิ. */
     const invs = mergedInvoices.filter((i) => ticketYear(i) === y && i.month === mo)
     return {
-      revenue: sales.reduce((s, tk) => s + tk.amount, 0),
+      revenue: invs.reduce((s, i) => s + i.subtotal, 0),
       m3All: tix.reduce((s, tk) => s + tk.m3, 0),
-      m3Sold: sales.reduce((s, tk) => s + tk.m3, 0),
+      m3Sold: custSales.reduce((s, tk) => s + tk.m3, 0),
       tickets: tix.length,
-      credit: tix.filter((tk) => tk.pay === 'เครดิต').reduce((s, tk) => s + tk.amount, 0),
-      cash: tix.filter((tk) => tk.pay === 'เงินสด' || tk.pay === 'โอน' || tk.pay === 'เช็ค').reduce((s, tk) => s + tk.amount, 0),
+      credit: invs.filter((i) => i.pay === 'เครดิต').reduce((s, i) => s + i.subtotal, 0),
+      cash: invs.filter((i) => i.pay === 'เงินสด' || i.pay === 'โอน' || i.pay === 'เช็ค').reduce((s, i) => s + i.subtotal, 0),
       invoices: invs.length,
       overdueCount: invs.filter((i) => i.status === 'overdue').length,
     }
@@ -210,15 +215,18 @@ export function MonthlyReport() {
   const arOverdueAmt = arOverdueList.reduce((s, d) => s + d.amount, 0)
   const arOverdueCount = arOverdueList.length
 
-  /* ---------- Top 5 customers (merged sales) / debtors (real outstanding) ---------- */
+  /* ---------- Top 5 customers (invoiced sales) / debtors (real outstanding) ----------
+     Ranked by the VAT-inclusive value of the tax invoices raised for the period —
+     same billed source as ยอดขาย/the trend, so a customer appears the moment their
+     sale is invoiced (even if the delivery ticket carried no price). */
   const topCustomers = (() => {
     const map = new Map<string, number>()
-    for (const tk of mergedTickets) {
-      if (ticketYear(tk) !== year || !(isYear || tk.month === month) || tk.amount <= 0) continue
-      map.set(tk.customer, (map.get(tk.customer) ?? 0) + tk.amount)
+    for (const inv of mergedInvoices) {
+      if (ticketYear(inv) !== year || !(isYear || inv.month === month)) continue
+      map.set(inv.customer, (map.get(inv.customer) ?? 0) + inv.total)
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([name, sales]) => ({ label: name, value: Math.round(sales * 1.07 * 100) / 100 }))
+      .map(([name, sales]) => ({ label: name, value: Math.round(sales * 100) / 100 }))
   })()
   const topDebtors = [...arList].filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5)
     .map((d) => ({ label: d.name, value: d.amount }))
@@ -762,7 +770,7 @@ export function LineChart({ data, series2 }: { data: { label: string; value: num
             fontWeight={p.highlight ? 700 : 500}
             fontFamily="var(--kpc-font-mono)"
           >
-            ฿{(p.value / 1_000_000).toFixed(1)}M
+            {bahtShort(p.value)}
           </text>
         </g>
       ))}

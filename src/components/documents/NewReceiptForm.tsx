@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, Checkbox } from '../ui'
-import { CUSTOMER_MASTER, MONTHS } from '../../data/real'
+import { Button, Field, Input, Select, Checkbox, pickerMonths } from '../ui'
+import { CUSTOMER_MASTER } from '../../data/real'
 import { INVOICES, RECEIPTS, baht, LATEST_MONTH, type Invoice, type Receipt } from '../../data/selectors'
 import { addReceipt } from '../../data/createdDocs'
 
@@ -155,7 +155,7 @@ export function NewReceiptForm({
         </Field>
         <Field label="งวด (เดือน)" required>
           <Select value={String(month)} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
+            {pickerMonths().map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
           </Select>
         </Field>
         <Field label="วันที่รับเงิน (1–31)" required>

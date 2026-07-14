@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, Checkbox } from '../ui'
-import { CUSTOMER_MASTER, MONTHS } from '../../data/real'
+import { Button, Field, Input, Select, Checkbox, pickerMonths } from '../ui'
+import { CUSTOMER_MASTER } from '../../data/real'
 import { INVOICES, BILLING_NOTES, baht, LATEST_MONTH, type BillingNote, type Invoice } from '../../data/selectors'
 import { addBillingNote } from '../../data/createdDocs'
 
@@ -112,7 +112,7 @@ export function NewBillingNoteForm({
         </Field>
         <Field label="งวด (เดือน)">
           <Select value={String(month)} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
+            {pickerMonths().map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
           </Select>
         </Field>
         <Field label="วันที่วางบิล (1–31)" hint="เว้นว่างได้">

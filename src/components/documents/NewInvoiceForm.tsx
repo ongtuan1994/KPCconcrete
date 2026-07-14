@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select } from '../ui'
-import { PRODUCTS, CUSTOMER_MASTER, MONTHS, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
+import { Button, Field, Input, Select, pickerMonths } from '../ui'
+import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
 import { INVOICES, baht, cleanProductName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
@@ -421,7 +421,7 @@ export function NewInvoiceForm({
         </Field>
         <Field label="งวด (เดือน)" required>
           <Select value={String(month)} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
+            {pickerMonths().map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}
           </Select>
         </Field>
         <Field label="วันที่ออก (1–31)" required>

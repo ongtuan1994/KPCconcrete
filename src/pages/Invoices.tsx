@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Field, Input, Select, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Field, Input, Select, SortDateToggle, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
@@ -52,6 +52,7 @@ export function Invoices() {
      historical invoices (2564–2568) stay selectable via the year picker. */
   const [year, setYear] = useState<number>(currentBuddhistYear())
   const [filter, setFilter] = useState<Filter>('all')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Invoice | null>(null)
   /* Editing the number of a created invoice (fixing a wrong เลขที่ใบกำกับ). */
@@ -96,13 +97,18 @@ export function Invoices() {
   const yearRows = useMemo(() => allInvoices.filter((i) => ticketYear(i) === year), [allInvoices, year])
   const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((i) => i.month === month)), [month, yearRows])
   const rows = useMemo(
-    () =>
-      monthRows.filter((inv) => {
+    () => {
+      const filtered = monthRows.filter((inv) => {
         if (filter !== 'all' && inv.status !== filter) return false
         if (query && !`${inv.no} ${inv.customer}`.toLowerCase().includes(query.toLowerCase())) return false
         return true
-      }),
-    [monthRows, filter, query],
+      })
+      /* Sort by full date (ปี→เดือน→วันที่) so it holds across the ทุกเดือน view too. */
+      const dnum = (d: string) => parseInt(d.slice(0, 2), 10) || 0
+      const key = (i: Invoice) => ticketYear(i) * 10000 + i.month * 100 + dnum(i.date)
+      return [...filtered].sort((a, b) => (sortDir === 'asc' ? key(a) - key(b) : key(b) - key(a)))
+    },
+    [monthRows, filter, query, sortDir],
   )
   const cnt = (s: InvStatus) => monthRows.filter((i) => i.status === s).length
   const netSales = monthRows.reduce((s, i) => s + i.subtotal, 0)
@@ -245,6 +251,7 @@ export function Invoices() {
             <Pill active={filter === 'paid'} onClick={() => setFilter('paid')}>ชำระแล้ว {cnt('paid')}</Pill>
             {cnt('overdue') > 0 && <Pill active={filter === 'overdue'} onClick={() => setFilter('overdue')}>เกินกำหนด {cnt('overdue')}</Pill>}
           </div>
+          <SortDateToggle dir={sortDir} onToggle={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} />
         </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="เลขที่ใบกำกับ / ลูกค้า" value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -1022,6 +1022,9 @@ export interface CreatedDocs {
   stockMovements: StockMovement[]
   /** ยอดยกมา (opening balance) per plant material code for the stock-card ledger. */
   stockOpenings: Record<string, number>
+  /** As-of date (ISO yyyy-mm-dd) of each ยอดยกมา, keyed by the same material code.
+      Optional/informational — labels the ยกมา row; absent for legacy openings. */
+  stockOpeningDates: Record<string, string>
   /** Foundry finished-goods stock receipts (รับเข้าสต๊อกสินค้าโรงหล่อ) — newest first. */
   foundryReceipts: StockReceipt[]
   /** Stock reconciliations (กระทบยอดคงคลัง) — newest first. */
@@ -1060,7 +1063,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 function read(): CreatedDocs {
   try {
@@ -1127,6 +1130,7 @@ function read(): CreatedDocs {
       stockReceipts: v.stockReceipts ?? [],
       stockMovements: v.stockMovements ?? [],
       stockOpenings: v.stockOpenings ?? {},
+      stockOpeningDates: v.stockOpeningDates ?? {},
       foundryReceipts: v.foundryReceipts ?? [],
       stockReconciles: v.stockReconciles ?? [],
       stockCosts: v.stockCosts ?? {},
@@ -1549,12 +1553,17 @@ export function removeStockMovement(id: string) {
   commit({ ...state, stockMovements: state.stockMovements.filter((m) => m.id !== id) })
 }
 /** Set (or clear) the ยอดยกมา (opening balance) for a plant material's stock card,
-    keyed by StockMaterial.code. Pass undefined / non-finite to clear (⇒ 0). */
-export function setStockOpening(code: string, opening: number | undefined) {
+    keyed by StockMaterial.code. Pass undefined / non-finite to clear (⇒ 0). The
+    optional `date` (ISO yyyy-mm-dd) records the as-of date of that opening balance. */
+export function setStockOpening(code: string, opening: number | undefined, date?: string) {
   const next = { ...state.stockOpenings }
-  if (opening === undefined || !Number.isFinite(opening)) delete next[code]
-  else next[code] = opening
-  commit({ ...state, stockOpenings: next })
+  const nextDates = { ...state.stockOpeningDates }
+  if (opening === undefined || !Number.isFinite(opening)) { delete next[code]; delete nextDates[code] }
+  else {
+    next[code] = opening
+    if (date) nextDates[code] = date; else delete nextDates[code]
+  }
+  commit({ ...state, stockOpenings: next, stockOpeningDates: nextDates })
 }
 /** Set (or clear) the stored unit cost (ต้นทุน/หน่วย · บาท) for a stock material,
     keyed by StockMaterial.code. Pass undefined / a non-finite / negative value to

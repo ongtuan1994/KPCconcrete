@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, Select, Checkbox, SavedBy, type Tone } from '../components/ui'
+import { Button, Badge, SearchInput, Select, Checkbox, SavedBy, SortDateToggle, type Tone } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -11,17 +11,18 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { ReceiptPdfDownload } from '../components/documents/ReceiptPdfDownload'
 import { ReceiptZipDownload } from '../components/documents/ReceiptZipDownload'
 import { IconDownload } from '../components/icons'
-import { RECEIPTS, baht, LATEST_MONTH, monthName, ticketYear, type Receipt } from '../data/selectors'
+import { RECEIPTS, baht, monthName, ticketYear, type Receipt } from '../data/selectors'
 import { useCan } from '../data/auth'
-import { fmtThaiDateTime } from '../utils/datetime'
+import { fmtThaiDateTime, currentMonth, currentBuddhistYear } from '../utils/datetime'
 import { useCreatedDocs, removeReceipt, restoreReceipt, type DeletedReceipt } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const PAY_TONE: Record<string, Tone> = { เงินสด: 'success', โอน: 'info', เครดิต: 'warning', เช็ค: 'warning' }
 
 export function Receipts() {
-  const [year, setYear] = useState(2569)
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  const [year, setYear] = useState(currentBuddhistYear())
+  const [month, setMonth] = useState<number | 'all'>(currentMonth())
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<Receipt | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -56,8 +57,14 @@ export function Receipts() {
   const yearRows = useMemo(() => allReceipts.filter((r) => ticketYear(r) === year), [allReceipts, year])
   const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((r) => r.month === month)), [month, yearRows])
   const rows = useMemo(
-    () => monthRows.filter((r) => !query || `${r.no} ${r.customer}`.toLowerCase().includes(query.toLowerCase())),
-    [monthRows, query],
+    () => {
+      const filtered = monthRows.filter((r) => !query || `${r.no} ${r.customer}`.toLowerCase().includes(query.toLowerCase()))
+      /* Sort by full date (ปี→เดือน→วันที่) so it holds across the ทุกเดือน view too. */
+      const dnum = (d: string) => parseInt(d.slice(0, 2), 10) || 0
+      const key = (r: Receipt) => ticketYear(r) * 10000 + r.month * 100 + dnum(r.date)
+      return [...filtered].sort((a, b) => (sortDir === 'asc' ? key(a) - key(b) : key(b) - key(a)))
+    },
+    [monthRows, query, sortDir],
   )
   const total = monthRows.reduce((s, r) => s + r.amount, 0)
 
@@ -184,6 +191,7 @@ export function Receipts() {
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
             </Select>
           </div>
+          <SortDateToggle dir={sortDir} onToggle={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} />
         </div>
         <div style={{ width: 280 }}>
           <SearchInput placeholder="เลขที่ใบเสร็จ / ลูกค้า" value={query} onChange={(e) => setQuery(e.target.value)} />

@@ -50,6 +50,7 @@ export function MaterialLedger() {
 
   const allMoves = useMemo(() => created.stockMovements.filter((m) => m.code === code).sort(byDateAsc), [created.stockMovements, code])
   const baseOpening = created.stockOpenings[code] ?? 0
+  const openingDate = created.stockOpeningDates[code]
   /* ยอดยกมา for the period = base opening + every movement before `from`. */
   const openingForPeriod = useMemo(() => {
     if (!from) return baseOpening
@@ -80,7 +81,7 @@ export function MaterialLedger() {
   const exportExcel = () => {
     const head = ['เลขที่ใบสำคัญ', 'ผู้จำหน่าย', 'วันที่', 'รับ', 'หน่วยละ', 'จำนวนเงิน', 'จ่าย', 'คงเหลือ', 'หมายเหตุ']
     const body: (string | number)[][] = []
-    body.push(['', '', 'ยกมา', '', '', '', '', openingForPeriod, ''])
+    body.push(['ยกมา', '', openingDate && Math.abs(openingForPeriod - baseOpening) < 0.005 ? fmtDate(openingDate) : '', '', '', '', '', openingForPeriod, ''])
     for (const { m, balance } of cardRows) body.push([
       m.voucherNo ?? '', m.supplier ?? '', fmtDate(m.date),
       m.kind === 'in' ? m.qty : '', m.kind === 'in' ? (m.unitPrice ?? '') : '', m.kind === 'in' ? (m.amount ?? '') : '',
@@ -153,7 +154,7 @@ export function MaterialLedger() {
         <KpiCard label="คงเหลือ · Balance" value={fmt2(closing)} note={`${mat.unit} · ${mat.name}`} invert />
         <KpiCard label="รับเข้ารวม · Received" value={fmt2(totalIn)} note={mat.unit} />
         <KpiCard label="จ่ายออกรวม · Issued" value={fmt2(totalOut)} note={mat.unit} />
-        <KpiCard label="มูลค่ารับเข้า · Value" value={fmt2(totalAmount)} note="บาท" />
+        <KpiCard label="มูลค่ารับเข้า · Value" value={fmt2(totalAmount)} note="บาท · ไม่รวม VAT" />
       </div>
 
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12, alignItems: 'flex-end' }}>
@@ -183,8 +184,9 @@ export function MaterialLedger() {
           </thead>
           <tbody>
             <tr style={{ background: 'var(--kpc-bg-soft, #f8fafc)' }}>
-              <td /><td />
               <td className="th" style={{ fontWeight: 600 }}>ยกมา</td>
+              <td />
+              <td className="mono">{openingDate && Math.abs(openingForPeriod - baseOpening) < 0.005 ? fmtDate(openingDate) : ''}</td>
               <td /><td /><td /><td />
               <td className="num mono" style={{ fontWeight: 700 }}>{fmt2(openingForPeriod)}</td>
               <td />{canEdit && <td />}
@@ -232,11 +234,11 @@ export function MaterialLedger() {
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 12 }}>
-        * คงเหลือ = ยอดยกมา + รับเข้า − จ่ายออก (คำนวณต่อเนื่องตามวันที่) · แก้ไข “เลขที่ใบสำคัญ” ของรายการรับเข้าได้ภายหลังโดยกด “แก้ไข”
+        * คงเหลือ = ยอดยกมา + รับเข้า − จ่ายออก (คำนวณต่อเนื่องตามวันที่) · “หน่วยละ” และ “จำนวนเงิน” เป็นราคาไม่รวม VAT · แก้ไข “เลขที่ใบสำคัญ” ของรายการรับเข้าได้ภายหลังโดยกด “แก้ไข”
       </p>
 
       {form && <MovementForm mat={mat} kind={form.kind} edit={form.edit} onClose={() => setForm(null)} />}
-      {openingOpen && <OpeningForm mat={mat} value={baseOpening} onClose={() => setOpeningOpen(false)} />}
+      {openingOpen && <OpeningForm mat={mat} value={baseOpening} date={openingDate} onClose={() => setOpeningOpen(false)} />}
     </>
   )
 }
@@ -287,8 +289,8 @@ function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: 
         <Field label={`จำนวน (${mat.unit})`} required><Input type="number" min={0} step="any" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
         {isIn && (
           <>
-            <Field label="หน่วยละ (บาท)"><Input type="number" min={0} step="any" placeholder="0" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} /></Field>
-            <Field label="จำนวนเงิน (บาท)"><Input value={amount != null ? fmt2(amount) : ''} readOnly placeholder="คำนวณอัตโนมัติ" /></Field>
+            <Field label="หน่วยละ (บาท)" hint="ราคาไม่รวม VAT"><Input type="number" min={0} step="any" placeholder="0" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} /></Field>
+            <Field label="จำนวนเงิน (บาท)" hint="= จำนวน × หน่วยละ · ไม่รวม VAT"><Input value={amount != null ? fmt2(amount) : ''} readOnly placeholder="คำนวณอัตโนมัติ" /></Field>
             <Field label="ผู้จำหน่าย / Supplier" style={{ gridColumn: '1 / -1' }} hint="ไม่บังคับ · พิมพ์หรือเลือก · แก้ไขภายหลังได้">
               <Input list="ml-supplier-list" placeholder="พิมพ์หรือเลือกซัพพลายเออร์" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
               <datalist id="ml-supplier-list">
@@ -309,11 +311,13 @@ function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: 
 }
 
 /* ───────── ยอดยกมา (opening balance) ───────── */
-function OpeningForm({ mat, value, onClose }: { mat: StockMaterial; value: number; onClose: () => void }) {
+function OpeningForm({ mat, value, date, onClose }: { mat: StockMaterial; value: number; date?: string; onClose: () => void }) {
   const [v, setV] = useState(value ? String(value) : '')
+  const [d, setD] = useState(date ?? '')
   const save = () => {
     const n = Number(v)
-    setStockOpening(mat.code, v.trim() === '' ? undefined : (Number.isFinite(n) ? n : undefined))
+    const cleared = v.trim() === '' || !Number.isFinite(n)
+    setStockOpening(mat.code, cleared ? undefined : n, cleared ? undefined : (d || undefined))
     onClose()
   }
   return (
@@ -324,7 +328,10 @@ function OpeningForm({ mat, value, onClose }: { mat: StockMaterial; value: numbe
       maxWidth={380}
       footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
     >
-      <Field label={`ยอดยกมา (${mat.unit})`}><Input type="number" step="any" placeholder="0" value={v} onChange={(e) => setV(e.target.value)} /></Field>
+      <div className="grid g-2" style={{ gap: 12 }}>
+        <Field label={`ยอดยกมา (${mat.unit})`}><Input type="number" step="any" placeholder="0" value={v} onChange={(e) => setV(e.target.value)} /></Field>
+        <Field label="ณ วันที่" hint="วันที่ของยอดยกมา"><Input type="date" value={d} onChange={(e) => setD(e.target.value)} /></Field>
+      </div>
       <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 10 }}>ยอดคงเหลือเริ่มต้นก่อนรายการแรกของบัตรคุมนี้</p>
     </Modal>
   )

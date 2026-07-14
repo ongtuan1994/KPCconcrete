@@ -80,6 +80,17 @@ export function Pill({ active, onClick, children }: { active?: boolean; onClick?
   )
 }
 
+/** Toggle a document list's sort direction by date. 'asc' = ต้นเดือน→สิ้นเดือน
+    (วันที่ 1 ก่อน), 'desc' = สิ้นเดือน→ต้นเดือน. Shared across the document pages so
+    the control looks and reads the same everywhere. */
+export function SortDateToggle({ dir, onToggle }: { dir: 'asc' | 'desc'; onToggle: () => void }) {
+  return (
+    <Button variant="secondary" onClick={onToggle} title="สลับการเรียงตามวันที่">
+      เรียง: {dir === 'asc' ? 'ต้นเดือน → สิ้นเดือน' : 'สิ้นเดือน → ต้นเดือน'}
+    </Button>
+  )
+}
+
 /* ---------------- Form controls ---------------- */
 interface FieldProps {
   label?: ReactNode
@@ -141,7 +152,7 @@ const THAI_MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์'
 /** Month options for MonthSelect: the seed MONTHS, extended forward through the
     current calendar month while the Buddhist year is 2569 (so ก.ค. and later are
     offered as time passes). Months beyond the seed get a generated Thai label. */
-function pickerMonths(): { num: number; label: string }[] {
+export function pickerMonths(): { num: number; label: string }[] {
   const base = MONTHS.map((m) => ({ num: m.num, label: m.label }))
   const maxSeed = base.length ? base[base.length - 1].num : 0
   const upTo = currentBuddhistYear() === 2569 ? currentMonth() : maxSeed

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, Field, Input, Select, SavedBy } from '../components/ui'
+import { Button, Badge, SearchInput, Field, Input, Select, SavedBy, SortDateToggle } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
@@ -45,6 +45,7 @@ export function FoundryDeliveries() {
   const [query, setQuery] = useState('')
   const [year, setYear] = useState(currentBuddhistYear())
   const [month, setMonth] = useState<number | 'all'>(currentMonth())
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
@@ -78,13 +79,16 @@ export function FoundryDeliveries() {
     [all, year, month],
   )
   const rows = useMemo(
-    () =>
-      scoped.filter((f) => {
+    () => {
+      const filtered = scoped.filter((f) => {
         if (!query) return true
         const hay = `${f.fdNo} ${f.customer} ${f.vehicle} ${f.items.map((i) => i.name).join(' ')}`.toLowerCase()
         return hay.includes(query.toLowerCase())
-      }),
-    [scoped, query],
+      })
+      /* Dates are ISO yyyy-mm-dd → lexical compare sorts chronologically. */
+      return [...filtered].sort((a, b) => (sortDir === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)))
+    },
+    [scoped, query, sortDir],
   )
 
   const totalItems = scoped.reduce((s, f) => s + f.items.reduce((a, it) => a + it.qty, 0), 0)
@@ -168,6 +172,7 @@ export function FoundryDeliveries() {
               {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
             </Select>
           </div>
+          <SortDateToggle dir={sortDir} onToggle={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} />
         </div>
         <div style={{ width: 320 }}>
           <SearchInput placeholder="เลขที่ส่งสินค้า / ลูกค้า / ทะเบียนรถ" value={query} onChange={(e) => setQuery(e.target.value)} />
