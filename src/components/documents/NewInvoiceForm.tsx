@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, Pill, pickerMonths } from '../ui'
+import { Button, Field, Input, Select, Pill, Checkbox, pickerMonths } from '../ui'
 import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
 import { INVOICES, baht, cleanProductName, customerHasLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
@@ -76,7 +76,10 @@ export function NewInvoiceForm({
   const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [pay, setPay] = useState<string>('เงินสด')
-  /* สำนักงานใหญ่ / สาขา — for นิติบุคคล customers' tax invoices. */
+  /* สำนักงานใหญ่ / สาขา — for นิติบุคคล customers' tax invoices. `manualCompany`
+     lets the user force นิติบุคคล when the name was typed straight into นามลูกค้า
+     (e.g. "หจก. ...") so auto-detection via a registered legal name misses it. */
+  const [manualCompany, setManualCompany] = useState(false)
   const [taxBranch, setTaxBranch] = useState<'head' | 'branch'>('head')
   const [branchCode, setBranchCode] = useState<string>('')
   const [refs, setRefs] = useState<string>('')
@@ -89,8 +92,9 @@ export function NewInvoiceForm({
      once the user types their own (real) number. */
   const [no, setNo] = useState<string>('')
   const [noDirty, setNoDirty] = useState(false)
-  /* Show the สำนักงานใหญ่/สาขา control only for นิติบุคคล (customers with a legal name). */
-  const isCompany = customerHasLegalName(customer)
+  /* นิติบุคคล = auto-detected (registered legal name) OR manually ticked. */
+  const autoCompany = customerHasLegalName(customer)
+  const isCompany = autoCompany || manualCompany
 
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
@@ -183,7 +187,7 @@ export function NewInvoiceForm({
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPay('เงินสด')
-    setTaxBranch('head'); setBranchCode('')
+    setManualCompany(false); setTaxBranch('head'); setBranchCode('')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
     setNo(''); setNoDirty(false)
   }
@@ -423,6 +427,11 @@ export function NewInvoiceForm({
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
         </Field>
+        {!autoCompany && (
+          <Field label="ประเภทลูกค้า" hint="ติ๊กเมื่อชื่อนิติบุคคล (บริษัท/หจก.) พิมพ์ไว้ในนามลูกค้าโดยตรง" style={{ gridColumn: '1 / -1' }}>
+            <Checkbox checked={manualCompany} onChange={() => setManualCompany((v) => !v)}>ออกในนามนิติบุคคล (บริษัท / หจก.)</Checkbox>
+          </Field>
+        )}
         {isCompany && (
           <Field label="สำนักงานใหญ่ / สาขา" hint="สำหรับลูกค้านิติบุคคล — พิมพ์บนใบกำกับภาษี" style={{ gridColumn: '1 / -1' }}>
             <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
