@@ -70,7 +70,10 @@ export function NewInvoiceForm({
   const products = useProducts()
   const productMap = useMemo(() => Object.fromEntries(products.map((p) => [p.code, p])) as Record<string, Product>, [products])
   const [customer, setCustomer] = useState('')
-  const [month, setMonth] = useState<number>(LATEST_MONTH)
+  /* Default งวด to the latest selectable month (current month while it's 2569),
+     matching the period picker — so a doc created today lands in this month. */
+  const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
+  const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [pay, setPay] = useState<string>('เงินสด')
   const [refs, setRefs] = useState<string>('')
@@ -174,7 +177,7 @@ export function NewInvoiceForm({
   }, [lines])
 
   const reset = () => {
-    setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setPay('เงินสด')
+    setCustomer(''); setMonth(defaultMonth); setDay(''); setPay('เงินสด')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
     setNo(''); setNoDirty(false)
   }
@@ -305,7 +308,7 @@ export function NewInvoiceForm({
     const first = matched[0]
     const [, mStr, dStr] = first.date.split('-')
     setCustomer(first.customer)
-    setMonth(Number(mStr) || LATEST_MONTH)
+    setMonth(Number(mStr) || defaultMonth)
     setDay(String(Number(dStr) || ''))
 
     /* Group lines by product code + master price (incl VAT). */

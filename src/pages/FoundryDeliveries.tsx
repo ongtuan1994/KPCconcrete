@@ -93,10 +93,18 @@ export function FoundryDeliveries() {
 
   const totalItems = scoped.reduce((s, f) => s + f.items.reduce((a, it) => a + it.qty, 0), 0)
 
+  /* fdNo → เลขใบกำกับภาษี. An invoice raised from a foundry delivery stores that
+     delivery's fdNo in its refs (NewInvoiceForm), so map ref→invoice no. */
+  const invoiceNoByFd = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const inv of created.invoices) for (const ref of inv.refs) if (!m.has(ref)) m.set(ref, inv.no)
+    return m
+  }, [created.invoices])
+
   const exportExcel = () => {
-    const head = ['เลขที่ส่งสินค้า', 'วันที่', 'ลูกค้า', 'ทะเบียนรถ', 'รายการสินค้า', 'รวมจำนวน', 'หมายเหตุ']
+    const head = ['เลขที่ส่งสินค้า', 'วันที่', 'ลูกค้า', 'ทะเบียนรถ', 'เลขใบกำกับภาษี', 'รายการสินค้า', 'รวมจำนวน', 'หมายเหตุ']
     const body = rows.map((f) => [
-      f.fdNo, fmtDate(f.date), f.customer, f.vehicle,
+      f.fdNo, fmtDate(f.date), f.customer, f.vehicle, invoiceNoByFd.get(f.fdNo) ?? '',
       f.items.map((i) => `${i.name} x${i.qty} ${i.unit}`).join(' / '),
       f.items.reduce((a, it) => a + it.qty, 0), f.note ?? '',
     ])
@@ -109,6 +117,14 @@ export function FoundryDeliveries() {
     { key: 'cust', header: 'ลูกค้า', cell: (r) => <span style={{ color: 'var(--kpc-text-strong)' }}>{r.customer}</span> },
     { key: 'veh', header: 'ทะเบียนรถ', align: 'center', cell: (r) => (r.vehicle ? <span className="mono">{r.vehicle}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'items', header: 'รายการ', align: 'right', cell: (r) => <span className="mono">{r.items.length} รายการ</span> },
+    { key: 'inv', header: 'เลขใบกำกับภาษี', cell: (r) => {
+      const no = invoiceNoByFd.get(r.fdNo)
+      return no
+        ? <a className="mono" role="button" tabIndex={0} style={{ color: 'var(--kpc-primary)', textDecoration: 'underline', cursor: 'pointer' }}
+             onClick={() => navigate('/invoices', { state: { openInvoiceNo: no } })}
+             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/invoices', { state: { openInvoiceNo: no } }) }}>{no}</a>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+    }, className: 'docno' },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบส่งสินค้าโรงหล่อ', ref: r.fdNo, label: r.fdNo, sub: `${r.customer} · ${r.items.length} รายการ`, route: '/foundry-deliveries' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },

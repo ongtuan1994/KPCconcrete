@@ -93,6 +93,15 @@ export function Invoices() {
     () => [...new Set([currentBuddhistYear(), ...allInvoices.map((i) => ticketYear(i))])].sort((a, b) => b - a),
     [allInvoices],
   )
+  /* Deep-link: open a specific invoice by no (e.g. clicked from the foundry-delivery
+     table's เลขใบกำกับภาษี column). Clear the router state so a refresh won't re-open. */
+  useEffect(() => {
+    const st = location.state as { openInvoiceNo?: string } | null
+    if (!st?.openInvoiceNo) return
+    const inv = allInvoices.find((i) => i.no === st.openInvoiceNo)
+    if (inv) setActive(inv)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location, navigate, allInvoices])
   /* Filter by year first (keeps the historical import separate), then month. */
   const yearRows = useMemo(() => allInvoices.filter((i) => ticketYear(i) === year), [allInvoices, year])
   const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((i) => i.month === month)), [month, yearRows])

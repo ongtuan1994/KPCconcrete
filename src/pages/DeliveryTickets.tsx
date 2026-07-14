@@ -251,9 +251,12 @@ export function DeliveryTickets() {
       header: 'เลขใบกำกับภาษี',
       cell: (r) => {
         const no = ticketInvoiceNo(r)
-        return no
-          ? <span className="mono" style={{ fontSize: 13 }}>{no}</span>
-          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        if (!no) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+        const open = () => { const inv = invoiceByNo(no); if (inv) setViewInvoice(inv) }
+        return (
+          <a className="mono" role="button" tabIndex={0} style={{ fontSize: 13, color: 'var(--kpc-primary)', textDecoration: 'underline', cursor: 'pointer' }}
+             onClick={open} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open() }}>{no}</a>
+        )
       },
       className: 'docno',
     },

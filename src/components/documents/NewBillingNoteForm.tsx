@@ -34,7 +34,9 @@ export function NewBillingNoteForm({
   extraInvoices: Invoice[]
 }) {
   const [customer, setCustomer] = useState('')
-  const [month, setMonth] = useState<number>(LATEST_MONTH)
+  /* Default งวด to the latest selectable month (current month while it's 2569). */
+  const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
+  const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [err, setErr] = useState<string>('')
@@ -58,7 +60,7 @@ export function NewBillingNoteForm({
   }
 
   const reset = () => {
-    setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setPicked(new Set()); setErr('')
+    setCustomer(''); setMonth(defaultMonth); setDay(''); setPicked(new Set()); setErr('')
   }
 
   const submit = () => {

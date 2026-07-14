@@ -40,7 +40,9 @@ export function NewReceiptForm({
   initialCustomer?: string
 }) {
   const [customer, setCustomer] = useState('')
-  const [month, setMonth] = useState<number>(LATEST_MONTH)
+  /* Default งวด to the latest selectable month (current month while it's 2569). */
+  const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
+  const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [method, setMethod] = useState<string>('เงินสด')
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -70,7 +72,7 @@ export function NewReceiptForm({
   }
 
   const reset = () => {
-    setCustomer(''); setMonth(LATEST_MONTH); setDay(''); setMethod('เงินสด')
+    setCustomer(''); setMonth(defaultMonth); setDay(''); setMethod('เงินสด')
     setPicked(new Set()); setExtraAmount(''); setErr('')
   }
 
