@@ -130,12 +130,12 @@ export function customerLegal(name: string) {
   }
 }
 
-/** Whether a customer is registered as a นิติบุคคล (has a company/legal name) — used
-    to offer the สำนักงานใหญ่/สาขา field on their tax invoices. */
-export function customerHasLegalName(name: string): boolean {
+/** The registered ชื่อนิติบุคคล (legal/company name) of a customer, or '' if none —
+    used to prefill the นิติบุคคล name when issuing a tax invoice in a company's name. */
+export function customerLegalName(name: string): string {
   const c = liveCustomerByName(name) ?? CUSTOMER_MAP[name]
   const ln = c?.legalName?.trim()
-  return !!(ln && ln !== '—')
+  return ln && ln !== '—' ? ln : ''
 }
 
 /* ---------- invoice register (derived from real delivery tickets) ---------- */
@@ -156,6 +156,12 @@ export interface Invoice {
   dueDate: string
   customer: string
   pay: string
+  /** How the invoice is issued: 'person' (บุคคลธรรมดา) or 'company' (นิติบุคคล).
+      Undefined on legacy invoices ⇒ fall back to the customer registry for the name. */
+  entityType?: 'person' | 'company'
+  /** ชื่อนิติบุคคล printed as นามลูกค้า when entityType === 'company' — prefilled from
+      the customer registry's legalName, editable per invoice. */
+  legalName?: string
   /** Tax-branch designation for นิติบุคคล customers. 'head' prints "สำนักงานใหญ่";
       'branch' prints "สาขาที่ <branchCode>". Undefined ⇒ not printed (individuals /
       older invoices). */

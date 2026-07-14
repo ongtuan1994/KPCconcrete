@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select, Pill, Checkbox, pickerMonths } from '../ui'
 import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
-import { INVOICES, baht, cleanProductName, customerHasLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
+import { INVOICES, baht, cleanProductName, customerLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
@@ -76,10 +76,10 @@ export function NewInvoiceForm({
   const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [pay, setPay] = useState<string>('เงินสด')
-  /* สำนักงานใหญ่ / สาขา — for นิติบุคคล customers' tax invoices. `manualCompany`
-     lets the user force นิติบุคคล when the name was typed straight into นามลูกค้า
-     (e.g. "หจก. ...") so auto-detection via a registered legal name misses it. */
-  const [manualCompany, setManualCompany] = useState(false)
+  /* Issue-in-company-name is an explicit opt-in — default บุคคลธรรมดา (individual).
+     When ticked, print the ชื่อนิติบุคคล + สำนักงานใหญ่/สาขา on the tax invoice. */
+  const [asCompany, setAsCompany] = useState(false)
+  const [legalName, setLegalName] = useState<string>('')
   const [taxBranch, setTaxBranch] = useState<'head' | 'branch'>('head')
   const [branchCode, setBranchCode] = useState<string>('')
   const [refs, setRefs] = useState<string>('')
@@ -92,9 +92,11 @@ export function NewInvoiceForm({
      once the user types their own (real) number. */
   const [no, setNo] = useState<string>('')
   const [noDirty, setNoDirty] = useState(false)
-  /* นิติบุคคล = auto-detected (registered legal name) OR manually ticked. */
-  const autoCompany = customerHasLegalName(customer)
-  const isCompany = autoCompany || manualCompany
+  /* When issuing in a company's name, prefill the ชื่อนิติบุคคล from the customer
+     registry (if any) — re-pulls when the customer changes or the box is ticked. */
+  useEffect(() => {
+    if (asCompany) setLegalName(customerLegalName(customer))
+  }, [customer, asCompany])
 
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
@@ -187,7 +189,7 @@ export function NewInvoiceForm({
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPay('เงินสด')
-    setManualCompany(false); setTaxBranch('head'); setBranchCode('')
+    setAsCompany(false); setLegalName(''); setTaxBranch('head'); setBranchCode('')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
     setNo(''); setNoDirty(false)
   }
@@ -358,7 +360,8 @@ export function NewInvoiceForm({
     const invNo = no.trim()
     if (!invNo) return setErr('กรุณากรอกเลขที่ใบกำกับ')
     if (all.some((i) => i.no === invNo)) return setErr(`เลขที่ใบกำกับ ${invNo} ถูกใช้แล้ว`)
-    if (isCompany && taxBranch === 'branch' && !branchCode.trim()) return setErr('กรุณาระบุเลขที่สาขา')
+    if (asCompany && !legalName.trim()) return setErr('กรุณาระบุชื่อนิติบุคคล')
+    if (asCompany && taxBranch === 'branch' && !branchCode.trim()) return setErr('กรุณาระบุเลขที่สาขา')
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const dueDate = plus30(date)
@@ -367,8 +370,10 @@ export function NewInvoiceForm({
     const inv: Invoice = {
       no: invNo,
       month, date, dueDate, customer: customer.trim(), pay,
-      taxBranch: isCompany ? taxBranch : undefined,
-      branchCode: isCompany && taxBranch === 'branch' ? branchCode.trim() : undefined,
+      entityType: asCompany ? 'company' : 'person',
+      legalName: asCompany ? legalName.trim() : undefined,
+      taxBranch: asCompany ? taxBranch : undefined,
+      branchCode: asCompany && taxBranch === 'branch' ? branchCode.trim() : undefined,
       lines: computed.ls,
       refs: [...refs.split(/[,\s]+/), ...fdRefs.split(/[,\s]+/)].map((x) => x.trim()).filter(Boolean),
       subtotal: computed.subtotal, vat: computed.vat, total: computed.total,
@@ -427,23 +432,26 @@ export function NewInvoiceForm({
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
         </Field>
-        {!autoCompany && (
-          <Field label="ประเภทลูกค้า" hint="ติ๊กเมื่อชื่อนิติบุคคล (บริษัท/หจก.) พิมพ์ไว้ในนามลูกค้าโดยตรง" style={{ gridColumn: '1 / -1' }}>
-            <Checkbox checked={manualCompany} onChange={() => setManualCompany((v) => !v)}>ออกในนามนิติบุคคล (บริษัท / หจก.)</Checkbox>
-          </Field>
-        )}
-        {isCompany && (
-          <Field label="สำนักงานใหญ่ / สาขา" hint="สำหรับลูกค้านิติบุคคล — พิมพ์บนใบกำกับภาษี" style={{ gridColumn: '1 / -1' }}>
-            <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <div className="pills">
-                <Pill active={taxBranch === 'head'} onClick={() => setTaxBranch('head')}>สำนักงานใหญ่</Pill>
-                <Pill active={taxBranch === 'branch'} onClick={() => setTaxBranch('branch')}>สาขา</Pill>
+        <Field label="ประเภทผู้ซื้อ" hint="ค่าเริ่มต้น = บุคคลธรรมดา · ติ๊กเมื่อออกในนามบริษัท/หจก." style={{ gridColumn: '1 / -1' }}>
+          <Checkbox checked={asCompany} onChange={() => setAsCompany((v) => !v)}>ออกในนามนิติบุคคล (บริษัท / หจก.)</Checkbox>
+        </Field>
+        {asCompany && (
+          <>
+            <Field label="ชื่อนิติบุคคล" required hint="ดึงจากทะเบียนลูกค้าถ้ามี — แก้ไข/กรอกเองได้ · พิมพ์เป็นนามลูกค้าบนใบกำกับ" style={{ gridColumn: '1 / -1' }}>
+              <Input placeholder="เช่น บริษัท ... จำกัด / หจก. ..." value={legalName} onChange={(e) => setLegalName(e.target.value)} />
+            </Field>
+            <Field label="สำนักงานใหญ่ / สาขา" hint="พิมพ์บนใบกำกับภาษี" style={{ gridColumn: '1 / -1' }}>
+              <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="pills">
+                  <Pill active={taxBranch === 'head'} onClick={() => setTaxBranch('head')}>สำนักงานใหญ่</Pill>
+                  <Pill active={taxBranch === 'branch'} onClick={() => setTaxBranch('branch')}>สาขา</Pill>
+                </div>
+                {taxBranch === 'branch' && (
+                  <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
+                )}
               </div>
-              {taxBranch === 'branch' && (
-                <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
-              )}
-            </div>
-          </Field>
+            </Field>
+          </>
         )}
         <Field label="วิธีชำระ" required>
           <Select value={pay} onChange={(e) => setPay(e.target.value)}>

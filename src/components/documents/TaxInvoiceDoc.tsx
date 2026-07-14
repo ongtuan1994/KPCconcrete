@@ -9,10 +9,16 @@ const num2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2
 
 export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
   const cust = customerLegal(inv.customer)
+  /* นามลูกค้า — the entered ชื่อนิติบุคคล for a company issue, the person's name for an
+     individual issue; legacy invoices (no entityType) keep the registry display name. */
+  const displayName =
+    inv.entityType === 'company' ? (inv.legalName || cust.display)
+      : inv.entityType === 'person' ? cust.person
+        : cust.display
   return (
     <DocShell docType="ใบกำกับภาษี / ใบส่งสินค้า" copyLabel="TAX INVOICE / DELIVERY NOTE">
       <div className="doc-meta-grid">
-        <MetaRow k="นามลูกค้า :" v={cust.display} />
+        <MetaRow k="นามลูกค้า :" v={displayName} />
         <MetaRow k="เลขที่ :" v={inv.no} mono />
         <MetaRow k="ที่อยู่ :" v={cust.address} />
         <MetaRow k="วันที่ :" v={inv.date} mono />
