@@ -16,7 +16,12 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
         <MetaRow k="เลขที่ :" v={inv.no} mono />
         <MetaRow k="ที่อยู่ :" v={cust.address} />
         <MetaRow k="วันที่ :" v={inv.date} mono />
-        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
+        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={
+          <span>
+            <span className="mono">{cust.taxId}</span>
+            {inv.taxBranch && <span> · {inv.taxBranch === 'branch' ? `สาขาที่ ${inv.branchCode}` : 'สำนักงานใหญ่'}</span>}
+          </span>
+        } />
         <MetaRow k="กำหนดชำระ :" v={inv.dueDate} mono />
         <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="อ้างถึงใบส่งสินค้า :" v={<span className="mono">{inv.refs.join(', ')}</span>} />

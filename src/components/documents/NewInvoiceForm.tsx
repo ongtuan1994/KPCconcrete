@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, pickerMonths } from '../ui'
+import { Button, Field, Input, Select, Pill, pickerMonths } from '../ui'
 import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
-import { INVOICES, baht, cleanProductName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
+import { INVOICES, baht, cleanProductName, customerHasLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
@@ -76,6 +76,9 @@ export function NewInvoiceForm({
   const [month, setMonth] = useState<number>(defaultMonth)
   const [day, setDay] = useState<string>('')
   const [pay, setPay] = useState<string>('เงินสด')
+  /* สำนักงานใหญ่ / สาขา — for นิติบุคคล customers' tax invoices. */
+  const [taxBranch, setTaxBranch] = useState<'head' | 'branch'>('head')
+  const [branchCode, setBranchCode] = useState<string>('')
   const [refs, setRefs] = useState<string>('')
   /* Foundry-delivery-note numbers (รหัสใบส่งสินค้าโรงหล่อ) — a second pull source. */
   const [fdRefs, setFdRefs] = useState<string>('')
@@ -86,6 +89,8 @@ export function NewInvoiceForm({
      once the user types their own (real) number. */
   const [no, setNo] = useState<string>('')
   const [noDirty, setNoDirty] = useState(false)
+  /* Show the สำนักงานใหญ่/สาขา control only for นิติบุคคล (customers with a legal name). */
+  const isCompany = customerHasLegalName(customer)
 
   const all = useMemo(() => [...createdInvoices, ...INVOICES], [createdInvoices])
   const allTickets = useMemo(() => [...created.tickets, ...DELIVERY_TICKETS], [created.tickets])
@@ -178,6 +183,7 @@ export function NewInvoiceForm({
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPay('เงินสด')
+    setTaxBranch('head'); setBranchCode('')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
     setNo(''); setNoDirty(false)
   }
@@ -348,6 +354,7 @@ export function NewInvoiceForm({
     const invNo = no.trim()
     if (!invNo) return setErr('กรุณากรอกเลขที่ใบกำกับ')
     if (all.some((i) => i.no === invNo)) return setErr(`เลขที่ใบกำกับ ${invNo} ถูกใช้แล้ว`)
+    if (isCompany && taxBranch === 'branch' && !branchCode.trim()) return setErr('กรุณาระบุเลขที่สาขา')
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const dueDate = plus30(date)
@@ -356,6 +363,8 @@ export function NewInvoiceForm({
     const inv: Invoice = {
       no: invNo,
       month, date, dueDate, customer: customer.trim(), pay,
+      taxBranch: isCompany ? taxBranch : undefined,
+      branchCode: isCompany && taxBranch === 'branch' ? branchCode.trim() : undefined,
       lines: computed.ls,
       refs: [...refs.split(/[,\s]+/), ...fdRefs.split(/[,\s]+/)].map((x) => x.trim()).filter(Boolean),
       subtotal: computed.subtotal, vat: computed.vat, total: computed.total,
@@ -414,6 +423,19 @@ export function NewInvoiceForm({
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
         </Field>
+        {isCompany && (
+          <Field label="สำนักงานใหญ่ / สาขา" hint="สำหรับลูกค้านิติบุคคล — พิมพ์บนใบกำกับภาษี" style={{ gridColumn: '1 / -1' }}>
+            <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="pills">
+                <Pill active={taxBranch === 'head'} onClick={() => setTaxBranch('head')}>สำนักงานใหญ่</Pill>
+                <Pill active={taxBranch === 'branch'} onClick={() => setTaxBranch('branch')}>สาขา</Pill>
+              </div>
+              {taxBranch === 'branch' && (
+                <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
+              )}
+            </div>
+          </Field>
+        )}
         <Field label="วิธีชำระ" required>
           <Select value={pay} onChange={(e) => setPay(e.target.value)}>
             <option value="เงินสด">เงินสด</option>
