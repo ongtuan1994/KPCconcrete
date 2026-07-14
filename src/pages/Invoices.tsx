@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, Pill, SearchInput, Checkbox, SavedBy, Field, Input, Select, SortDateToggle, type Tone } from '../components/ui'
+import { Button, Badge, Pill, SearchInput, Checkbox, Field, Input, Select, SortDateToggle, type Tone } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
@@ -13,7 +13,7 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, SEED_IMPORTED_INVOICES, baht, qm, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, RECEIPTS, baht, qm, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
 import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
 import { PRODUCT_MAP } from '../data/real'
 import { useCan } from '../data/auth'
@@ -105,10 +105,33 @@ export function Invoices() {
   /* Filter by year first (keeps the historical import separate), then month. */
   const yearRows = useMemo(() => allInvoices.filter((i) => ticketYear(i) === year), [allInvoices, year])
   const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((i) => i.month === month)), [month, yearRows])
+
+  /* Effective payment state — the stored `status` goes stale because issuing a
+     receipt (or recording a payment) never rewrites it, and seed invoices are
+     read-only. So an invoice counts as ชำระแล้ว when it was cash/โอน at issue, when
+     a ใบเสร็จรับเงิน references it, or when its recorded payments cover the total. */
+  const allReceipts = useMemo(() => [...created.receipts, ...RECEIPTS], [created.receipts])
+  const receiptNoByInvoice = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const rc of allReceipts) for (const no of rc.invoiceNos) if (!m.has(no)) m.set(no, rc.no)
+    return m
+  }, [allReceipts])
+  const paidByPayments = useMemo(() => {
+    const sum = new Map<string, number>()
+    for (const p of created.invoicePayments) sum.set(p.invoiceNo, (sum.get(p.invoiceNo) ?? 0) + p.amount)
+    return sum
+  }, [created.invoicePayments])
+  const effStatus = (inv: Invoice): InvStatus => {
+    if (inv.status === 'paid') return 'paid'
+    if (receiptNoByInvoice.has(inv.no)) return 'paid'
+    if ((paidByPayments.get(inv.no) ?? 0) >= inv.total - 0.005) return 'paid'
+    return inv.status
+  }
+
   const rows = useMemo(
     () => {
       const filtered = monthRows.filter((inv) => {
-        if (filter !== 'all' && inv.status !== filter) return false
+        if (filter !== 'all' && effStatus(inv) !== filter) return false
         if (query && !`${inv.no} ${inv.customer}`.toLowerCase().includes(query.toLowerCase())) return false
         return true
       })
@@ -117,11 +140,11 @@ export function Invoices() {
       const key = (i: Invoice) => ticketYear(i) * 10000 + i.month * 100 + dnum(i.date)
       return [...filtered].sort((a, b) => (sortDir === 'asc' ? key(a) - key(b) : key(b) - key(a)))
     },
-    [monthRows, filter, query, sortDir],
+    [monthRows, filter, query, sortDir, receiptNoByInvoice, paidByPayments],
   )
-  const cnt = (s: InvStatus) => monthRows.filter((i) => i.status === s).length
+  const cnt = (s: InvStatus) => monthRows.filter((i) => effStatus(i) === s).length
   const netSales = monthRows.reduce((s, i) => s + i.subtotal, 0)
-  const outstanding = monthRows.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.total, 0)
+  const outstanding = monthRows.filter((i) => effStatus(i) !== 'paid').reduce((s, i) => s + i.total, 0)
 
   const toggleOne = (no: string) => {
     const next = new Set(selected)
@@ -158,8 +181,14 @@ export function Invoices() {
     { key: 'm3', header: 'ปริมาณ', align: 'right', cell: (r) => <span className="mono">{qm(r.lines.reduce((s, l) => s + l.qty, 0))} m³</span> },
     { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
-    { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => <Badge tone={STATUS[r.status].tone}>{STATUS[r.status].th}</Badge> },
-    { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => { const s = effStatus(r); return <Badge tone={STATUS[s].tone}>{STATUS[s].th}</Badge> } },
+    { key: 'receipt', header: 'เลขที่ใบเสร็จ', cell: (r) => {
+      const no = receiptNoByInvoice.get(r.no)
+      if (!no) return <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      const open = () => navigate('/receipts', { state: { openReceiptNo: no } })
+      return <a className="mono" role="button" tabIndex={0} style={{ fontSize: 13, color: 'var(--kpc-primary)', textDecoration: 'underline', cursor: 'pointer' }}
+        onClick={open} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open() }}>{no}</a>
+    }, className: 'docno' },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบกำกับภาษี / วางบิล', ref: r.no, label: r.no, sub: `${r.customer} · ${baht(r.total)}`, route: '/invoices' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     {

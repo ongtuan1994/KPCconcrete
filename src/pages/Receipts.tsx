@@ -54,6 +54,15 @@ export function Receipts() {
   )
   const years = useMemo(() => [...new Set(allReceipts.map((r) => ticketYear(r)))].sort((a, b) => b - a), [allReceipts])
   useEffect(() => { if (years.length && !years.includes(year)) setYear(years[0]) }, [years, year])
+  /* Deep-link: open a specific receipt by no (e.g. clicked from the ใบกำกับ table's
+     เลขที่ใบเสร็จ column). Clear router state so a refresh won't re-open. */
+  useEffect(() => {
+    const st = location.state as { openReceiptNo?: string } | null
+    if (!st?.openReceiptNo) return
+    const rc = allReceipts.find((r) => r.no === st.openReceiptNo)
+    if (rc) setActive(rc)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location, navigate, allReceipts])
   const yearRows = useMemo(() => allReceipts.filter((r) => ticketYear(r) === year), [allReceipts, year])
   const monthRows = useMemo(() => (month === 'all' ? yearRows : yearRows.filter((r) => r.month === month)), [month, yearRows])
   const rows = useMemo(
