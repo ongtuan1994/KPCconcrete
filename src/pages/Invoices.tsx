@@ -13,7 +13,7 @@ import { NewReceiptForm } from '../components/documents/NewReceiptForm'
 import { InvoicePdfDownload } from '../components/documents/InvoicePdfDownload'
 import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
-import { INVOICES, SEED_IMPORTED_INVOICES, RECEIPTS, baht, qm, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
+import { INVOICES, SEED_IMPORTED_INVOICES, RECEIPTS, baht, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
 import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
 import { PRODUCT_MAP } from '../data/real'
 import { useCan } from '../data/auth'
@@ -178,9 +178,7 @@ export function Invoices() {
     { key: 'date', header: 'วันที่', cell: (r) => r.date, className: 'date' },
     { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
     { key: 'site', header: 'SITE', align: 'center', cell: (r) => { const s = invoiceSite(r); return <Badge tone={s === 'foundry' ? 'warning' : 'info'} pip={false} square>{s === 'foundry' ? 'โรงหล่อ' : 'แพล้นปูน'}</Badge> } },
-    { key: 'm3', header: 'ปริมาณ', align: 'right', cell: (r) => <span className="mono">{qm(r.lines.reduce((s, l) => s + l.qty, 0))} m³</span> },
     { key: 'total', header: 'ยอดรวม (VAT)', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
-    { key: 'due', header: 'ครบกำหนด', cell: (r) => r.dueDate, className: 'date' },
     { key: 'status', header: 'สถานะ', align: 'center', cell: (r) => { const s = effStatus(r); return <Badge tone={STATUS[s].tone}>{STATUS[s].th}</Badge> } },
     { key: 'receipt', header: 'เลขที่ใบเสร็จ', cell: (r) => {
       const no = receiptNoByInvoice.get(r.no)

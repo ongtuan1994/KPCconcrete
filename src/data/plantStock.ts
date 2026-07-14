@@ -47,6 +47,9 @@ export function plantLiveBalances(created: CreatedDocs): StockMaterial[] {
 
   const recv: Record<string, number> = {}
   for (const r of created.stockReceipts) if (codes.has(r.code)) recv[r.code] = (recv[r.code] ?? 0) + r.qty
+  /* Manual รับเข้า on the บันทึกวัตถุดิบแยกประเภท stock card flows into the balance too,
+     matching the คลังวัตถุดิบแพล้นปูน page (manual จ่ายออก stays on that page). */
+  for (const mv of created.stockMovements) if (mv.kind === 'in' && codes.has(mv.code)) recv[mv.code] = (recv[mv.code] ?? 0) + mv.qty
 
   const adj: Record<string, number> = {}
   for (const rc of created.stockReconciles) {
