@@ -5,7 +5,7 @@
 
 import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, VEHICLES, ZONE_ROUNDTRIP_KM, type DeliveryTicket } from './real'
 import { SEED_IMPORTED_TICKETS } from './ticketSeed'
-import { liveCustomerByName } from './createdDocs'
+import { liveCustomerByName, backfillInvoiceInclVat } from './createdDocs'
 
 export { MONTHS }
 export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
@@ -233,7 +233,7 @@ function buildInvoices(): Invoice[] {
     const dueDate = plus30(date)
     const paid = pay === 'เงินสด' || pay === 'โอน'
     const status: InvStatus = paid ? 'paid' : month < LATEST_MONTH ? 'overdue' : 'pending'
-    invoices.push({ no, month, date, dueDate, customer, pay, lines, refs: ts.map((t) => t.ref), subtotal, vat, total, status })
+    invoices.push(backfillInvoiceInclVat({ no, month, date, dueDate, customer, pay, lines, refs: ts.map((t) => t.ref), subtotal, vat, total, status }))
   }
   return invoices.sort((a, b) => b.month - a.month || dd(b.date) - dd(a.date) || b.no.localeCompare(a.no))
 }

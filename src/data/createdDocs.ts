@@ -1065,13 +1065,39 @@ export interface CreatedDocs {
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
 const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
+const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
+
+/** Backfill the exact VAT-inclusive figures on an invoice saved before the
+ *  priceInclVat/amountInclVat fields existed, so the printed per-unit price / amount
+ *  match the master price exactly instead of the lossy pre-VAT round-trip
+ *  (e.g. 154.00 → 154.01). Only lines charged at the standard master price get the
+ *  incl fields; the stored pre-VAT `price`/`amount` and the invoice totals are never
+ *  changed, so no financial record is altered — this only sharpens the derived
+ *  VAT-inclusive display columns. */
+export function backfillInvoiceInclVat(inv: Invoice): Invoice {
+  let changed = false
+  const lines = inv.lines.map((l) => {
+    if (l.priceInclVat != null) return l // already exact (new invoices)
+    const master = _masterPriceByCode.get(l.code)
+    if (master == null) return l
+    if (Math.round((master / 1.07) * 100) / 100 !== l.price) return l // custom price → leave as-is
+    changed = true
+    const discInclVat = l.discount != null ? Math.round(l.discount * 1.07 * 100) / 100 : 0
+    const amountInclVat = Math.round(l.qty * (master - discInclVat) * 100) / 100
+    // Attach the exact amount only when it stays consistent with the stored pre-VAT amount.
+    const consistent = Math.abs(Math.round((amountInclVat / 1.07) * 100) / 100 - l.amount) <= 0.01
+    return consistent ? { ...l, priceInclVat: master, amountInclVat } : { ...l, priceInclVat: master }
+  })
+  return changed ? { ...inv, lines } : inv
+}
+
 function read(): CreatedDocs {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return empty
     const v = JSON.parse(raw) as Partial<CreatedDocs>
     return {
-      invoices: v.invoices ?? [],
+      invoices: (v.invoices ?? []).map(backfillInvoiceInclVat),
       billingNotes: v.billingNotes ?? [],
       receipts: v.receipts ?? [],
       tickets: v.tickets ?? [],
