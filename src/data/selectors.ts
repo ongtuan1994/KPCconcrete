@@ -148,6 +148,13 @@ export interface InvoiceLine {
   discount?: number;
   /** Pre-VAT line total (after discount). */
   amount: number;
+  /** Exact VAT-inclusive unit price the user entered (BEFORE discount). Printed
+   *  as-is on the tax invoice so it matches the master price exactly. Reconstructing
+   *  it from the 2dp pre-VAT `price` is lossy (e.g. 154.00 → 154.01), so we keep the
+   *  source value. Optional for backward compatibility with older stored invoices. */
+  priceInclVat?: number;
+  /** Exact VAT-inclusive line total (AFTER discount). */
+  amountInclVat?: number;
 }
 export interface Invoice {
   no: string

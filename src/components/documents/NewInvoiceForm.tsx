@@ -134,6 +134,10 @@ export function NewInvoiceForm({
         price: pricePreVat,
         amount: amountPreVat,
         ...(discountPreVat > 0 ? { discount: discountPreVat } : {}),
+        // Keep the exact VAT-inclusive figures for display so the printed price
+        // matches the master exactly (the pre-VAT round-trip is lossy).
+        priceInclVat,
+        amountInclVat,
       })
       totalInclVat += amountInclVat
       /* Only concrete the company actually delivers counts toward the under-load
@@ -163,11 +167,13 @@ export function NewInvoiceForm({
     const transportLine: InvoiceLine | null = surcharge
       ? {
           code: 'TRANSPORT',
-          name: `ค่าขนส่งไม่เต็มเที่ยว (ขาด ${surcharge.shortfall.toFixed(2)} คิว จาก ${TRANSPORT_FULL_M3} คิว)`,
+          name: 'ค่าขนส่งไม่เต็มเที่ยว',
           unit: 'ครั้ง',
           qty: 1,
           price: surcharge.preVat,
           amount: surcharge.preVat,
+          priceInclVat: surcharge.totalWithVat,
+          amountInclVat: surcharge.totalWithVat,
         }
       : null
     if (transportLine && surcharge) {

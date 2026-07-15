@@ -53,8 +53,8 @@ export function TaxInvoiceDoc({ inv }: { inv: Invoice }) {
               <td className="th">{cleanProductName(l.name)}</td>
               <td className="num mono">{qm(l.qty)}</td>
               <td className="ctr">{l.unit}</td>
-              <td className="num mono">{num2(incl(l.price))}</td>
-              <td className="num mono">{baht(incl(l.amount))}</td>
+              <td className="num mono">{num2(l.priceInclVat ?? incl(l.price))}</td>
+              <td className="num mono">{baht(l.amountInclVat ?? incl(l.amount))}</td>
             </tr>
           ))}
           {inv.lines.length < 4 &&
