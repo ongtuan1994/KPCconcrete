@@ -21,6 +21,11 @@ export function MonthlyReport() {
   const priceOf = (code: string) => products.find((p) => p.code === code) ?? PRODUCT_MAP[code]
   const mergedTickets = [...created.tickets, ...DELIVERY_TICKETS]
   const mergedInvoices = [...created.invoices, ...INVOICES]
+  /* An invoice is a โรงหล่อ invoice when any of its lines is a foundry product
+     (same SITE test the ใบกำกับภาษี page uses), resolved against the merged product
+     list so user-added foundry products count too. Plant invoices are the rest. */
+  const isFoundryInvoice = (inv: { lines: { code: string }[] }) =>
+    inv.lines.some((l) => priceOf(l.code)?.site === 'foundry')
 
   /* Available ปี (พ.ศ.) from the data, newest first. Default to the latest year,
      and within it the latest month that actually has data. */
@@ -58,6 +63,8 @@ export function MonthlyReport() {
     const invs = mergedInvoices.filter((i) => ticketYear(i) === y && i.month === mo)
     return {
       revenue: invs.reduce((s, i) => s + i.subtotal, 0),
+      /* แพล้นปูน only — excludes โรงหล่อ invoices, for the plant trend line. */
+      plantRevenue: invs.filter((i) => !isFoundryInvoice(i)).reduce((s, i) => s + i.subtotal, 0),
       m3All: tix.reduce((s, tk) => s + tk.m3, 0),
       m3Sold: custSales.reduce((s, tk) => s + tk.m3, 0),
       tickets: tix.length,
@@ -76,7 +83,7 @@ export function MonthlyReport() {
     let m = anchorMonth - (5 - i), y = year
     while (m <= 0) { m += 12; y -= 1 }
     const tt = totalsOfYM(y, m)
-    return { year: y, month: m, label: EN_SHORT[m - 1], revenue: tt.revenue, m3: tt.m3All, tickets: tt.tickets }
+    return { year: y, month: m, label: EN_SHORT[m - 1], revenue: tt.revenue, plantRevenue: tt.plantRevenue, m3: tt.m3All, tickets: tt.tickets }
   })
 
   /* Period totals — full selected YEAR when in "ทั้งปี" mode, else the single month. */
@@ -148,19 +155,15 @@ export function MonthlyReport() {
     return segs
   })()
 
-  /* Foundry sales value keyed by (พ.ศ.×100 + month) — so the rolling trend can look
-     it up across year boundaries. */
+  /* Foundry sales value keyed by (พ.ศ.×100 + month) — the total of the tax invoices
+     issued for โรงหล่อ each month (pre-VAT subtotal, to sit on the same basis as the
+     แพล้นปูน trend line). Keyed so the rolling trend can cross year boundaries. */
   const foundrySalesByYM = (() => {
     const map = new Map<number, number>()
-    for (const fd of created.foundryDeliveries) {
-      const key = yearOfIso(fd.date) * 100 + Number(fd.date.slice(5, 7))
-      let v = 0
-      for (const it of fd.items) {
-        const p = priceOf(it.code)
-        const price = p?.pickupPrices && it.pickup ? p.pickupPrices[it.pickup] : p?.price ?? 0
-        v += it.qty * price
-      }
-      map.set(key, (map.get(key) ?? 0) + v)
+    for (const inv of mergedInvoices) {
+      if (!isFoundryInvoice(inv)) continue
+      const key = ticketYear(inv) * 100 + inv.month
+      map.set(key, (map.get(key) ?? 0) + inv.subtotal)
     }
     return map
   })()
@@ -489,7 +492,8 @@ export function MonthlyReport() {
             <LineChart
               data={trendData.map((m) => ({
                 label: m.label,
-                value: m.revenue,
+                /* แพล้นปูน line — plant invoices only (โรงหล่อ drawn separately as series2). */
+                value: m.plantRevenue,
                 highlight: !isYear && m.month === month && m.year === year,
               }))}
               /* Real foundry sales value per month (0 where none yet). */
