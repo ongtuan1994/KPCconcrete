@@ -435,6 +435,7 @@ export function NewInvoiceForm({
             onChange={(e) => setCustomer(e.target.value)}
           />
           <datalist id="kpc-customer-list">
+            {created.customersAdded.map((c) => <option key={c.id} value={c.name} />)}
             {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
         </Field>

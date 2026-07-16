@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, Checkbox, pickerMonths } from '../ui'
+import { Button, Field, Input, Select, Checkbox, Pill, pickerMonths } from '../ui'
 import { CUSTOMER_MASTER } from '../../data/real'
-import { INVOICES, BILLING_NOTES, baht, LATEST_MONTH, type BillingNote, type Invoice } from '../../data/selectors'
-import { addBillingNote } from '../../data/createdDocs'
+import { INVOICES, BILLING_NOTES, baht, customerLegalName, LATEST_MONTH, type BillingNote, type Invoice } from '../../data/selectors'
+import { addBillingNote, useCreatedDocs } from '../../data/createdDocs'
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
 function pad4(n: number) { return String(n).padStart(4, '0') }
@@ -40,6 +40,22 @@ export function NewBillingNoteForm({
   const [day, setDay] = useState<string>('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [err, setErr] = useState<string>('')
+  /* Issue-in-company-name is an explicit opt-in — default บุคคลธรรมดา (individual).
+     Mirrors the tax-invoice form so a ใบวางบิล can print the นิติบุคคล name too. */
+  const [asCompany, setAsCompany] = useState(false)
+  const [legalName, setLegalName] = useState<string>('')
+  const [taxBranch, setTaxBranch] = useState<'head' | 'branch'>('head')
+  const [branchCode, setBranchCode] = useState<string>('')
+  /* Prefill the ชื่อนิติบุคคล from the customer registry when ticking company. */
+  useEffect(() => {
+    if (asCompany) setLegalName(customerLegalName(customer))
+  }, [customer, asCompany])
+
+  /* Customer suggestions from the LIVE registry (ทะเบียนลูกค้า): quick-added
+     customers first, then the seed master — same source the registry page uses,
+     so a newly-added customer is selectable here too. */
+  const created = useCreatedDocs()
+  const customerList = useMemo(() => [...created.customersAdded, ...CUSTOMER_MASTER], [created.customersAdded])
 
   const allBns = useMemo(() => [...createdBns, ...BILLING_NOTES], [createdBns])
   const allInv = useMemo(() => [...extraInvoices, ...INVOICES], [extraInvoices])
@@ -61,12 +77,15 @@ export function NewBillingNoteForm({
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPicked(new Set()); setErr('')
+    setAsCompany(false); setLegalName(''); setTaxBranch('head'); setBranchCode('')
   }
 
   const submit = () => {
     setErr('')
     if (!customer.trim()) return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     if (selected.length === 0) return setErr('กรุณาเลือกใบกำกับที่ต้องการรวมในใบวางบิลอย่างน้อย 1 ใบ')
+    if (asCompany && !legalName.trim()) return setErr('กรุณาระบุชื่อนิติบุคคล')
+    if (asCompany && taxBranch === 'branch' && !branchCode.trim()) return setErr('กรุณาระบุเลขที่สาขา')
     const dnum = parseInt(day, 10)
     const dateStr = dnum && dnum >= 1 && dnum <= 31 ? `${pad2(dnum)}/${pad2(month)}/69` : `__/${pad2(month)}/69`
 
@@ -75,6 +94,10 @@ export function NewBillingNoteForm({
       month,
       date: dateStr,
       customer: customer.trim(),
+      entityType: asCompany ? 'company' : 'person',
+      legalName: asCompany ? legalName.trim() : undefined,
+      taxBranch: asCompany ? taxBranch : undefined,
+      branchCode: asCompany && taxBranch === 'branch' ? branchCode.trim() : undefined,
       invoices: selected.slice().sort((a, b) => parseInt(a.date, 10) - parseInt(b.date, 10)),
       total: Math.round(total * 100) / 100,
     }
@@ -109,9 +132,30 @@ export function NewBillingNoteForm({
             onChange={(e) => { setCustomer(e.target.value); setPicked(new Set()) }}
           />
           <datalist id="kpc-customer-list-bn">
-            {CUSTOMER_MASTER.map((c) => <option key={c.id} value={c.name} />)}
+            {customerList.map((c) => <option key={c.id} value={c.name} />)}
           </datalist>
         </Field>
+        <Field label="ประเภทผู้ซื้อ" hint="ค่าเริ่มต้น = บุคคลธรรมดา · ติ๊กเมื่อออกในนามบริษัท/หจก." style={{ gridColumn: '1 / -1' }}>
+          <Checkbox checked={asCompany} onChange={() => setAsCompany((v) => !v)}>ออกในนามนิติบุคคล (บริษัท / หจก.)</Checkbox>
+        </Field>
+        {asCompany && (
+          <>
+            <Field label="ชื่อนิติบุคคล" required hint="ดึงจากทะเบียนลูกค้าถ้ามี — แก้ไข/กรอกเองได้ · พิมพ์เป็นนามลูกค้าบนใบวางบิล" style={{ gridColumn: '1 / -1' }}>
+              <Input placeholder="เช่น บริษัท ... จำกัด / หจก. ..." value={legalName} onChange={(e) => setLegalName(e.target.value)} />
+            </Field>
+            <Field label="สำนักงานใหญ่ / สาขา" hint="พิมพ์บนใบวางบิล" style={{ gridColumn: '1 / -1' }}>
+              <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="pills">
+                  <Pill active={taxBranch === 'head'} onClick={() => setTaxBranch('head')}>สำนักงานใหญ่</Pill>
+                  <Pill active={taxBranch === 'branch'} onClick={() => setTaxBranch('branch')}>สาขา</Pill>
+                </div>
+                {taxBranch === 'branch' && (
+                  <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
+                )}
+              </div>
+            </Field>
+          </>
+        )}
         <Field label="งวด (เดือน)">
           <Select value={String(month)} onChange={(e) => setMonth(Number(e.target.value))}>
             {pickerMonths().map((m) => <option key={m.num} value={m.num}>{m.label}</option>)}

@@ -320,7 +320,19 @@ export const RECEIPTS: Receipt[] = (() => {
 })()
 
 /* ---------- billing notes (group unpaid invoices per customer per month) ---------- */
-export interface BillingNote { no: string; month: number; date: string; customer: string; invoices: Invoice[]; total: number; createdBy?: string; createdAt?: string }
+export interface BillingNote {
+  no: string; month: number; date: string; customer: string; invoices: Invoice[]; total: number
+  /** How the billing note is issued: 'person' (บุคคลธรรมดา) or 'company' (นิติบุคคล).
+      Undefined on legacy notes ⇒ fall back to the customer registry for the name. */
+  entityType?: 'person' | 'company'
+  /** ชื่อนิติบุคคล printed as นามลูกค้า when entityType === 'company'. */
+  legalName?: string
+  /** Tax-branch designation for นิติบุคคล: 'head' → สำนักงานใหญ่, 'branch' → สาขาที่ <branchCode>. */
+  taxBranch?: 'head' | 'branch'
+  /** Branch code (เลขที่สาขา) — set only when taxBranch === 'branch'. */
+  branchCode?: string
+  createdBy?: string; createdAt?: string
+}
 export const BILLING_NOTES: BillingNote[] = (() => {
   const credit = INVOICES.filter((i) => i.status !== 'paid')
   const byKey = new Map<string, Invoice[]>()

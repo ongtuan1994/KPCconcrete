@@ -4,13 +4,24 @@ import { bahtText } from '../../data/bahtText'
 
 export function BillingNoteDoc({ bn }: { bn: BillingNote }) {
   const cust = customerLegal(bn.customer)
+  /* นามลูกค้า — the entered ชื่อนิติบุคคล for a company issue, the person's name for an
+     individual issue; legacy notes (no entityType) keep the registry display name. */
+  const displayName =
+    bn.entityType === 'company' ? (bn.legalName || cust.display)
+      : bn.entityType === 'person' ? cust.person
+        : cust.display
   return (
     <DocShell docType="ใบวางบิล / ใบแจ้งหนี้" copyLabel="ต้นฉบับ / Original">
       <div className="doc-meta-grid">
-        <MetaRow k="นามลูกค้า :" v={cust.display} />
+        <MetaRow k="นามลูกค้า :" v={displayName} />
         <MetaRow k="เลขที่เอกสาร :" v={bn.no} mono />
         <MetaRow k="ที่อยู่ :" v={cust.address} />
-        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
+        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={
+          <span>
+            <span className="mono">{cust.taxId}</span>
+            {bn.taxBranch && <span> · {bn.taxBranch === 'branch' ? `สาขาที่ ${bn.branchCode}` : 'สำนักงานใหญ่'}</span>}
+          </span>
+        } />
         <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="จำนวนรายการ :" v={`${bn.invoices.length} ใบ`} />
       </div>
