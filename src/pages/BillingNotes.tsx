@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, MonthSelect, SavedBy } from '../components/ui'
+import { Button, Badge, SearchInput, MonthSelect, SavedBy, pickerMonths } from '../components/ui'
 import { AuditButton } from '../components/AuditButton'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
@@ -12,7 +12,10 @@ import { useCreatedDocs, removeBillingNote, CAN_DELETE } from '../data/createdDo
 import { downloadCsv } from '../utils/csv'
 
 export function BillingNotes() {
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* Default the filter to the latest selectable month (current month while it's
+     2569) so freshly issued billing notes show up without switching งวด. */
+  const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
+  const [month, setMonth] = useState<number | 'all'>(defaultMonth)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<BillingNote | null>(null)
   const [showForm, setShowForm] = useState(false)

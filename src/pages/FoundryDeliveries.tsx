@@ -8,14 +8,15 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
 import { FoundryDeliveryDoc } from '../components/documents/FoundryDeliveryDoc'
+import { TaxInvoiceDoc } from '../components/documents/TaxInvoiceDoc'
 import { NewCustomerForm } from '../components/documents/NewCustomerForm'
 import { IconPlus } from '../components/icons'
 import { CUSTOMER_MASTER, type Product } from '../data/real'
-import { cleanProductName as cleanName, monthName } from '../data/selectors'
+import { cleanProductName as cleanName, monthName, type Invoice } from '../data/selectors'
 import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
 import { useCan } from '../data/auth'
 import {
-  useCreatedDocs, useProducts, addFoundryDelivery, removeFoundryDelivery, restoreFoundryDelivery, addProduct,
+  useCreatedDocs, useProducts, addFoundryDelivery, removeFoundryDelivery, restoreFoundryDelivery, addProduct, removeInvoice,
   type FoundryDelivery, type FoundryDeliveryItem, type DeletedFoundryDelivery,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -49,6 +50,8 @@ export function FoundryDeliveries() {
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<FoundryDeliveryInitial | null>(null)
   const [active, setActive] = useState<FoundryDelivery | null>(null)
+  /* An issued invoice being viewed from a delivery note (with a cancel action). */
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const created = useCreatedDocs()
   const canDelete = useCan('foundry-deliveries').edit
   const location = useLocation()
@@ -100,6 +103,22 @@ export function FoundryDeliveries() {
     for (const inv of created.invoices) for (const ref of inv.refs) if (!m.has(ref)) m.set(ref, inv.no)
     return m
   }, [created.invoices])
+  /* An invoice raised from a foundry delivery is always user-created, so look it
+     up in created.invoices to view/cancel it. */
+  const invoiceByNo = (no: string): Invoice | undefined => created.invoices.find((i) => i.no === no)
+  /* Cancel an issued invoice (e.g. one raised by mistake) — removeInvoice drops
+     the user-created invoice so its fdNo becomes re-issuable, and keeps the
+     deletion in the ใบกำกับภาษี audit history. */
+  const cancelInvoice = (no: string) => {
+    if (!no) return
+    const inv = invoiceByNo(no)
+    if (!inv) return
+    if (confirm(`ยกเลิกใบกำกับภาษี ${no} ?\nใบส่งสินค้าที่เกี่ยวข้องจะกลับมาออกใบกำกับใหม่ได้`)) {
+      removeInvoice(inv)
+      setViewInvoice(null)
+      setActive(null)
+    }
+  }
 
   const exportExcel = () => {
     const head = ['เลขที่ส่งสินค้า', 'วันที่', 'ลูกค้า', 'ทะเบียนรถ', 'เลขใบกำกับภาษี', 'รายการสินค้า', 'รวมจำนวน', 'หมายเหตุ']
@@ -226,11 +245,32 @@ export function FoundryDeliveries() {
         open={!!active}
         title={active ? `ใบส่งสินค้าชั่วคราว ${active.fdNo}` : ''}
         onClose={() => setActive(null)}
-        extraActions={active ? (
-          <Button variant="tonal" onClick={() => navigate('/invoices', { state: { invoiceFromFoundry: active.fdNo } })}>ออกใบกำกับภาษี</Button>
-        ) : undefined}
+        extraActions={active ? (() => {
+          const no = invoiceNoByFd.get(active.fdNo)
+          return no ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--kpc-text-muted)', flexWrap: 'wrap' }}>
+              ออกใบกำกับภาษี <span className="mono" style={{ color: 'var(--kpc-primary-ink, #1d4ed8)', fontWeight: 600 }}>{no}</span> แล้ว
+              <Button variant="secondary" size="sm" onClick={() => { const inv = invoiceByNo(no); if (inv) { setActive(null); setViewInvoice(inv) } }}>เปิดดูใบกำกับ</Button>
+              <Button variant="secondary" size="sm" onClick={() => cancelInvoice(no)} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
+            </span>
+          ) : (
+            <Button variant="tonal" onClick={() => navigate('/invoices', { state: { invoiceFromFoundry: active.fdNo } })}>ออกใบกำกับภาษี</Button>
+          )
+        })() : undefined}
       >
         {active && <FoundryDeliveryDoc fd={active} />}
+      </DocModal>
+
+      {/* View an issued invoice (from a delivery note) with a cancel action. */}
+      <DocModal
+        open={!!viewInvoice}
+        title={viewInvoice ? `ใบกำกับภาษี ${viewInvoice.no}` : ''}
+        onClose={() => setViewInvoice(null)}
+        extraActions={viewInvoice ? (
+          <Button variant="secondary" onClick={() => cancelInvoice(viewInvoice.no)} style={{ color: 'var(--kpc-danger)' }}>ยกเลิกใบกำกับ</Button>
+        ) : undefined}
+      >
+        {viewInvoice && <TaxInvoiceDoc inv={viewInvoice} />}
       </DocModal>
     </div>
   )

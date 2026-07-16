@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/Layout'
-import { Button, Badge, SearchInput, MonthSelect } from '../components/ui'
+import { Button, Badge, SearchInput, MonthSelect, pickerMonths } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { DocModal } from '../components/documents/DocModal'
@@ -38,7 +38,10 @@ function summarize(bn: BillingNote, ticketByRef: Map<string, DeliveryTicket>): B
 }
 
 export function BillingSummary() {
-  const [month, setMonth] = useState<number | 'all'>(LATEST_MONTH)
+  /* Default the filter to the latest selectable month (current month while it's
+     2569) so the newest billing notes/summaries show up without switching งวด. */
+  const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
+  const [month, setMonth] = useState<number | 'all'>(defaultMonth)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<BillingNote | null>(null)
   const created = useCreatedDocs()

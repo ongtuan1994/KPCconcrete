@@ -331,6 +331,13 @@ export function Invoices() {
         extraActions={
           active ? (
             <>
+              {/* Credit / unpaid invoices become a ลูกหนี้ balance automatically —
+                 offer a quick jump to verify the debtor on the ลูกหนี้ page. */}
+              {effStatus(active) !== 'paid' && (
+                <Button variant="secondary" onClick={() => { setActive(null); navigate('/ledger') }}>
+                  ดูในลูกหนี้
+                </Button>
+              )}
               {/* เลขที่ใบกำกับ can be fixed on created invoices (seed/imported are read-only). */}
               {created.invoices.some((i) => i.no === active.no) && (
                 <Button variant="secondary" onClick={() => { const inv = active; setActive(null); setNewNo(inv.no); setNoErr(''); setEditNoInv(inv) }}>
