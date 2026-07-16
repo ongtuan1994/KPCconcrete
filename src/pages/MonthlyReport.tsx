@@ -91,11 +91,11 @@ export function MonthlyReport() {
     ? Array.from({ length: 12 }, (_, i) => i + 1).reduce(
         (acc, mo) => {
           const mt = totalsOf(mo)
-          acc.revenue += mt.revenue; acc.m3All += mt.m3All; acc.m3Sold += mt.m3Sold; acc.tickets += mt.tickets
+          acc.revenue += mt.revenue; acc.plantRevenue += mt.plantRevenue; acc.m3All += mt.m3All; acc.m3Sold += mt.m3Sold; acc.tickets += mt.tickets
           acc.credit += mt.credit; acc.cash += mt.cash; acc.invoices += mt.invoices; acc.overdueCount += mt.overdueCount
           return acc
         },
-        { revenue: 0, m3All: 0, m3Sold: 0, tickets: 0, credit: 0, cash: 0, invoices: 0, overdueCount: 0 },
+        { revenue: 0, plantRevenue: 0, m3All: 0, m3Sold: 0, tickets: 0, credit: 0, cash: 0, invoices: 0, overdueCount: 0 },
       )
     : totalsOf(month)
   const net = t.revenue
@@ -104,8 +104,10 @@ export function MonthlyReport() {
   const grossProfit = net - estCost
 
   /* ---------- SITE breakdown ---------- */
-  /* แพล้นปูน = the concrete business above (merged tickets/invoices). */
-  const plant = { sales: net, m3All: t.m3All, m3Sold: t.m3Sold, tickets: t.tickets }
+  /* แพล้นปูน = the concrete business. ยอดขาย counts plant invoices only (excludes
+     โรงหล่อ invoices) so the SITE card is สินค้าแพล้นปูนขายให้ลูกค้าล้วน — matching the
+     แพล้นปูน trend line. (net/summary above stays plant+foundry for the grand total.) */
+  const plant = { sales: t.plantRevenue, m3All: t.m3All, m3Sold: t.m3Sold, tickets: t.tickets }
   /* โรงหล่อ = foundry deliveries + production, filtered to the selected period. */
   const monthOf = (iso: string) => Number(iso.slice(5, 7))
   const inPeriod = (iso: string) => yearOfIso(iso) === year && (isYear || monthOf(iso) === month)
