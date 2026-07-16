@@ -744,12 +744,25 @@ export function LineChart({ data, series2 }: { data: { label: string; value: num
       <path d={areaD} fill="var(--kpc-primary-50, #eef2ff)" opacity="0.55" />
       <path d={pathD} fill="none" stroke="var(--kpc-primary, #0E0EE6)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
 
-      {/* foundry line + dots (no value labels — keeps the chart readable) */}
+      {/* foundry line + dots + value labels (amber, above each dot) */}
       {points2 && (
         <>
           <path d={pathD2} fill="none" stroke={FOUNDRY} strokeWidth="1.2" strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round" />
           {points2.map((p, i) => (
-            <circle key={`f${i}`} cx={p.x} cy={p.y} r={3} fill={FOUNDRY} stroke="#fff" strokeWidth="1.5" />
+            <g key={`f${i}`}>
+              <circle cx={p.x} cy={p.y} r={3} fill={FOUNDRY} stroke="#fff" strokeWidth="1.5" />
+              <text
+                x={p.x}
+                y={p.y - 8}
+                fontSize="10"
+                textAnchor="middle"
+                fill={FOUNDRY}
+                fontWeight={600}
+                fontFamily="var(--kpc-font-mono)"
+              >
+                {bahtShort(p.value)}
+              </text>
+            </g>
           ))}
         </>
       )}
