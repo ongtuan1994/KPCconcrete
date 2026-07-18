@@ -18,7 +18,7 @@ import type { Employee } from './employees'
 import { CREDITOR_MASTER, type Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
-import { createRemoteSync } from './supabase'
+import { createRemoteSync, SUPABASE_ENABLED } from './supabase'
 import { SEED_FUEL_EXPENSES } from './seedFuelExpenses'
 
 /** Audit stamp applied to every newly saved record: who saved it and when.
@@ -1089,6 +1089,8 @@ export interface CreatedDocs {
   expenseRecords: ExpenseRecord[]
   /** User-added ประเภทบัญชี cost center (beyond GOODS_PAYMENT_CATEGORIES). */
   costCenters: string[]
+  /** Set once the real ค่าน้ำมัน history (SEED_FUEL_EXPENSES) has been merged in. */
+  fuelSeedV1?: boolean
   /** สินทรัพย์ (asset registry) — seeded from SEED_ASSETS, then user-maintained. */
   assets: Asset[]
   /** ไฮดีเซล price schedule (บาท/ลิตร by date) — prefills the ค่าน้ำมัน form from the
@@ -1169,7 +1171,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], fuelSeedV1: false, dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
 
@@ -1230,6 +1232,7 @@ function read(): CreatedDocs {
       goodsPayments: v.goodsPayments ?? [],
       expenseRecords: v.expenseRecords ?? [],
       costCenters: v.costCenters ?? [],
+      fuelSeedV1: v.fuelSeedV1 ?? false,
       /* Migrate the legacy single last-used price into an open-ended schedule point. */
       dieselPrices: v.dieselPrices ?? (() => {
         const legacy = (v as { dieselPricePerLiter?: number }).dieselPricePerLiter
@@ -1311,6 +1314,35 @@ function commit(next: CreatedDocs) {
   pushRemote(state)
 }
 
+/* ── Fuel-expense seed (real ค่าน้ำมัน history) ──────────────────────────────────
+   Merged into the shared dataset exactly once, keyed on the in-blob flag
+   `fuelSeedV1`. Content-aware so it can never double-add a fill; it also self-heals
+   any pre-existing duplicate ids / fuel fills (ordinary expenses are untouched). */
+const fuelFillKey = (e: ExpenseRecord): string | null =>
+  e.category === 'ค่าน้ำมัน' && e.vehicleId
+    ? `f|${e.date}|${e.vehicleId}|${e.odometer ?? ''}|${e.liters ?? ''}|${e.pricePerLiter ?? ''}|${e.amount}`
+    : null
+function dedupeExpenses(list: ExpenseRecord[]): ExpenseRecord[] {
+  const seenId = new Set<string>(); const seenFuel = new Set<string>()
+  return list.filter((e) => {
+    if (seenId.has(e.id)) return false
+    const fk = fuelFillKey(e)
+    if (fk && seenFuel.has(fk)) return false
+    seenId.add(e.id); if (fk) seenFuel.add(fk)
+    return true
+  })
+}
+/** Apply SEED_FUEL_EXPENSES once (flag `fuelSeedV1`), de-duping first. Returns the
+    SAME reference when already applied and already clean ⇒ callers can skip writing. */
+function applyFuelSeed(s: CreatedDocs): CreatedDocs {
+  const cleaned = dedupeExpenses(s.expenseRecords)
+  if (s.fuelSeedV1) return cleaned.length === s.expenseRecords.length ? s : { ...s, expenseRecords: cleaned }
+  const haveId = new Set(cleaned.map((e) => e.id))
+  const haveFuel = new Set(cleaned.map(fuelFillKey).filter(Boolean) as string[])
+  const add = SEED_FUEL_EXPENSES.filter((e) => !haveId.has(e.id) && !haveFuel.has(fuelFillKey(e) as string))
+  return { ...s, expenseRecords: [...add, ...cleaned], fuelSeedV1: true }
+}
+
 /* ── Cross-browser sync via Supabase (falls back to localStorage-only) ── */
 const remote = createRemoteSync<Partial<CreatedDocs>>(
   'createdDocs',
@@ -1318,58 +1350,31 @@ const remote = createRemoteSync<Partial<CreatedDocs>>(
     /* Remote change (another browser saved) → adopt it. Merge over `empty` so a
        blob from an older schema still has every key. `hidden` is merged one level
        deeper so a remote blob predating the products/employees keys still yields
-       arrays (otherwise removeProduct's [...hidden.products] spread throws). Does
-       NOT push back. */
-    state = { ...empty, ...data, hidden: { ...emptyHidden, ...(data.hidden ?? {}) } }
+       arrays (otherwise removeProduct's [...hidden.products] spread throws). */
+    const adopted: CreatedDocs = { ...empty, ...data, hidden: { ...emptyHidden, ...(data.hidden ?? {}) } }
+    /* Apply the fuel seed here — against the AUTHORITATIVE loaded data, so we never
+       clobber the shared blob. Writes back once when it actually changes something. */
+    const seeded = applyFuelSeed(adopted)
+    state = seeded
     try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
     notify()
+    if (seeded !== adopted) pushRemote(state)
   },
   () => state,
 )
 pushRemote = remote.push
 remote.start()
 
-/* ── Fuel-expense seed import + de-dup (LOCAL DEV ONLY) ──────────────────────
-   Imports the real ค่าน้ำมัน history (scripts/seed/*) into บันทึกรายจ่าย so it can be
-   reviewed in the running local app. Guarded by import.meta.env.DEV so it never runs
-   in the Vercel production build. NOT yet wired for production — that's a separate,
-   deliberate step after review. */
-if (import.meta.env.DEV) {
-  try {
-    /* Content key for a fuel fill — a fill with the same date/vehicle/odometer/
-       liters/price/amount is the same fill, so it must appear only once. */
-    const fuelKey = (e: ExpenseRecord) =>
-      e.category === 'ค่าน้ำมัน' && e.vehicleId
-        ? `f|${e.date}|${e.vehicleId}|${e.odometer ?? ''}|${e.liters ?? ''}|${e.pricePerLiter ?? ''}|${e.amount}`
-        : null
-
-    /* Self-heal: drop any duplicate ids and duplicate fuel fills already in the
-       store (from an earlier interrupted import). Runs every dev load; a no-op once
-       clean. Only fuel fills are content-deduped, so ordinary expenses are untouched. */
-    const seenId = new Set<string>()
-    const seenFuel = new Set<string>()
-    const cleaned = state.expenseRecords.filter((e) => {
-      if (seenId.has(e.id)) return false
-      const fk = fuelKey(e)
-      if (fk && seenFuel.has(fk)) return false
-      seenId.add(e.id); if (fk) seenFuel.add(fk)
-      return true
-    })
-    if (cleaned.length !== state.expenseRecords.length) {
-      console.warn(`[fuel-seed] removed ${state.expenseRecords.length - cleaned.length} duplicate expense record(s)`)
-      state = { ...state, expenseRecords: cleaned }
-      localStorage.setItem(KEY, JSON.stringify(state))
-    }
-
-    /* One-time import — skips anything already present by id OR by fuel content. */
-    if (!localStorage.getItem('kpc_fuelSeedV1')) {
-      const haveId = new Set(cleaned.map((e) => e.id))
-      const haveFuel = new Set(cleaned.map(fuelKey).filter(Boolean) as string[])
-      const add = SEED_FUEL_EXPENSES.filter((e) => !haveId.has(e.id) && !haveFuel.has(fuelKey(e) as string))
-      if (add.length) commit({ ...state, expenseRecords: [...add, ...state.expenseRecords] })
-      localStorage.setItem('kpc_fuelSeedV1', '1')
-    }
-  } catch { /* ignore */ }
+/* localStorage-only mode (no Supabase configured, including local dev): apply the
+   seed at init — there is no shared blob to clobber. When Supabase IS configured the
+   seed is applied inside onRemote once the authoritative data has loaded (above), so
+   we do NOT touch state here (a push before the remote load would overwrite prod). */
+if (!SUPABASE_ENABLED) {
+  const seeded = applyFuelSeed(state)
+  if (seeded !== state) {
+    state = seeded
+    try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* quota */ }
+  }
 }
 
 export function addInvoice(inv: Invoice) {
