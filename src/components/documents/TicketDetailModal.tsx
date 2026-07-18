@@ -1,6 +1,6 @@
 import { Modal } from '../Modal'
 import { Button, Badge, type Tone } from '../ui'
-import { type DeliveryTicket, PRODUCT_MAP, VEHICLE_MAP } from '../../data/real'
+import { type DeliveryTicket, PRODUCT_MAP, VEHICLE_MAP, pickupLabel, SELF_PICKUP_DISCOUNT_PER_M3 } from '../../data/real'
 import { baht, qm, monthLabel } from '../../data/selectors'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
@@ -49,8 +49,10 @@ export function TicketDetailModal({
         <Row k="ประเภท" v={<Badge tone={TYPE_TONE[ticket.type] ?? 'neutral'} square pip={false}>{ticket.type}</Badge>} />
         {ticket.type === 'ขายลูกค้า' && (
           <Row k="การรับของ" v={ticket.pickup === 'รับเอง'
-            ? <Badge tone="warning" square pip={false}>ลูกค้ามารับเอง · หัก 100/คิว</Badge>
-            : <Badge tone="neutral" square pip={false}>บริษัทจัดส่ง</Badge>} />
+            ? <Badge tone="warning" square pip={false}>ลูกค้ามารับเอง · หัก {SELF_PICKUP_DISCOUNT_PER_M3}/คิว</Badge>
+            : ticket.pickup === 'จัดส่งละเว้นค่าขนส่ง'
+              ? <Badge tone="info" square pip={false}>{pickupLabel(ticket.pickup)}</Badge>
+              : <Badge tone="neutral" square pip={false}>{pickupLabel(ticket.pickup)}</Badge>} />
         )}
         <Row k="ลูกค้า / หน่วยงาน" v={ticket.customer} />
         <Row k="สินค้า" v={<>

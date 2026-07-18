@@ -298,7 +298,8 @@ export const RECEIPTS: Receipt[] = (() => {
     const k = `${inv.month}__${inv.date}__${inv.customer}`
     const arr = byKey.get(k) ?? []; arr.push(inv); byKey.set(k, arr)
   }
-  const seqByMonth = new Map<number, number>()
+  /* Sequence runs per issue date (RCYYMMDD-XXXX). */
+  const seqByDate = new Map<string, number>()
   return [...byKey.entries()]
     .sort((a, b) => {
       const [ma, da] = a[0].split('__'); const [mb, db] = b[0].split('__')
@@ -307,10 +308,12 @@ export const RECEIPTS: Receipt[] = (() => {
     .map(([k, invs]) => {
       const [monthStr, date, customer] = k.split('__')
       const month = Number(monthStr)
-      const seq = (seqByMonth.get(month) ?? 0) + 1
-      seqByMonth.set(month, seq)
+      /* date is DD/MM/YY — build RC69MMDD-XXXX. */
+      const [ddStr, mmStr] = date.split('/')
+      const seq = (seqByDate.get(date) ?? 0) + 1
+      seqByDate.set(date, seq)
       return {
-        no: `RC69${String(month).padStart(2, '0')}-${String(seq).padStart(4, '0')}`,
+        no: `RC69${mmStr}${ddStr}-${String(seq).padStart(4, '0')}`,
         month, date, customer,
         invoiceNos: invs.map((i) => i.no),
         amount: invs.reduce((s, i) => s + i.total, 0),

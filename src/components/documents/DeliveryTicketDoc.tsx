@@ -1,6 +1,6 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
 import { customerLegal, qm, monthLabel, cleanProductName } from '../../data/selectors'
-import { COMPANY, PRODUCT_MAP, VEHICLE_MAP, type DeliveryTicket } from '../../data/real'
+import { COMPANY, PRODUCT_MAP, VEHICLE_MAP, pickupLabel, type DeliveryTicket } from '../../data/real'
 
 /** Printable A4 layout for a delivery ticket — mirrors the tax-invoice
     structure (header, meta-grid, lines table, optional note, 4-column
@@ -24,7 +24,7 @@ export function DeliveryTicketDoc({ ticket }: { ticket: DeliveryTicket }) {
         <MetaRow k="หน่วยงาน :" v={cust.unit || '—'} />
         <MetaRow k="ประเภท :" v={ticket.type} />
         {ticket.type === 'ขายลูกค้า' && (
-          <MetaRow k="การรับของ :" v={ticket.pickup === 'รับเอง' ? 'ลูกค้ามารับเอง' : 'บริษัทจัดส่ง'} />
+          <MetaRow k="การรับของ :" v={pickupLabel(ticket.pickup)} />
         )}
         <MetaRow k="หมายเลขรถ :" v={vehicle ? <span className="mono">รถ {vehicle.id} (สูงสุด {vehicle.maxM3} คิว)</span> : '—'} />
         <MetaRow k="พนักงานจัดส่ง :" v={driver || '—'} />

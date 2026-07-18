@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CUSTOMER_MASTER, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type PayMethod, type ProductPickup } from '../../data/real'
+import { CUSTOMER_MASTER, DELIVERY_TICKETS, VEHICLES, VEHICLE_MAP, ISSUERS, SELF_PICKUP_DISCOUNT_PER_M3, pickupIsDelivered, type DeliveryTicket, type PayMethod, type TicketPickup } from '../../data/real'
 import { monthLabel } from '../../data/selectors'
 import { addTicket, updateTicket, useCreatedDocs, useProducts } from '../../data/createdDocs'
 import { NewCustomerForm } from './NewCustomerForm'
@@ -54,9 +54,10 @@ export function NewDeliveryTicketForm({
   const [customer, setCustomer] = useState<string>('')
   const [prodCode, setProdCode] = useState<string>(sellable[0]?.code ?? '')
   const [m3, setM3] = useState<string>('')
-  /* การรับของ (customer sales only): 'จัดส่ง' = บริษัทจัดส่ง (default) หรือ
-     'รับเอง' = ลูกค้ามารับเอง (หัก 100 บาท/คิว ตอนออกใบกำกับ, ไม่ต้องมีรถ/คนขับ). */
-  const [pickup, setPickup] = useState<ProductPickup>('จัดส่ง')
+  /* การรับของ (customer sales only): 'จัดส่ง' = บริษัทจัดส่ง (default),
+     'รับเอง' = ลูกค้ามารับเอง (หัก 100 บาท/คิว ตอนออกใบกำกับ, ไม่ต้องมีรถ/คนขับ), หรือ
+     'จัดส่งละเว้นค่าขนส่ง' = บริษัทจัดส่งแต่ไม่คิดค่าขนส่งไม่เต็มเที่ยว (ยังต้องระบุรถ). */
+  const [pickup, setPickup] = useState<TicketPickup>('จัดส่ง')
   const [vehicle, setVehicle] = useState<string>(VEHICLES[0]?.id ?? '')
   const [pay, setPay] = useState<PayMethod>('เครดิต')
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -135,10 +136,11 @@ export function NewDeliveryTicketForm({
     if (!customer.trim() && type === 'ขายลูกค้า') return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     const q = Number(m3)
     if (!q || q <= 0) return setErr('กรุณาระบุปริมาณ (คิว)')
-    /* หมายเลขรถ + พนักงานจัดส่ง ใช้เฉพาะงานขายลูกค้า "แบบบริษัทจัดส่ง" —
-       โรงหล่อ/ใช้เอง และ "ลูกค้ามารับเอง" ข้ามได้ (ลูกค้าใช้รถตัวเอง). */
+    /* หมายเลขรถ + พนักงานจัดส่ง ใช้เฉพาะงานขายลูกค้าที่ "บริษัทจัดส่ง" (รวมแบบละเว้น
+       ค่าขนส่ง — ยังต้องมีรถไว้คำนวณค่าวิ่งเที่ยวรถโม่) — โรงหล่อ/ใช้เอง และ
+       "ลูกค้ามารับเอง" ข้ามได้ (ลูกค้าใช้รถตัวเอง). */
     const isCustomerSale = type === 'ขายลูกค้า'
-    const needsVehicle = isCustomerSale && pickup === 'จัดส่ง'
+    const needsVehicle = isCustomerSale && pickupIsDelivered(pickup)
     if (needsVehicle) {
       if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
       const v = VEHICLE_MAP[vehicle]
@@ -274,11 +276,16 @@ export function NewDeliveryTicketForm({
           <Field
             label="การรับของ"
             required
-            hint={pickup === 'รับเอง' ? `หัก ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ตอนออกใบกำกับ` : 'บริษัทจัดส่งด้วยรถโรงงาน'}
+            hint={(() => {
+              if (pickup === 'รับเอง') return `หัก ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ตอนออกใบกำกับ`
+              if (pickup === 'จัดส่งละเว้นค่าขนส่ง') return 'บริษัทจัดส่ง — ไม่คิดค่าขนส่งไม่เต็มเที่ยว (แต่ยังต้องระบุรถ)'
+              return 'บริษัทจัดส่งด้วยรถโรงงาน'
+            })()}
             style={{ gridColumn: 'span 1' }}
           >
-            <Select value={pickup} onChange={(e) => setPickup(e.target.value as ProductPickup)}>
+            <Select value={pickup} onChange={(e) => setPickup(e.target.value as TicketPickup)}>
               <option value="จัดส่ง">บริษัทจัดส่ง</option>
+              <option value="จัดส่งละเว้นค่าขนส่ง">บริษัทจัดส่ง (ละเว้นค่าขนส่ง)</option>
               <option value="รับเอง">ลูกค้ามารับเอง</option>
             </Select>
           </Field>
@@ -309,9 +316,9 @@ export function NewDeliveryTicketForm({
           </Select>
         </Field>
 
-        {/* หมายเลขรถ + พนักงานจัดส่ง แสดงเฉพาะงานขายลูกค้าแบบบริษัทจัดส่ง
-            (โรงหล่อ/ใช้เอง และลูกค้ามารับเอง ไม่ต้องเลือก). */}
-        {type === 'ขายลูกค้า' && pickup === 'จัดส่ง' && (
+        {/* หมายเลขรถ + พนักงานจัดส่ง แสดงเฉพาะงานขายลูกค้าที่บริษัทจัดส่ง (รวมแบบละเว้น
+            ค่าขนส่ง) — โรงหล่อ/ใช้เอง และลูกค้ามารับเอง ไม่ต้องเลือก. */}
+        {type === 'ขายลูกค้า' && pickupIsDelivered(pickup) && (
           <>
             <Field label="หมายเลขรถ" required hint={(() => {
               const v = VEHICLE_MAP[vehicle]; if (!v) return ''

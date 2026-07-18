@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select, Pill, Checkbox, pickerMonths } from '../ui'
-import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, type DeliveryTicket, type Product } from '../../data/real'
+import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, pickupHasSelfDiscount, pickupChargesTransport, type DeliveryTicket, type Product } from '../../data/real'
 import { INVOICES, baht, cleanProductName, customerLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
-    per-คิว pickup discount and is excluded from the under-load transport
-    surcharge (no company delivery). */
-interface LineDraft { code: string; qty: string; price: string; discount: string; selfPickup?: boolean }
+    per-คิว pickup discount. `noTransport` marks a line excluded from the under-load
+    transport surcharge — true for ลูกค้ามารับเอง (no delivery) AND for บริษัทจัดส่ง
+    (ละเว้นค่าขนส่ง) lines (delivered, but the surcharge is waived). */
+interface LineDraft { code: string; qty: string; price: string; discount: string; selfPickup?: boolean; noTransport?: boolean }
 
 const emptyLine = (): LineDraft => ({ code: PRODUCTS[0]?.code ?? '', qty: '', price: '', discount: '' })
 
@@ -92,6 +93,10 @@ export function NewInvoiceForm({
      once the user types their own (real) number. */
   const [no, setNo] = useState<string>('')
   const [noDirty, setNoDirty] = useState(false)
+  /* ค่าขนส่งไม่เต็มเที่ยว (รวม VAT) — prefill อัตโนมัติจากตารางค่าขนส่ง แต่แก้ไขได้
+     (บางครั้งลูกค้าขอลดราคาค่าขนส่ง). `transportDirty` หยุดการ prefill เมื่อผู้ใช้พิมพ์เอง. */
+  const [transportFee, setTransportFee] = useState<string>('')
+  const [transportDirty, setTransportDirty] = useState(false)
   /* When issuing in a company's name, prefill the ชื่อนิติบุคคล from the customer
      registry (if any) — re-pulls when the customer changes or the box is ticked. */
   useEffect(() => {
@@ -140,45 +145,46 @@ export function NewInvoiceForm({
         amountInclVat,
       })
       totalInclVat += amountInclVat
-      /* Only concrete the company actually delivers counts toward the under-load
-         transport surcharge — exclude foundry precast and ลูกค้ามารับเอง lines
-         (self-pickup ⇒ no delivery ⇒ no transport charge). */
-      if (p.site !== 'foundry' && !ld.selfPickup) concreteQty += qty
+      /* Only concrete the company charges delivery on counts toward the under-load
+         transport surcharge — exclude foundry precast, ลูกค้ามารับเอง lines, and
+         บริษัทจัดส่ง(ละเว้นค่าขนส่ง) lines (both carry noTransport). */
+      if (p.site !== 'foundry' && !ld.noTransport) concreteQty += qty
     }
 
-    /* Auto-add the under-load transport surcharge when total qty < 3 คิว.
-       Look up the row in the current (possibly adjusted) fee schedule by
-       rounding the m³ to the nearest 0.25 step. The schedule stores the
-       VAT-inclusive total per row; convert to pre-VAT for the invoice line. */
+    /* Under-load transport surcharge applies when charged concrete qty < 3 คิว.
+       The suggested amount comes from the current (possibly adjusted) fee schedule
+       (VAT-inclusive), but the actual line uses the editable `transportFee` so the
+       user can reduce it when a customer negotiates the transport charge down. */
     const liveFees = created.transportAdjustments[0]?.fees ?? TRANSPORT_FEES
-    let surcharge: { shortfall: number; preVat: number; totalWithVat: number } | null = null
-    if (concreteQty > 0 && concreteQty < TRANSPORT_FULL_M3) {
+    const transportApplicable = concreteQty > 0 && concreteQty < TRANSPORT_FULL_M3
+    let suggestedTransportInclVat = 0
+    let transportShortfall = 0
+    if (transportApplicable) {
       const steppedM3 = Math.round(concreteQty * 4) / 4
       const row = liveFees.find((f) => Math.abs(f.m3 - steppedM3) < 0.01)
       if (row && row.totalWithVat > 0) {
-        const preVat = Math.round((row.totalWithVat / 1.07) * 100) / 100
-        surcharge = {
-          shortfall: Math.round((TRANSPORT_FULL_M3 - steppedM3) * 100) / 100,
-          preVat,
-          totalWithVat: row.totalWithVat,
-        }
+        suggestedTransportInclVat = row.totalWithVat
+        transportShortfall = Math.round((TRANSPORT_FULL_M3 - steppedM3) * 100) / 100
       }
     }
-    const transportLine: InvoiceLine | null = surcharge
+    /* Editable fee (VAT-inclusive). Only applied when a surcharge is actually due —
+       a stale value never adds a charge to a full load. */
+    const feeInclVat = transportApplicable ? Math.max(0, Number(transportFee) || 0) : 0
+    const transportLine: InvoiceLine | null = feeInclVat > 0
       ? {
           code: 'TRANSPORT',
           name: 'ค่าขนส่งไม่เต็มเที่ยว',
           unit: 'ครั้ง',
           qty: 1,
-          price: surcharge.preVat,
-          amount: surcharge.preVat,
-          priceInclVat: surcharge.totalWithVat,
-          amountInclVat: surcharge.totalWithVat,
+          price: Math.round((feeInclVat / 1.07) * 100) / 100,
+          amount: Math.round((feeInclVat / 1.07) * 100) / 100,
+          priceInclVat: feeInclVat,
+          amountInclVat: feeInclVat,
         }
       : null
-    if (transportLine && surcharge) {
+    if (transportLine) {
       ls.push(transportLine)
-      totalInclVat += surcharge.totalWithVat
+      totalInclVat += feeInclVat
     }
 
     const total = Math.round(totalInclVat * 100) / 100
@@ -190,14 +196,31 @@ export function NewInvoiceForm({
       const d = Math.max(0, Number(ld.discount) || 0)
       return s + q * d
     }, 0)
-    return { ls, subtotal, vat, total, transportLine, concreteQty, discountInclVat: Math.round(discountInclVat * 100) / 100 }
-  }, [lines])
+    return {
+      ls, subtotal, vat, total, transportLine, concreteQty,
+      discountInclVat: Math.round(discountInclVat * 100) / 100,
+      transportApplicable, suggestedTransportInclVat, transportShortfall,
+    }
+  }, [lines, transportFee, created.transportAdjustments])
+
+  /* Keep the transport fee prefilled from the suggested (schedule) amount until the
+     user edits it. When no surcharge is due (full load / no concrete) clear it and
+     drop the manual override so it re-prefills if the load later drops below 3 คิว. */
+  useEffect(() => {
+    if (computed.suggestedTransportInclVat <= 0) {
+      setTransportFee('')
+      setTransportDirty(false)
+    } else if (!transportDirty) {
+      setTransportFee(String(computed.suggestedTransportInclVat))
+    }
+  }, [computed.suggestedTransportInclVat, transportDirty])
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPay('เงินสด')
     setAsCompany(false); setLegalName(''); setTaxBranch('head'); setBranchCode('')
     setRefs(''); setFdRefs(''); setLines([emptyLine()]); setErr(''); setPullInfo('')
     setNo(''); setNoDirty(false)
+    setTransportFee(''); setTransportDirty(false)
   }
 
   /* When opened with initialRefs (from the delivery-tickets page), seed and auto-pull. */
@@ -265,25 +288,33 @@ export function NewInvoiceForm({
     const byKey = new Map<string, LineDraft>()
     let priceFilledFromMaster = 0
     let selfPickupLines = 0
+    let waiveTransportLines = 0
     for (const t of matched) {
       const masterPrice = productMap[t.prod]?.price || 0
       const effPrice = t.price || masterPrice
-      const isSelfPickup = t.pickup === 'รับเอง'
-      /* Self-pickup lines get the per-คิว pickup discount and must not merge with
-         delivered lines of the same product/price — key on pickup too. */
-      const key = `${t.prod}__${effPrice}__${isSelfPickup ? 'self' : 'deliv'}`
+      /* Three การรับของ buckets that must not merge with one another (different
+         discount / transport treatment), so key on the bucket too:
+         'self'     = ลูกค้ามารับเอง (discount + no transport)
+         'deliv-nt' = บริษัทจัดส่ง(ละเว้นค่าขนส่ง) (no discount, no transport)
+         'deliv'    = บริษัทจัดส่ง / legacy (no discount, charges transport) */
+      const hasDiscount = pickupHasSelfDiscount(t.pickup)
+      const chargesTransport = pickupChargesTransport(t.pickup)
+      const bucket = hasDiscount ? 'self' : chargesTransport ? 'deliv' : 'deliv-nt'
+      const key = `${t.prod}__${effPrice}__${bucket}`
       const existing = byKey.get(key)
       if (existing) {
         existing.qty = String((Number(existing.qty) || 0) + t.m3)
       } else {
         if (!t.price && masterPrice) priceFilledFromMaster += 1
-        if (isSelfPickup) selfPickupLines += 1
+        if (hasDiscount) selfPickupLines += 1
+        if (bucket === 'deliv-nt') waiveTransportLines += 1
         byKey.set(key, {
           code: t.prod,
           qty: String(t.m3),
           price: effPrice ? String(effPrice) : '',
-          discount: isSelfPickup ? String(SELF_PICKUP_DISCOUNT_PER_M3) : '',
-          ...(isSelfPickup ? { selfPickup: true } : {}),
+          discount: hasDiscount ? String(SELF_PICKUP_DISCOUNT_PER_M3) : '',
+          ...(hasDiscount ? { selfPickup: true } : {}),
+          ...(!chargesTransport ? { noTransport: true } : {}),
         })
       }
     }
@@ -292,6 +323,7 @@ export function NewInvoiceForm({
     const parts: string[] = [`ดึงข้อมูลจาก ${matched.length} ใบจ่าย`]
     if (priceFilledFromMaster > 0) parts.push(`เติมราคาจากตารางสินค้า ${priceFilledFromMaster} รายการ`)
     if (selfPickupLines > 0) parts.push(`หักส่วนลดลูกค้ามารับเอง ${SELF_PICKUP_DISCOUNT_PER_M3} บาท/คิว ${selfPickupLines} รายการ`)
+    if (waiveTransportLines > 0) parts.push(`ละเว้นค่าขนส่งไม่เต็มเที่ยว ${waiveTransportLines} รายการ`)
     if (missed.length) parts.push(`ไม่พบ: ${missed.join(', ')}`)
     setPullInfo(parts.join(' · '))
   }
@@ -539,7 +571,7 @@ export function NewInvoiceForm({
         })}
       </div>
 
-      {computed.transportLine && (
+      {computed.transportApplicable && (
         <div style={{
           marginBottom: 16,
           padding: '10px 12px',
@@ -552,13 +584,33 @@ export function NewInvoiceForm({
           alignItems: 'center',
           gap: 12,
         }}>
-          <div>
-            <strong>+ {computed.transportLine.name}</strong>
+          <div style={{ flex: 1 }}>
+            <strong>+ ค่าขนส่งไม่เต็มเที่ยว</strong>
             <div style={{ color: 'var(--kpc-text-muted)', fontSize: 12, marginTop: 2 }}>
-              เพิ่มอัตโนมัติ — รวมคอนกรีต {computed.concreteQty.toFixed(2)} คิว ไม่ถึง {TRANSPORT_FULL_M3} คิว · อ้างอิงจากตารางค่าขนส่งปัจจุบัน
+              รวมคอนกรีต {computed.concreteQty.toFixed(2)} คิว ไม่ถึง {TRANSPORT_FULL_M3} คิว · prefill อัตโนมัติ {baht(computed.suggestedTransportInclVat)} (รวม VAT) — แก้ไขได้
+              {transportDirty && computed.suggestedTransportInclVat > 0 && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={() => { setTransportFee(String(computed.suggestedTransportInclVat)); setTransportDirty(false) }}
+                    style={{ background: 'none', border: 'none', padding: 0, color: 'var(--kpc-primary-ink)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}
+                  >
+                    คืนค่าอัตโนมัติ
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          <strong className="mono">{baht(Math.round(computed.transportLine.amount * 1.07 * 100) / 100)}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Input
+              type="number" step="0.01" min={0}
+              value={transportFee}
+              onChange={(e) => { setTransportFee(e.target.value); setTransportDirty(true) }}
+              style={{ width: 110, textAlign: 'right', fontFamily: 'var(--kpc-font-mono)' }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>บาท</span>
+          </div>
         </div>
       )}
 

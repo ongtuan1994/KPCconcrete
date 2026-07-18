@@ -8,8 +8,10 @@ import { addReceipt } from '../../data/createdDocs'
 function pad2(n: number) { return String(n).padStart(2, '0') }
 function pad4(n: number) { return String(n).padStart(4, '0') }
 
-function nextReceiptNo(month: number, existing: Receipt[]) {
-  const prefix = `RC69${pad2(month)}-`
+/** Receipt number RCYYMMDD-XXXX (YY=69, MM=month, DD=day, XXXX=running sequence
+    within that date). Mirrors the tax-invoice numbering (IV69MMDD-XXXX). */
+function nextReceiptNo(month: number, day: number, existing: Receipt[]) {
+  const prefix = `RC69${pad2(month)}${pad2(day)}-`
   let max = 0
   for (const r of existing) {
     if (r.no.startsWith(prefix)) {
@@ -115,7 +117,7 @@ export function NewReceiptForm({
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const rc: Receipt = {
-      no: nextReceiptNo(month, allReceipts),
+      no: nextReceiptNo(month, dnum, allReceipts),
       month, date, customer: customer.trim(),
       invoiceNos: selected.map((i) => i.no),
       amount: Math.round(total * 100) / 100,

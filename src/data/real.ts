@@ -29,6 +29,37 @@ export type FoundryKind = 'plank' | 'ipole' | 'wallpanel'
 /** Goods-collection method (การรับของ) — รับเอง (self-pickup) or จัดส่ง (delivery).
     Only set on foundry items that are priced per collection method. */
 export type ProductPickup = 'รับเอง' | 'จัดส่ง'
+
+/** การรับของ on a concrete delivery ticket. Three modes:
+    - 'รับเอง'                = ลูกค้ามารับเอง — no truck/driver, gets the self-pickup
+                                discount, no transport surcharge.
+    - 'จัดส่ง'                 = บริษัทจัดส่ง — company truck (needs รถ/คนขับ), and the
+                                under-load surcharge (ค่าขนส่งไม่เต็มเที่ยว) applies.
+    - 'จัดส่งละเว้นค่าขนส่ง'    = บริษัทจัดส่งแต่ละเว้นค่าขนส่งไม่เต็มเที่ยว — still a company
+                                delivery so รถ/คนขับ is required (for ค่าวิ่งเที่ยวรถโม่),
+                                but no under-load surcharge is added at invoice time. */
+export type TicketPickup = ProductPickup | 'จัดส่งละเว้นค่าขนส่ง'
+
+/** บริษัทจัดส่งด้วยรถโรงงานหรือไม่ (⇒ ต้องระบุรถ/คนขับ, ใช้คำนวณค่าวิ่งเที่ยวรถโม่).
+    'รับเอง' เท่านั้นที่ลูกค้าใช้รถตัวเอง. undefined (seed/legacy) ถือเป็นบริษัทจัดส่ง. */
+export function pickupIsDelivered(p?: TicketPickup): boolean {
+  return p !== 'รับเอง'
+}
+/** ต้องคิดค่าขนส่งไม่เต็มเที่ยวหรือไม่ — เฉพาะ 'จัดส่ง' (และ undefined = legacy จัดส่ง).
+    'จัดส่งละเว้นค่าขนส่ง' และ 'รับเอง' ไม่คิด. */
+export function pickupChargesTransport(p?: TicketPickup): boolean {
+  return p === 'จัดส่ง' || p === undefined
+}
+/** ได้รับส่วนลดลูกค้ามารับเองหรือไม่ — เฉพาะ 'รับเอง'. */
+export function pickupHasSelfDiscount(p?: TicketPickup): boolean {
+  return p === 'รับเอง'
+}
+/** ป้ายกำกับการรับของสำหรับแสดงผล. */
+export function pickupLabel(p?: TicketPickup): string {
+  if (p === 'รับเอง') return 'ลูกค้ามารับเอง'
+  if (p === 'จัดส่งละเว้นค่าขนส่ง') return 'บริษัทจัดส่ง (ละเว้นค่าขนส่ง)'
+  return 'บริษัทจัดส่ง'
+}
 export interface Product {
   code: string; name: string; strengthKsc: number; unit: string; category: ProductCategory
   site?: ProductSite; kind?: FoundryKind; pickup?: ProductPickup
@@ -546,11 +577,13 @@ export interface DeliveryTicket {
   invoice: string; billing: string; pay: PayMethod; note: string
   vehicle?: string
   driver?: string
-  /** How the customer receives the concrete on a ขายลูกค้า ticket:
-      'จัดส่ง' (company delivers, the default) or 'รับเอง' (customer picks up —
-      no truck/driver, and gets the SELF_PICKUP_DISCOUNT_PER_M3 at invoice time).
-      Undefined on non-sale/seed/imported tickets ⇒ treated as 'จัดส่ง'. */
-  pickup?: ProductPickup
+  /** How the customer receives the concrete on a ขายลูกค้า ticket — see TicketPickup:
+      'จัดส่ง' (company delivers, the default), 'รับเอง' (customer picks up — no
+      truck/driver, gets the SELF_PICKUP_DISCOUNT_PER_M3 at invoice time), or
+      'จัดส่งละเว้นค่าขนส่ง' (company delivers but the under-load surcharge is waived —
+      truck/driver still required). Undefined on non-sale/seed/imported tickets
+      ⇒ treated as 'จัดส่ง'. */
+  pickup?: TicketPickup
   /** Linked sales order (ใบสั่งขาย) — set when issued from / auto-created for one. */
   soNo?: string
   /** Staff who issued the ticket (snapshot from ISSUERS at creation time). */
