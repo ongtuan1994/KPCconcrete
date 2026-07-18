@@ -8,10 +8,11 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { NewSupplierForm } from '../components/documents/NewSupplierForm'
 import { baht, monthName } from '../data/selectors'
+import { downloadCsv } from '../utils/csv'
 import { VEHICLES } from '../data/real'
+import { FUEL_VEHICLES, fuelVehicleLabel } from '../data/fuelVehicles'
 import {
-  useCreatedDocs, useSuppliers, addExpenseRecord, updateExpenseRecord, removeExpenseRecord, restoreExpenseRecord, recordDieselPrice, dieselPriceOn,
-  GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, useSuppliers, useCostCenters, addCostCenter, addExpenseRecord, updateExpenseRecord, removeExpenseRecord, restoreExpenseRecord, recordDieselPrice, dieselPriceOn,
   type ExpenseRecord, type DeletedExpenseRecord, type GoodsPaymentCategory, type GoodsPaymentSite,
 } from '../data/createdDocs'
 import { useCan } from '../data/auth'
@@ -38,10 +39,10 @@ const SITE_TONE: Record<GoodsPaymentSite, Tone> = { แพล้นปูน: 'i
 const FUEL_CATEGORY: GoodsPaymentCategory = 'ค่าน้ำมัน'
 const r2 = (n: number) => Math.round(n * 100) / 100
 
-/** One-line summary of a ค่าน้ำมัน record (รถโม่ · ลิตร · ราคา/ลิตร · เข็มไมล์). */
+/** One-line summary of a ค่าน้ำมัน record (รถ · ลิตร · ราคา/ลิตร · เข็มไมล์). */
 function fuelSummary(r: ExpenseRecord): string {
   const parts: string[] = []
-  if (r.vehicleId) parts.push(`รถโม่ ${r.vehicleId}`)
+  if (r.vehicleId) parts.push(fuelVehicleLabel(r.vehicleId))
   if (r.liters) parts.push(`${r.liters} ลิตร`)
   if (r.pricePerLiter) parts.push(`@${r.pricePerLiter} ฿/ล.`)
   if (r.odometer != null) parts.push(`ไมล์ ${r.odometer.toLocaleString()}`)
@@ -122,6 +123,20 @@ export function ExpenseRecords() {
     navigate('/goods-payments', { state: { payFromPurchaseOrder: initial } })
   }
 
+  /** Export the currently filtered rows to a CSV (opens in Excel). */
+  const exportExcel = () => {
+    const head = ['วันที่', 'ประเภทค่าใช้จ่าย', 'SITE', 'ผู้รับเงิน', 'รายละเอียด', 'ภาษี', 'จำนวนเงิน', 'สถานะ', 'ผู้บันทึก']
+    const body = rows.map((r) => [
+      fmtDate(r.date), r.category, r.site, r.supplier ?? '', displayDetail(r),
+      r.withVat === false ? 'ไม่ลง VAT' : 'ลง VAT', r2(r.amount),
+      r.voucherNo ? `ออกใบสำคัญจ่ายแล้ว · ${r.voucherNo}` : 'ยังไม่ออกใบสำคัญจ่าย',
+      r.createdBy ?? '',
+    ])
+    const total = ['รวม', '', '', '', '', '', r2(rows.reduce((s, e) => s + e.amount, 0)), '', '']
+    const scope = `${year}${month === 'all' ? '' : '-' + monthName(month)}`
+    downloadCsv(`บันทึกรายจ่าย-${scope}`, [head, ...body, total])
+  }
+
   const columns: Column<ExpenseRecord>[] = [
     ...(canEdit ? [{
       key: 'sel', header: (
@@ -137,7 +152,6 @@ export function ExpenseRecords() {
     { key: 'cat', header: 'ประเภทค่าใช้จ่าย', cell: (r) => <span style={{ fontSize: 13 }}>{r.category}</span> },
     { key: 'site', header: 'SITE', align: 'center', cell: (r) => <Badge tone={SITE_TONE[r.site]} pip={false} square>{r.site}</Badge> },
     { key: 'sup', header: 'ผู้รับเงิน', cell: (r) => (r.supplier ? r.supplier : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
-    { key: 'detail', header: 'รายละเอียด', cell: (r) => { const d = displayDetail(r); return d ? <span style={{ fontSize: 13 }}>{d}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span> } },
     {
       key: 'vat', header: 'ภาษี', align: 'center',
       cell: (r) => r.withVat === false
@@ -146,21 +160,17 @@ export function ExpenseRecords() {
     },
     { key: 'amt', header: 'จำนวนเงิน', align: 'right', cell: (r) => <span className="amt mono" style={{ fontWeight: 600 }}>{baht(r.amount)}</span> },
     {
-      key: 'status', header: 'สถานะ', align: 'center',
+      key: 'status', header: 'ใบสำคัญจ่าย', align: 'center',
       cell: (r) => (r.voucherNo
-        ? <Badge tone="success" pip={false} square>ออกใบสำคัญจ่ายแล้ว · {r.voucherNo}</Badge>
-        : <Badge tone="warning" pip={false} square>ยังไม่ออกใบสำคัญจ่าย</Badge>),
+        ? <Button variant="ghost" size="sm" onClick={() => navigate('/goods-payments', { state: { openVoucher: r.voucherNo } })}>{r.voucherNo}</Button>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
     },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'view', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
     ...(canEdit ? [{
       key: 'actions', header: '', align: 'center' as const,
       cell: (r: ExpenseRecord) => (
-        <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
-          <Button variant="ghost" size="sm" onClick={() => setEditRec(r)}>แก้ไข</Button>
-          {!r.voucherNo && <Button variant="tonal" size="sm" onClick={() => issueVoucher([r])}>ออกใบสำคัญจ่าย</Button>}
-          <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบบันทึกรายจ่ายนี้ ?\n${r.category} · ${baht(r.amount)}\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removeExpenseRecord(r.id) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบบันทึกรายจ่ายนี้ ?\n${r.category} · ${baht(r.amount)}\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removeExpenseRecord(r.id) }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
       ),
     }] : []),
   ]
@@ -190,7 +200,12 @@ export function ExpenseRecords() {
       <PageHeader
         title="บันทึกรายจ่าย"
         sub={`Expense Records · ${all.length} รายการ`}
-        actions={canEdit ? <Button variant="primary" onClick={() => setShowForm(true)}><IconPlus /> เพิ่มรายจ่าย</Button> : undefined}
+        actions={
+          <>
+            <Button variant="secondary" onClick={exportExcel} disabled={rows.length === 0}>ส่งออก Excel</Button>
+            {canEdit && <Button variant="primary" onClick={() => setShowForm(true)}><IconPlus /> เพิ่มรายจ่าย</Button>}
+          </>
+        }
       />
 
       <div className="grid g-3" style={{ marginBottom: 24 }}>
@@ -279,6 +294,7 @@ export function ExpenseRecords() {
 function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editRec: ExpenseRecord | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = !!editRec
   const suppliers = useSuppliers()
+  const costCenters = useCostCenters()
   const dieselPrices = useCreatedDocs().dieselPrices
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
@@ -336,6 +352,21 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
     setPricePerLiter(String(dieselPriceOn(dieselPrices, date)))
   }, [open, isFuel, priceDirty, date, dieselPrices])
 
+  /* Add a ประเภทบัญชี cost center on the fly when the needed one isn't listed. */
+  const addCostCenterInline = () => {
+    const name = window.prompt('ชื่อประเภทบัญชี cost center ใหม่')
+    const added = name != null ? addCostCenter(name) : undefined
+    if (added) setCategory(added)
+  }
+
+  /* Keep the selected vehicle valid for the current SITE — when the site changes to
+     one the current vehicle doesn't belong to, fall back to that site's first vehicle. */
+  useEffect(() => {
+    if (!open || !isFuel) return
+    const opts = FUEL_VEHICLES[site]
+    if (!opts.some((v) => v.id === vehicleId)) setVehicleId(opts[0]?.id ?? '')
+  }, [site, open, isFuel]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const submit = () => {
     setErr('')
     if (!date) return setErr('กรุณาระบุวันที่')
@@ -345,7 +376,7 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
     let amt: number
     let fuelFields: Partial<ExpenseRecord>
     if (isFuel) {
-      if (!vehicleId) return setErr('กรุณาเลือกรถโม่')
+      if (!vehicleId) return setErr('กรุณาเลือกรถ')
       const lit = Number(liters)
       if (!lit || lit <= 0) return setErr('กรุณาระบุจำนวนลิตรที่เติม (มากกว่า 0)')
       const ppl = Number(pricePerLiter)
@@ -395,11 +426,14 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
             <Input type="number" step="0.01" min={0} placeholder="เช่น 25000" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
         )}
-        <Field label="ประเภทค่าใช้จ่าย" required>
-          <div className="select-dark">
-            <Select value={category} onChange={(e) => setCategory(e.target.value as GoodsPaymentCategory)}>
-              {GOODS_PAYMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+        <Field label="ประเภทบัญชี cost center" required>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+            <div className="select-dark" style={{ flex: 1, minWidth: 0 }}>
+              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {costCenters.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <Button variant="tonal" size="sm" onClick={addCostCenterInline} title="เพิ่มประเภทบัญชี cost center ใหม่">+</Button>
           </div>
         </Field>
         <Field label="SITE" required hint="แพล้นปูน = น้ำเงิน · โรงหล่อ = เหลืองตามธีม">
@@ -414,11 +448,11 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
         {/* ค่าน้ำมัน — รถโม่ / ลิตร / ราคา/ลิตร / ราคารวม / เข็มไมล์. */}
         {isFuel && (
           <div style={{ gridColumn: '1 / -1', border: '1px dashed var(--kpc-primary-100)', background: 'var(--kpc-primary-50)', borderRadius: 8, padding: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--kpc-text-strong)' }}>ข้อมูลการเติมน้ำมัน (รถโม่)</div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--kpc-text-strong)' }}>ข้อมูลการเติมน้ำมัน ({site === 'โรงหล่อ' ? 'รถโรงหล่อ' : 'รถโม่ / รถตัก'})</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
-              <Field label="รถโม่" required>
+              <Field label="รถ" required>
                 <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
-                  {VEHICLES.map((v) => <option key={v.id} value={v.id}>รถ {v.id} ({v.plate})</option>)}
+                  {FUEL_VEHICLES[site].map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
                 </Select>
               </Field>
               <Field label="จำนวนลิตร" required>
@@ -507,7 +541,7 @@ function ExpenseDetailModal({ record, canEdit, onClose, onIssue, onEdit }: {
           <Row k="SITE" v={<Badge tone={SITE_TONE[record.site]} pip={false} square>{record.site}</Badge>} />
           {record.category === FUEL_CATEGORY && (
             <>
-              <Row k="รถโม่" v={record.vehicleId ? `รถ ${record.vehicleId}` : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />
+              <Row k="รถ" v={record.vehicleId ? fuelVehicleLabel(record.vehicleId) : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />
               <Row k="จำนวนลิตร" v={record.liters != null ? <span className="mono">{record.liters} ลิตร</span> : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />
               <Row k="ราคา/ลิตร" v={record.pricePerLiter != null ? <span className="mono">{baht(record.pricePerLiter)}</span> : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />
               <Row k="เข็มไมล์" v={record.odometer != null ? <span className="mono">{record.odometer.toLocaleString()} กม.</span> : <span style={{ color: 'var(--kpc-text-muted)' }}>—</span>} />

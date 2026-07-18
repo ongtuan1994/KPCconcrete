@@ -53,7 +53,12 @@ export const NAV: NavGroup[] = [
     section: 'การซื้อ / การจ่าย · Purchasing',
     items: [
       { to: '/purchase-orders', label: 'ใบสั่งซื้อ', en: 'Purchase Orders', icon: <IconCart /> },
-      { to: '/expense-records', label: 'บันทึกรายจ่าย', en: 'Expense Records', icon: <IconWallet /> },
+      {
+        to: '/expense-records', label: 'บันทึกรายจ่าย', en: 'Expense Records', icon: <IconWallet />,
+        children: [
+          { to: '/fuel-report', label: 'ค่าน้ำมันรถ', en: 'Vehicle Fuel', icon: <IconTruck /> },
+        ],
+      },
       { to: '/goods-payments', label: 'ใบสำคัญจ่าย', en: 'Goods / Material Payments', icon: <IconWallet /> },
       {
         to: '/payroll', label: 'เบิกและจ่ายเงินเดือน', en: 'Advance / Payroll', icon: <IconUsers />,
@@ -83,6 +88,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: '/customer-master', label: 'ทะเบียนลูกค้า', en: 'Customer Master', icon: <IconUsers /> },
       { to: '/suppliers', label: 'ทะเบียนซัพพลายเออร์', en: 'Supplier', icon: <IconTruck /> },
+      { to: '/cost-centers', label: 'ประเภทบัญชี cost center', en: 'Cost Centers', icon: <IconWallet /> },
       {
         to: '/pricing', label: 'ราคาสินค้า / ค่าขนส่ง', en: 'Price List / Transport', icon: <IconTag />,
         children: [

@@ -12,7 +12,7 @@ import { DocModal } from '../components/documents/DocModal'
 import { GoodsPaymentVoucherDoc } from '../components/documents/GoodsPaymentVoucherDoc'
 import { baht, monthName } from '../data/selectors'
 import {
-  useCreatedDocs, useSuppliers, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, markExpenseRecordsBilled, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, useSuppliers, useCostCenters, addCostCenter, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, markExpenseRecordsBilled, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
   type DeletedGoodsPayment,
@@ -104,16 +104,21 @@ export function GoodsPayments() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  /* When navigated here from a purchase order ("ทำจ่ายสินค้า/วัสดุ"), open the
-     form pre-filled. Clear router state so a refresh doesn't re-trigger it. */
+  /* When navigated here from a purchase order ("ทำจ่ายสินค้า/วัสดุ") open the form
+     pre-filled; from a บันทึกรายจ่าย voucher link ("openVoucher") open that voucher.
+     Clear router state so a refresh doesn't re-trigger it. */
   useEffect(() => {
-    const st = location.state as { payFromPurchaseOrder?: GoodsPaymentInitial } | null
+    const st = location.state as { payFromPurchaseOrder?: GoodsPaymentInitial; openVoucher?: string } | null
     if (st?.payFromPurchaseOrder) {
       setPrefill(st.payFromPurchaseOrder)
       setShowForm(true)
       navigate(location.pathname, { replace: true, state: null })
+    } else if (st?.openVoucher) {
+      const gp = all.find((g) => g.gpNo === st.openVoucher)
+      if (gp) setActive(gp)
+      navigate(location.pathname, { replace: true, state: null })
     }
-  }, [location, navigate])
+  }, [location, navigate, all])
 
   /* Year (พ.ศ.) + month scope — current year always offered. */
   const years = useMemo(() => { const s = new Set(all.map(gpYear)); s.add(2569); return [...s].sort((a, b) => b - a) }, [all])
@@ -402,6 +407,7 @@ const lineTotal = (it: ItemDraft) => {
 function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial, editPayment, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; initial?: GoodsPaymentInitial | null; editPayment?: GoodsPayment | null; onSaved: (g: GoodsPayment) => void }) {
   const isEdit = !!editPayment
   const suppliers = useSuppliers()
+  const costCenters = useCostCenters()
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
   const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
@@ -613,11 +619,18 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
           </Field>
         </div>
 
-        <Field label="ประเภทค่าใช้จ่าย" required>
-          <div className="select-dark">
-            <Select value={category} onChange={(e) => setCategory(e.target.value as GoodsPaymentCategory)}>
-              {GOODS_PAYMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+        <Field label="ประเภทบัญชี cost center" required>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+            <div className="select-dark" style={{ flex: 1, minWidth: 0 }}>
+              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {costCenters.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </div>
+            <Button variant="tonal" size="sm" onClick={() => {
+              const name = window.prompt('ชื่อประเภทบัญชี cost center ใหม่')
+              const added = name != null ? addCostCenter(name) : undefined
+              if (added) setCategory(added)
+            }} title="เพิ่มประเภทบัญชี cost center ใหม่">+</Button>
           </div>
         </Field>
         <Field label="SITE" required hint="ทุกประเภทค่าใช้จ่ายต้องระบุ · แพล้นปูน = น้ำเงิน · โรงหล่อ = เหลืองตามธีม">

@@ -17,6 +17,7 @@ import { EmployeeReportDoc } from '../components/documents/EmployeeReportDoc'
 import { ExpenseReportDoc } from '../components/documents/ExpenseReportDoc'
 import { PurchaseAccountReportDoc } from '../components/documents/PurchaseAccountReportDoc'
 import { MidMonthAdvanceReportDoc } from '../components/documents/MidMonthAdvanceReportDoc'
+import { FuelReportDoc } from '../components/documents/FuelReportDoc'
 import { qm } from '../data/selectors'
 import { useCreatedDocs, removeGeneralReport, type GeneralReport } from '../data/createdDocs'
 
@@ -38,6 +39,7 @@ const KIND_LABEL: Record<GeneralReport['kind'], string> = {
   'expense': 'ค่าใช้จ่ายรายเดือน',
   'purchase-account': 'บัญชีซื้อวัตถุดิบ',
   'mid-month-advance': 'เบิกเงินกลางเดือน',
+  'fuel': 'ค่าน้ำมันรถ',
 }
 
 /* Union-safe accessors — each report kind carries a different payload. */
@@ -49,7 +51,8 @@ const reportAmount = (r: GeneralReport): number | null =>
           : r.kind === 'expense' ? r.grandTotal
             : r.kind === 'purchase-account' ? r2(r.totals.plant.total + r.totals.foundry.total)
               : r.kind === 'mid-month-advance' ? r.totals.amount
-                : null
+                : r.kind === 'fuel' ? r.totals.amount
+                  : null
 const reportSummary = (r: GeneralReport) =>
   r.kind === 'commission'
     ? `${r.lines.length} คน · ${qm(r.volumeM3)} คิว`
@@ -75,7 +78,9 @@ const reportSummary = (r: GeneralReport) =>
                         ? `${r.rows.length} เดือน · แยกแพล้นปูน/โรงหล่อ`
                         : r.kind === 'mid-month-advance'
                           ? `${r.monthLabel} · ${r.sections.reduce((s, sec) => s + sec.rows.filter((x) => x.amount > 0).length, 0)} คน`
-                          : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
+                          : r.kind === 'fuel'
+                            ? `${r.mode === 'mixer' ? 'รถโม่' : 'ทุกคัน'} · ${r.summary.length} คัน · ${r.totals.count} ครั้ง`
+                            : `${r.rows.length} รายการ · ${r.totals.tripTotal} เที่ยว`
 
 export function GeneralReports() {
   const created = useCreatedDocs()
@@ -167,7 +172,9 @@ export function GeneralReports() {
                               ? <PurchaseAccountReportDoc report={active} />
                               : active.kind === 'mid-month-advance'
                                 ? <MidMonthAdvanceReportDoc report={active} />
-                                : <TruckTripReportDoc report={active} />)}
+                                : active.kind === 'fuel'
+                                  ? <FuelReportDoc report={active} />
+                                  : <TruckTripReportDoc report={active} />)}
       </DocModal>
     </>
   )

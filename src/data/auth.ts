@@ -107,6 +107,10 @@ export const ROUTE_RESOURCE: Record<string, string> = {}
 for (const r of RESOURCES) ROUTE_RESOURCE[r.route] = r.key
 /* Legacy direct วางบิล route shares the ใบกำกับภาษี / วางบิล gate. */
 ROUTE_RESOURCE['/billing'] = 'invoices'
+/* ค่าน้ำมันรถ report shares the บันทึกรายจ่าย gate. */
+ROUTE_RESOURCE['/fuel-report'] = 'expense-records'
+/* ประเภทบัญชี cost center (master list) shares the บันทึกรายจ่าย gate. */
+ROUTE_RESOURCE['/cost-centers'] = 'expense-records'
 /* Stock-reconcile history pages share their stock's gate. */
 ROUTE_RESOURCE['/stock-reconcile'] = 'stock'
 ROUTE_RESOURCE['/foundry-materials-reconcile'] = 'foundry-materials'

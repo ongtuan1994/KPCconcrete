@@ -265,16 +265,11 @@ export interface GoodsPaymentItem {
   unitPrice: number
 }
 
-/** ประเภทค่าใช้จ่าย recorded on a goods-payment voucher. */
-export type GoodsPaymentCategory =
-  | 'สินทรัพย์'
-  | 'ค่าน้ำมัน'
-  | 'ค่าไฟฟ้า'
-  | 'ค่าวัสดุสิ้นเปลือง'
-  | 'ค่าอะไหล่และเครื่องมือ'
-  | 'ค่าใช้จ่ายยานพาหนะ'
-  | 'ค่าบริการ'
-  | 'ค่าซื้อวัตถุดิบ'
+/** ประเภทบัญชี cost center recorded on a บันทึกรายจ่าย / ใบสำคัญจ่าย. Free-form so
+    users can add their own (from the ประเภทบัญชี cost center page or inline in the
+    two forms); the built-ins below are always offered first. */
+export type GoodsPaymentCategory = string
+/** Built-in ประเภทบัญชี cost center — always shown first in the pickers. */
 export const GOODS_PAYMENT_CATEGORIES: GoodsPaymentCategory[] = [
   'สินทรัพย์', 'ค่าน้ำมัน', 'ค่าไฟฟ้า', 'ค่าวัสดุสิ้นเปลือง',
   'ค่าอะไหล่และเครื่องมือ', 'ค่าใช้จ่ายยานพาหนะ', 'ค่าบริการ', 'ค่าซื้อวัตถุดิบ',
@@ -328,6 +323,9 @@ export interface GoodsPayment {
       the purchase-tax report when this voucher is ลง VAT. */
   taxInvoiceNo?: string
   note?: string
+  /** บันทึกรายจ่าย ids this voucher was issued from — recorded on cancel so the
+      linked expenses can be reverted to unbilled (and re-linked on restore). */
+  expenseIds?: string[]
   createdBy?: string  /* username of the saver (audit) */
   createdAt: string
 }
@@ -976,7 +974,40 @@ export interface MidMonthAdvanceReport extends GeneralReportBase {
   totals: { amount: number }  /* รวมทั้งสองหน้า */
 }
 
-export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport | ExpenseReport | PurchaseAccountReport | MidMonthAdvanceReport
+/** One fill line in a saved ค่าน้ำมันรถ report (snapshot of a ค่าน้ำมัน expense). */
+export interface FuelReportRow {
+  date: string             /* ISO yyyy-mm-dd */
+  reg: string              /* ทะเบียนรถ (plate / name) */
+  driver?: string          /* พนง.ขับรถ — 'all' mode */
+  site?: GoodsPaymentSite  /* SITE — 'all' mode */
+  mixer: boolean           /* true ⇒ liters count in the ลิตร(รถปูน) column */
+  liters?: number
+  pricePerLiter?: number
+  amount: number
+  odometer?: number        /* เข็มไมล์ — 'mixer' mode */
+  baseline?: boolean       /* ยอดยกมา (last fill before the range) — 'mixer' mode */
+}
+/** One per-truck summary line in a saved ค่าน้ำมันรถ report. */
+export interface FuelReportSummaryRow {
+  reg: string
+  liters: number
+  amount: number
+  count?: number            /* 'all' mode: จำนวนครั้งที่เติม */
+  km?: number               /* 'mixer' mode: กิโลเมตรที่วิ่งได้ */
+  kmPerL?: number | null    /* 'mixer' mode: อัตราสิ้นเปลือง */
+  bahtPerKm?: number | null /* 'mixer' mode: บาท/กิโลเมตร */
+}
+/** Saved ค่าน้ำมันรถ report — mode 'all' (ทุกคัน · 2 SITE) or 'mixer' (รถโม่ +
+    อัตราสิ้นเปลือง). Denormalised so the Doc is a pure renderer. */
+export interface FuelUsageReport extends GeneralReportBase {
+  kind: 'fuel'
+  mode: 'all' | 'mixer'
+  rows: FuelReportRow[]
+  summary: FuelReportSummaryRow[]
+  totals: { liters: number; mixerLiters: number; otherLiters: number; amount: number; count: number }
+}
+
+export type GeneralReport = TruckTripReport | CommissionReport | AttendanceReport | PriceListReport | TransportPriceReport | PayrollReport | MixDesignReport | FoundryFormulaReport | StockReport | LedgerReport | EmployeeReport | ExpenseReport | PurchaseAccountReport | MidMonthAdvanceReport | FuelUsageReport
 
 const KEY = 'kpc.createdDocs.v1'
 
@@ -1055,6 +1086,8 @@ export interface CreatedDocs {
   goodsPayments: GoodsPayment[]
   /** บันทึกรายจ่าย — recorded expenses awaiting/linked to vouchers, newest first. */
   expenseRecords: ExpenseRecord[]
+  /** User-added ประเภทบัญชี cost center (beyond GOODS_PAYMENT_CATEGORIES). */
+  costCenters: string[]
   /** สินทรัพย์ (asset registry) — seeded from SEED_ASSETS, then user-maintained. */
   assets: Asset[]
   /** ไฮดีเซล price schedule (บาท/ลิตร by date) — prefills the ค่าน้ำมัน form from the
@@ -1135,7 +1168,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
 
@@ -1195,6 +1228,7 @@ function read(): CreatedDocs {
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
       expenseRecords: v.expenseRecords ?? [],
+      costCenters: v.costCenters ?? [],
       /* Migrate the legacy single last-used price into an open-ended schedule point. */
       dieselPrices: v.dieselPrices ?? (() => {
         const legacy = (v as { dieselPricePerLiter?: number }).dieselPricePerLiter
@@ -1566,20 +1600,35 @@ export function updateGoodsPayment(gpNo: string, patch: Partial<GoodsPayment>) {
 }
 export function removeGoodsPayment(gpNo: string) {
   const rec = state.goodsPayments.find((g) => g.gpNo === gpNo)
+  if (!rec) return
+  /* Cancelling a voucher reverts its linked บันทึกรายจ่าย to "ยังไม่ออกใบสำคัญจ่าย".
+     Remember which ones (derived from their current voucherNo) so a later restore can
+     re-link them without double-billing. */
+  const linkedIds = state.expenseRecords.filter((e) => e.voucherNo === gpNo).map((e) => e.id)
+  const deletedRec = linkedIds.length ? { ...rec, expenseIds: linkedIds } : rec
   commit({
     ...state,
     goodsPayments: state.goodsPayments.filter((g) => g.gpNo !== gpNo),
-    deletedGoodsPayments: rec ? [stampDeleted(rec), ...state.deletedGoodsPayments.filter((d) => d.gpNo !== gpNo)] : state.deletedGoodsPayments,
+    deletedGoodsPayments: [stampDeleted(deletedRec), ...state.deletedGoodsPayments.filter((d) => d.gpNo !== gpNo)],
+    expenseRecords: linkedIds.length
+      ? state.expenseRecords.map((e) => (e.voucherNo === gpNo ? { ...e, voucherNo: undefined } : e))
+      : state.expenseRecords,
   })
 }
-/** Undo a ใบสำคัญจ่าย deletion — re-add it to the list and drop the history row. */
+/** Undo a ใบสำคัญจ่าย deletion — re-add it to the list, drop the history row, and
+    re-stamp any บันทึกรายจ่าย it had been issued from back to this voucher. */
 export function restoreGoodsPayment(gpNo: string) {
   const rec = state.deletedGoodsPayments.find((d) => d.gpNo === gpNo)
   if (!rec) return
+  const gp = unstampDeleted(rec) as GoodsPayment
+  const ids = new Set(gp.expenseIds ?? [])
   commit({
     ...state,
     deletedGoodsPayments: state.deletedGoodsPayments.filter((d) => d.gpNo !== gpNo),
-    goodsPayments: [unstampDeleted(rec) as GoodsPayment, ...state.goodsPayments],
+    goodsPayments: [gp, ...state.goodsPayments],
+    expenseRecords: ids.size
+      ? state.expenseRecords.map((e) => (ids.has(e.id) ? { ...e, voucherNo: gpNo } : e))
+      : state.expenseRecords,
   })
 }
 
@@ -1872,6 +1921,20 @@ export function liveCustomerByName(name: string): Customer | undefined {
 export function addSupplier(c: Creditor) {
   commit({ ...state, suppliersAdded: [c, ...state.suppliersAdded] })
 }
+
+/** Add a new ประเภทบัญชี cost center. No-op on blank input or a name that already
+    exists (built-in or user-added, case-insensitive). Returns the stored name. */
+export function addCostCenter(name: string): string | undefined {
+  const trimmed = name.trim()
+  if (!trimmed) return undefined
+  const exists = [...GOODS_PAYMENT_CATEGORIES, ...state.costCenters].some((c) => c.toLowerCase() === trimmed.toLowerCase())
+  if (!exists) commit({ ...state, costCenters: [...state.costCenters, trimmed] })
+  return trimmed
+}
+/** Remove a user-added ประเภทบัญชี cost center (built-ins can't be removed). */
+export function removeCostCenter(name: string) {
+  commit({ ...state, costCenters: state.costCenters.filter((c) => c !== name) })
+}
 /** Merge an edit onto a supplier (by id) — works for both master and added
     suppliers; the display list applies supplierEdits on top. Empty / undefined
     values clear that key so display falls back to the base record. */
@@ -2134,6 +2197,17 @@ export function useSuppliers(): Creditor[] {
     const base = [...s.suppliersAdded, ...CREDITOR_MASTER]
     return base.map((c) => (s.supplierEdits[c.id] ? { ...c, ...s.supplierEdits[c.id] } : c))
   }, [s.suppliersAdded, s.supplierEdits])
+}
+
+/** Merged ประเภทบัญชี cost center list — built-in defaults first, then user-added.
+    Single source of truth for the cost-center pickers and the ประเภทบัญชี page. */
+export function useCostCenters(): string[] {
+  const s = useCreatedDocs()
+  return useMemo(() => {
+    const seen = new Set(GOODS_PAYMENT_CATEGORIES.map((c) => c.toLowerCase()))
+    const extra = s.costCenters.filter((c) => !seen.has(c.toLowerCase()))
+    return [...GOODS_PAYMENT_CATEGORIES, ...extra]
+  }, [s.costCenters])
 }
 
 /* Build-time switch: in production builds, hide the delete UI entirely. */

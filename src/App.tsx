@@ -13,6 +13,7 @@ import { Quotations } from './pages/Quotations'
 import { FoundryDeliveries } from './pages/FoundryDeliveries'
 import { PurchaseOrders } from './pages/PurchaseOrders'
 import { ExpenseRecords } from './pages/ExpenseRecords'
+import { FuelReport } from './pages/FuelReport'
 import { GoodsPayments } from './pages/GoodsPayments'
 import { Payroll } from './pages/Payroll'
 import { MidMonthAdvance } from './pages/MidMonthAdvance'
@@ -24,6 +25,7 @@ import { CustomerSummary } from './pages/CustomerSummary'
 import { Creditors } from './pages/Creditors'
 import { Ledger } from './pages/Ledger'
 import { Suppliers } from './pages/Suppliers'
+import { CostCenters } from './pages/CostCenters'
 import { MonthlyReport } from './pages/MonthlyReport'
 import { TaxReports } from './pages/TaxReports'
 import { GeneralReports } from './pages/GeneralReports'
@@ -88,6 +90,7 @@ export default function App() {
         <Route path="/sales-orders" element={<SalesOrders />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
         <Route path="/expense-records" element={<ExpenseRecords />} />
+        <Route path="/fuel-report" element={<FuelReport />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/advances" element={<Payroll />} />
@@ -105,6 +108,7 @@ export default function App() {
         <Route path="/customers" element={<CustomerSummary />} />
         <Route path="/creditors" element={<Creditors />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/cost-centers" element={<CostCenters />} />
         <Route path="/monthly-report" element={<MonthlyReport />} />
         <Route path="/tax-reports" element={<TaxReports />} />
         <Route path="/general-reports" element={<GeneralReports />} />
