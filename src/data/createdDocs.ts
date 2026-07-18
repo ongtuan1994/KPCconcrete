@@ -19,6 +19,7 @@ import { CREDITOR_MASTER, type Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
 import { createRemoteSync } from './supabase'
+import { SEED_FUEL_EXPENSES } from './seedFuelExpenses'
 
 /** Audit stamp applied to every newly saved record: who saved it and when.
     `createdBy` is the logged-in username; `createdAt` is an ISO timestamp. */
@@ -1327,6 +1328,49 @@ const remote = createRemoteSync<Partial<CreatedDocs>>(
 )
 pushRemote = remote.push
 remote.start()
+
+/* ── Fuel-expense seed import + de-dup (LOCAL DEV ONLY) ──────────────────────
+   Imports the real ค่าน้ำมัน history (scripts/seed/*) into บันทึกรายจ่าย so it can be
+   reviewed in the running local app. Guarded by import.meta.env.DEV so it never runs
+   in the Vercel production build. NOT yet wired for production — that's a separate,
+   deliberate step after review. */
+if (import.meta.env.DEV) {
+  try {
+    /* Content key for a fuel fill — a fill with the same date/vehicle/odometer/
+       liters/price/amount is the same fill, so it must appear only once. */
+    const fuelKey = (e: ExpenseRecord) =>
+      e.category === 'ค่าน้ำมัน' && e.vehicleId
+        ? `f|${e.date}|${e.vehicleId}|${e.odometer ?? ''}|${e.liters ?? ''}|${e.pricePerLiter ?? ''}|${e.amount}`
+        : null
+
+    /* Self-heal: drop any duplicate ids and duplicate fuel fills already in the
+       store (from an earlier interrupted import). Runs every dev load; a no-op once
+       clean. Only fuel fills are content-deduped, so ordinary expenses are untouched. */
+    const seenId = new Set<string>()
+    const seenFuel = new Set<string>()
+    const cleaned = state.expenseRecords.filter((e) => {
+      if (seenId.has(e.id)) return false
+      const fk = fuelKey(e)
+      if (fk && seenFuel.has(fk)) return false
+      seenId.add(e.id); if (fk) seenFuel.add(fk)
+      return true
+    })
+    if (cleaned.length !== state.expenseRecords.length) {
+      console.warn(`[fuel-seed] removed ${state.expenseRecords.length - cleaned.length} duplicate expense record(s)`)
+      state = { ...state, expenseRecords: cleaned }
+      localStorage.setItem(KEY, JSON.stringify(state))
+    }
+
+    /* One-time import — skips anything already present by id OR by fuel content. */
+    if (!localStorage.getItem('kpc_fuelSeedV1')) {
+      const haveId = new Set(cleaned.map((e) => e.id))
+      const haveFuel = new Set(cleaned.map(fuelKey).filter(Boolean) as string[])
+      const add = SEED_FUEL_EXPENSES.filter((e) => !haveId.has(e.id) && !haveFuel.has(fuelKey(e) as string))
+      if (add.length) commit({ ...state, expenseRecords: [...add, ...state.expenseRecords] })
+      localStorage.setItem('kpc_fuelSeedV1', '1')
+    }
+  } catch { /* ignore */ }
+}
 
 export function addInvoice(inv: Invoice) {
   commit({ ...state, invoices: [stamp(inv), ...state.invoices] })
