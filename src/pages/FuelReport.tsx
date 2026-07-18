@@ -41,10 +41,33 @@ const cellBase: React.CSSProperties = { border: '1px solid var(--kpc-border)', p
 const th: React.CSSProperties = { ...cellBase, fontWeight: 600, background: 'var(--kpc-surface-alt)', textAlign: 'center', whiteSpace: 'nowrap' }
 const num: React.CSSProperties = { ...cellBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
 
-/** Order fills by odometer when both known, else by date/createdAt. */
-function byOdoThenDate(a: ExpenseRecord, b: ExpenseRecord): number {
-  if (a.odometer != null && b.odometer != null && a.odometer !== b.odometer) return a.odometer - b.odometer
+/** Chronological order (date, then save time). */
+function byDate(a: ExpenseRecord, b: ExpenseRecord): number {
   return a.date.localeCompare(b.date) || (a.createdAt ?? '').localeCompare(b.createdAt ?? '')
+}
+/** Indices kept by the longest non-decreasing subsequence of `a` (patience sorting). */
+function lisKeep(a: number[]): Set<number> {
+  const keep = new Set<number>()
+  if (a.length === 0) return keep
+  const tails: number[] = []
+  const prev = new Array<number>(a.length).fill(-1)
+  for (let i = 0; i < a.length; i++) {
+    let lo = 0, hi = tails.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (a[tails[mid]] <= a[i]) lo = mid + 1; else hi = mid }
+    if (lo > 0) prev[i] = tails[lo - 1]
+    if (lo === tails.length) tails.push(i); else tails[lo] = i
+  }
+  for (let k = tails[tails.length - 1]; k !== -1; k = prev[k]) keep.add(k)
+  return keep
+}
+/** Ids of fills whose เข็มไมล์ breaks the monotonic-increasing trend for a truck
+    (a mis-typed odometer). `series` must already be in chronological order. */
+function odometerAnomalies(series: ExpenseRecord[]): Set<string> {
+  const withOdo = series.filter((r) => r.odometer != null)
+  const keep = lisKeep(withOdo.map((r) => r.odometer as number))
+  const bad = new Set<string>()
+  withOdo.forEach((r, i) => { if (!keep.has(i)) bad.add(r.id) })
+  return bad
 }
 
 /* ───────── Pure computations (shared by the screen + Excel/report builders) ───────── */
@@ -86,9 +109,9 @@ function seriesFor(records: ExpenseRecord[], id: string, from: string, to: strin
   const truck = records.filter((e) => e.vehicleId === id)
   const inRange = truck
     .filter((e) => (!from || e.date >= from) && (!to || e.date <= to))
-    .sort(byOdoThenDate)
+    .sort(byDate)
   if (inRange.length === 0) return { series: [] }
-  const before = from ? truck.filter((e) => e.date < from && e.odometer != null).sort(byOdoThenDate) : []
+  const before = from ? truck.filter((e) => e.date < from && e.odometer != null).sort(byDate) : []
   const baseline = before.length ? before[before.length - 1] : undefined
   return { series: baseline ? [baseline, ...inRange] : inRange, baselineId: baseline?.id }
 }
@@ -114,9 +137,12 @@ function computeMixer(records: ExpenseRecord[], from: string, to: string) {
     .map((v) => ({ v, ...seriesFor(mixer, v.id, from, to) }))
     .filter((t) => t.series.length > 0)
 
-  const detailRows = perTruck
-    .flatMap((t) => t.series.map((rec) => ({ rec, isBaseline: rec.id === t.baselineId })))
-    .sort((a, b) => byOdoThenDate(a.rec, b.rec))
+  /* Grouped by ทะเบียนรถ (MIXER_VEHICLES order), and date-sorted within each truck —
+     t.series is already chronological, so the flatMap preserves that layout. */
+  const detailRows = perTruck.flatMap((t) => {
+    const bad = odometerAnomalies(t.series)
+    return t.series.map((rec) => ({ rec, isBaseline: rec.id === t.baselineId, odoAnomaly: bad.has(rec.id) }))
+  })
 
   const summary = perTruck.map((t) => ({ v: t.v, ...truckStats(t.series) }))
   const inRangeRows = detailRows.filter((r) => !r.isBaseline)
@@ -404,7 +430,7 @@ function FuelMixerView({ data }: { data: MixerData }) {
             </tr>
           </thead>
           <tbody>
-            {detailRows.map(({ rec, isBaseline }) => (
+            {detailRows.map(({ rec, isBaseline, odoAnomaly }) => (
               <tr key={rec.id} style={isBaseline ? { background: 'var(--kpc-warning-bg)', color: 'var(--kpc-warning-ink)' } : undefined}>
                 <td style={{ ...cellBase, whiteSpace: 'nowrap' }}>{fuelVehicleReg(rec.vehicleId ?? '')}</td>
                 <td style={{ ...cellBase, textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -414,7 +440,9 @@ function FuelMixerView({ data }: { data: MixerData }) {
                 <td style={num}>{nf2(rec.liters)}</td>
                 <td style={num}>{rec.pricePerLiter != null ? num2(rec.pricePerLiter) : ''}</td>
                 <td style={{ ...num, fontWeight: 600 }}>{baht(rec.amount)}</td>
-                <td style={num}>{rec.odometer != null ? rec.odometer.toLocaleString('th-TH') : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}</td>
+                <td style={odoAnomaly ? { ...num, color: 'var(--kpc-danger)', fontWeight: 700 } : num} title={odoAnomaly ? 'เลขไมล์ผิดปกติ (ไม่เรียงตามเวลา) — โปรดตรวจสอบ/แก้ไข' : undefined}>
+                  {rec.odometer != null ? rec.odometer.toLocaleString('th-TH') : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -422,7 +450,8 @@ function FuelMixerView({ data }: { data: MixerData }) {
       </div>
 
       <div style={{ marginTop: 8, fontSize: 12, color: 'var(--kpc-text-muted)' }}>
-        แถวไฮไลต์ = ยอดยกมา (ครั้งเติมล่าสุดก่อนช่วงที่เลือก) ใช้เป็นเข็มไมล์ตั้งต้น
+        แถวไฮไลต์ = ยอดยกมา (ครั้งเติมล่าสุดก่อนช่วงที่เลือก) ใช้เป็นเข็มไมล์ตั้งต้น ·{' '}
+        <span style={{ color: 'var(--kpc-danger)', fontWeight: 600 }}>เลขไมล์สีแดง</span> = ผิดปกติ (ไม่เรียงตามเวลา) โปรดตรวจสอบและแก้ไขที่บันทึกรายจ่าย
       </div>
 
       <div style={{ marginTop: 28 }}>
