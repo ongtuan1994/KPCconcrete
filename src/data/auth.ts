@@ -74,6 +74,7 @@ export const RESOURCES: Resource[] = [
   { key: 'receipts', route: '/receipts', label: 'ใบเสร็จรับเงิน', section: 'การขาย · Sales' },
 
   { key: 'purchase-orders', route: '/purchase-orders', label: 'ใบสั่งซื้อ', section: 'การซื้อ / การจ่าย · Purchasing' },
+  { key: 'expense-records', route: '/expense-records', label: 'บันทึกรายจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'goods-payments', route: '/goods-payments', label: 'ใบสำคัญจ่าย', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'payroll', route: '/payroll', label: 'เบิกและจ่ายเงินเดือน', section: 'การซื้อ / การจ่าย · Purchasing' },
   { key: 'leave-records', route: '/leave-records', label: 'บันทึกวันลา', section: 'การซื้อ / การจ่าย · Purchasing' },
@@ -168,7 +169,7 @@ export const DEFAULT_PERMS: PermMatrix = {
   Manager: roleRow(V, {
     'audit-report': N,
     quotations: E, 'sales-orders': E, 'delivery-tickets': E, 'foundry-deliveries': E,
-    'purchase-orders': N, 'goods-payments': N, payroll: N, 'mid-month-advance': N,
+    'purchase-orders': N, 'expense-records': N, 'goods-payments': N, payroll: N, 'mid-month-advance': N,
     'leave-records': E, attendance: E, 'truck-trips': E, commission: E,
     'foundry-boq': E, 'customer-master': E, settings: N,
   }),

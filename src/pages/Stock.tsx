@@ -431,7 +431,7 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
           </datalist>
         </Field>
         <Field label="เลขใบสำคัญจ่าย (ถ้ามี)" style={{ gridColumn: '1 / -1' }} hint="อ้างอิงใบสำคัญจ่ายที่เกี่ยวข้อง">
-          <Input list="kpc-gp-list-stock" placeholder="เช่น GP00001" value={voucherNo} onChange={(e) => setVoucherNo(e.target.value)} />
+          <Input list="kpc-gp-list-stock" placeholder="เช่น PV690718-0001" value={voucherNo} onChange={(e) => setVoucherNo(e.target.value)} />
           <datalist id="kpc-gp-list-stock">
             {created.goodsPayments.map((g) => <option key={g.gpNo} value={g.gpNo}>{g.supplier}</option>)}
           </datalist>

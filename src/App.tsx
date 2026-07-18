@@ -12,6 +12,7 @@ import { SalesOrders } from './pages/SalesOrders'
 import { Quotations } from './pages/Quotations'
 import { FoundryDeliveries } from './pages/FoundryDeliveries'
 import { PurchaseOrders } from './pages/PurchaseOrders'
+import { ExpenseRecords } from './pages/ExpenseRecords'
 import { GoodsPayments } from './pages/GoodsPayments'
 import { Payroll } from './pages/Payroll'
 import { MidMonthAdvance } from './pages/MidMonthAdvance'
@@ -85,6 +86,7 @@ export default function App() {
         <Route path="/quotations" element={<Quotations />} />
         <Route path="/sales-orders" element={<SalesOrders />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
+        <Route path="/expense-records" element={<ExpenseRecords />} />
         <Route path="/goods-payments" element={<GoodsPayments />} />
         <Route path="/payroll" element={<Payroll />} />
         <Route path="/advances" element={<Payroll />} />

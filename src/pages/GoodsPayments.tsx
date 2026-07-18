@@ -12,7 +12,7 @@ import { DocModal } from '../components/documents/DocModal'
 import { GoodsPaymentVoucherDoc } from '../components/documents/GoodsPaymentVoucherDoc'
 import { baht, monthName } from '../data/selectors'
 import {
-  useCreatedDocs, useSuppliers, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, useSuppliers, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, markExpenseRecordsBilled, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
   type DeletedGoodsPayment,
@@ -27,11 +27,21 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const gpYear = (g: { payDate: string }) => Number(g.payDate.slice(0, 4)) + 543
 const gpMonth = (g: { payDate: string }) => Number(g.payDate.slice(5, 7))
 
-/** Optional pre-fill values, e.g. when paying from a purchase order. */
+/** Optional pre-fill values, e.g. when paying from a purchase order or when
+    issuing a voucher from one/many บันทึกรายจ่าย. */
 export interface GoodsPaymentInitial {
   supplier?: string
   amount?: string
   ref?: string
+  category?: GoodsPaymentCategory
+  site?: GoodsPaymentSite
+  note?: string
+  withVat?: boolean
+  /** Itemised lines (e.g. one per expense record) — when set, drives the form's
+      product lines and the amount auto-sums from them. */
+  items?: { name: string; qty: string; unitPrice: string }[]
+  /** บันทึกรายจ่าย ids to stamp as billed once the voucher is saved. */
+  expenseIds?: string[]
 }
 
 function todayIso(): string {
@@ -55,13 +65,20 @@ function fmtYm(ym?: string): string {
 /** เดือนยื่น VAT ที่ใช้จริง — the stored value, else the payDate's month. */
 const vatMonthOf = (g: GoodsPayment) => g.vatMonth || g.payDate.slice(0, 7)
 
-function nextGpNo(existing: GoodsPayment[]): string {
+/** Voucher no. PVYYMMDD-XXXX (YY=Buddhist year, MM=month, DD=day of the pay date,
+    XXXX=running sequence within that date). payDate is ISO "YYYY-MM-DD". */
+function nextGpNo(existing: GoodsPayment[], payDate: string): string {
+  const [y, m, d] = (payDate || todayIso()).split('-')
+  const yy = String((Number(y) || new Date().getFullYear()) + 543).slice(-2)
+  const prefix = `PV${yy}${m}${d}-`
   let max = 0
   for (const g of existing) {
-    const n = parseInt(g.gpNo.replace(/^GP/, ''), 10)
-    if (!Number.isNaN(n) && n > max) max = n
+    if (g.gpNo.startsWith(prefix)) {
+      const n = parseInt(g.gpNo.slice(prefix.length), 10)
+      if (!Number.isNaN(n) && n > max) max = n
+    }
   }
-  return `GP${String(max + 1).padStart(5, '0')}`
+  return `${prefix}${String(max + 1).padStart(4, '0')}`
 }
 function nextPoNo(existing: PurchaseOrder[]): string {
   let max = 0
@@ -79,6 +96,7 @@ export function GoodsPayments() {
   const [showForm, setShowForm] = useState(false)
   const [prefill, setPrefill] = useState<GoodsPaymentInitial | null>(null)
   const [editVat, setEditVat] = useState<GoodsPayment | null>(null)
+  const [editPayment, setEditPayment] = useState<GoodsPayment | null>(null)
   const [active, setActive] = useState<GoodsPayment | null>(null)
   const created = useCreatedDocs()
   const all = created.goodsPayments
@@ -227,6 +245,10 @@ export function GoodsPayments() {
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'view', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
+    ...(canDelete ? [{
+      key: 'edit', header: '', align: 'center' as const,
+      cell: (r: GoodsPayment) => <Button variant="ghost" size="sm" onClick={() => setEditPayment(r)}>แก้ไข</Button>,
+    }] : []),
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'purchasing', group: 'ใบสำคัญจ่าย', ref: r.gpNo, label: r.gpNo, sub: `${r.supplier} · ${baht(r.amount)}`, route: '/goods-payments' }} /> },
     ...(canDelete ? [{
       key: 'del', header: '', align: 'center' as const,
@@ -316,15 +338,27 @@ export function GoodsPayments() {
       )}
 
       <NewGoodsPaymentForm
-        open={showForm}
-        onClose={() => { setShowForm(false); setPrefill(null) }}
+        open={showForm || !!editPayment}
+        editPayment={editPayment}
+        onClose={() => { setShowForm(false); setPrefill(null); setEditPayment(null) }}
         existing={all}
         purchaseOrders={created.purchaseOrders}
         initial={prefill}
-        onSaved={(g) => { setShowForm(false); setPrefill(null); setQuery(g.gpNo) }}
+        onSaved={(g) => {
+          /* When issued from บันทึกรายจ่าย, stamp those records with this voucher no. */
+          if (prefill?.expenseIds?.length) markExpenseRecordsBilled(prefill.expenseIds, g.gpNo)
+          setShowForm(false); setPrefill(null); setEditPayment(null); setQuery(g.gpNo)
+        }}
       />
       <EditVatMonthModal payment={editVat} onClose={() => setEditVat(null)} />
-      <DocModal open={!!active} title={active ? `ใบสำคัญจ่าย ${active.gpNo}` : ''} onClose={() => setActive(null)}>
+      <DocModal
+        open={!!active}
+        title={active ? `ใบสำคัญจ่าย ${active.gpNo}` : ''}
+        onClose={() => setActive(null)}
+        extraActions={active && canDelete
+          ? <Button variant="secondary" onClick={() => { setEditPayment(active); setActive(null) }}>แก้ไข</Button>
+          : undefined}
+      >
         {active && <GoodsPaymentVoucherDoc gp={active} />}
       </DocModal>
     </>
@@ -365,7 +399,8 @@ const lineTotal = (it: ItemDraft) => {
   return Number.isFinite(q) && Number.isFinite(p) ? q * p : 0
 }
 
-function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; initial?: GoodsPaymentInitial | null; onSaved: (g: GoodsPayment) => void }) {
+function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial, editPayment, onSaved }: { open: boolean; onClose: () => void; existing: GoodsPayment[]; purchaseOrders: PurchaseOrder[]; initial?: GoodsPaymentInitial | null; editPayment?: GoodsPayment | null; onSaved: (g: GoodsPayment) => void }) {
+  const isEdit = !!editPayment
   const suppliers = useSuppliers()
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
@@ -388,18 +423,56 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   const [err, setErr] = useState('')
   const [pullInfo, setPullInfo] = useState('')
 
-  const gpNo = useMemo(() => nextGpNo(existing), [existing, open])
+  /* เลขที่ใบสำคัญจ่าย — prefill อัตโนมัติ (PVYYMMDD-XXXX จากวันที่จ่าย) แต่แก้ไขได้.
+     `gpNoDirty` หยุดการเติมอัตโนมัติเมื่อผู้ใช้พิมพ์เลขเอง. */
+  const autoGpNo = useMemo(() => nextGpNo(existing, payDate), [existing, payDate])
+  const [gpNo, setGpNo] = useState('')
+  const [gpNoDirty, setGpNoDirty] = useState(false)
+  useEffect(() => {
+    if (!gpNoDirty) setGpNo(autoGpNo)
+  }, [autoGpNo, gpNoDirty])
 
   useEffect(() => {
     if (!open) return
-    setPayDate(todayIso()); setMethod('โอน'); setChequeNo(''); setWithVat(true); setTaxInvoiceNo(''); setNote(''); setErr(''); setPullInfo('')
+    setErr(''); setPullInfo('')
+    /* Edit mode — prefill every field from the voucher being edited; keep its own
+       เลขที่ (mark dirty so the auto-number effect doesn't overwrite it). */
+    if (editPayment) {
+      setGpNo(editPayment.gpNo); setGpNoDirty(true)
+      setPayDate(editPayment.payDate)
+      setSupplier(editPayment.supplier)
+      setCategory(editPayment.category ?? 'ค่าซื้อวัตถุดิบ')
+      setSite(editPayment.site ?? 'แพล้นปูน')
+      setItems(editPayment.items?.length ? editPayment.items.map((it) => ({ name: it.name, qty: String(it.qty), unitPrice: String(it.unitPrice) })) : [emptyItem()])
+      setAmount(editPayment.items?.length ? '' : String(editPayment.amount))
+      setMethod(editPayment.method)
+      setChequeNo(editPayment.chequeNo ?? '')
+      setRef(editPayment.ref ?? '')
+      setWithVat(editPayment.withVat !== false)
+      setTaxInvoiceNo(editPayment.taxInvoiceNo ?? '')
+      setVatMonth(editPayment.vatMonth || editPayment.payDate.slice(0, 7)); setVatMonthDirty(true)
+      setNote(editPayment.note ?? '')
+      return
+    }
+    setGpNoDirty(false)
+    setPayDate(todayIso()); setMethod('โอน'); setChequeNo(''); setTaxInvoiceNo('')
     setVatMonth(todayIso().slice(0, 7)); setVatMonthDirty(false)
-    setCategory('ค่าซื้อวัตถุดิบ'); setSite('แพล้นปูน')
+    setWithVat(initial?.withVat ?? true)
+    setCategory(initial?.category ?? 'ค่าซื้อวัตถุดิบ')
+    setSite(initial?.site ?? 'แพล้นปูน')
     setSupplier(initial?.supplier ?? '')
-    setItems([emptyItem()])
-    setAmount(initial?.amount ?? '')
+    setNote(initial?.note ?? '')
+    /* Itemised prefill (e.g. from บันทึกรายจ่าย) — lines drive the amount; else the
+       plain amount field is prefilled. */
+    if (initial?.items?.length) {
+      setItems(initial.items.map((it) => ({ name: it.name, qty: it.qty, unitPrice: it.unitPrice })))
+      setAmount('')
+    } else {
+      setItems([emptyItem()])
+      setAmount(initial?.amount ?? '')
+    }
     setRef(initial?.ref ?? '')
-  }, [open, initial])
+  }, [open, initial, editPayment])
 
   /* เดือนยื่น VAT follows the ออกใบ (payDate) month until the user overrides it. */
   useEffect(() => {
@@ -437,6 +510,10 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
 
   const submit = () => {
     setErr('')
+    const finalGpNo = gpNo.trim()
+    if (!finalGpNo) return setErr('กรุณาระบุเลขที่ใบสำคัญจ่าย')
+    /* Duplicate check ignores the voucher being edited (its own number is fine). */
+    if (existing.some((g) => g.gpNo === finalGpNo && g.gpNo !== editPayment?.gpNo)) return setErr(`เลขที่ใบสำคัญจ่าย ${finalGpNo} ถูกใช้แล้ว`)
     if (!supplier.trim()) return setErr('กรุณาเลือกซัพพลายเออร์')
     if (!payDate) return setErr('กรุณาระบุวันที่จ่าย')
     if (hasItems) {
@@ -456,41 +533,56 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
       : undefined
 
     /* No PO referenced but the lines were keyed in by hand → auto-generate a
-       purchase order so the payment still traces back to a PO record. */
+       purchase order so the payment still traces back to a PO record. Only on
+       new vouchers — editing an existing one must not spawn a duplicate PO. */
     let finalRef = ref.trim()
-    if (!finalRef && savedItems && savedItems.length > 0) {
+    if (!isEdit && !finalRef && savedItems && savedItems.length > 0) {
       const poItems: PurchaseOrderItem[] = savedItems.map((it) => ({ desc: it.name, qty: it.qty, unit: 'หน่วย', price: it.unitPrice }))
       const poNo = nextPoNo(purchaseOrders)
       addPurchaseOrder({
         id: poNo, poNo, orderDate: payDate, dueDate: payDate, supplier: supplier.trim(),
-        items: poItems, status: 'รับของแล้ว', note: `สร้างอัตโนมัติจากใบสำคัญจ่าย ${gpNo}`,
+        items: poItems, status: 'รับของแล้ว', note: `สร้างอัตโนมัติจากใบสำคัญจ่าย ${finalGpNo}`,
         createdAt: new Date().toISOString(),
       })
       finalRef = poNo
     }
 
-    const gp: GoodsPayment = {
-      id: gpNo, gpNo, payDate, supplier: supplier.trim(),
-      category, site: category === 'ค่าซื้อวัตถุดิบ' ? site : undefined,
+    /* Fields the form owns — shared by add and edit. createdAt/createdBy are set by
+       the store on add and preserved on edit (kept out of the patch). */
+    const fields = {
+      gpNo: finalGpNo, payDate, supplier: supplier.trim(),
+      category, site,
       items: savedItems, amount: amt, method,
       chequeNo: method === 'เช็ค' ? chequeNo.trim() : undefined,
       ref: finalRef || undefined, withVat,
       vatMonth: withVat ? (vatMonth || payDate.slice(0, 7)) : undefined,
       taxInvoiceNo: taxInvoiceNo.trim() || undefined,
-      note: note.trim() || undefined, createdAt: new Date().toISOString(),
+      note: note.trim() || undefined,
     }
-    addGoodsPayment(gp)
-    onSaved(gp)
+    if (isEdit) {
+      updateGoodsPayment(editPayment!.gpNo, { ...fields, id: finalGpNo })
+      onSaved({ ...editPayment!, ...fields, id: finalGpNo })
+    } else {
+      const gp: GoodsPayment = { id: finalGpNo, ...fields, createdAt: new Date().toISOString() }
+      addGoodsPayment(gp)
+      onSaved(gp)
+    }
   }
 
   return (
-    <Modal open={open} title="ออกใบสำคัญจ่าย" onClose={onClose} maxWidth={780}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>ออกใบสำคัญจ่าย</Button></>}>
+    <Modal open={open} title={isEdit ? `แก้ไขใบสำคัญจ่าย ${editPayment!.gpNo}` : 'ออกใบสำคัญจ่าย'} onClose={onClose} maxWidth={780}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>{isEdit ? 'บันทึกการแก้ไข' : 'ออกใบสำคัญจ่าย'}</Button></>}>
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="grid g-2" style={{ gap: 12 }}>
-        <Field label="เลขที่ใบสำคัญจ่าย" hint="ระบบออกเลขให้อัตโนมัติ">
-          <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontFamily: 'var(--kpc-font-mono)', fontWeight: 600 }}>{gpNo}</div>
+        <Field label="เลขที่ใบสำคัญจ่าย" hint="ระบบเติมเลขให้อัตโนมัติจากวันที่จ่าย — แก้ไขเป็นเลขอื่นได้">
+          <Input
+            className="input mono"
+            value={gpNo}
+            onChange={(e) => { setGpNo(e.target.value); setGpNoDirty(true) }}
+            placeholder="เช่น PV690718-0001"
+            style={{ fontWeight: 600 }}
+          />
         </Field>
         <Field label="วันที่จ่าย" required hint="ค่าเริ่มต้น = วันนี้">
           <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
@@ -528,17 +620,15 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
             </Select>
           </div>
         </Field>
-        {category === 'ค่าซื้อวัตถุดิบ' && (
-          <Field label="SITE (คลังปลายทาง)" required hint="แพล้นปูน = น้ำเงิน · โรงหล่อ = เหลืองตามธีม">
-            {/* SITE cell coloured by theme: แพล้นปูน น้ำเงิน · โรงหล่อ เหลืองอำพัน. */}
-            <div className={site === 'แพล้นปูน' ? 'month-primary' : 'select-foundry'}>
-              <Select value={site} onChange={(e) => setSite(e.target.value as GoodsPaymentSite)}>
-                <option value="แพล้นปูน">แพล้นปูน</option>
-                <option value="โรงหล่อ">โรงหล่อ</option>
-              </Select>
-            </div>
-          </Field>
-        )}
+        <Field label="SITE" required hint="ทุกประเภทค่าใช้จ่ายต้องระบุ · แพล้นปูน = น้ำเงิน · โรงหล่อ = เหลืองตามธีม">
+          {/* SITE cell coloured by theme: แพล้นปูน น้ำเงิน · โรงหล่อ เหลืองอำพัน. */}
+          <div className={site === 'แพล้นปูน' ? 'month-primary' : 'select-foundry'}>
+            <Select value={site} onChange={(e) => setSite(e.target.value as GoodsPaymentSite)}>
+              <option value="แพล้นปูน">แพล้นปูน</option>
+              <option value="โรงหล่อ">โรงหล่อ</option>
+            </Select>
+          </div>
+        </Field>
 
         <div style={{ gridColumn: '1 / -1' }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>

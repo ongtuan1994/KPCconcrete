@@ -53,6 +53,7 @@ export const NAV: NavGroup[] = [
     section: 'การซื้อ / การจ่าย · Purchasing',
     items: [
       { to: '/purchase-orders', label: 'ใบสั่งซื้อ', en: 'Purchase Orders', icon: <IconCart /> },
+      { to: '/expense-records', label: 'บันทึกรายจ่าย', en: 'Expense Records', icon: <IconWallet /> },
       { to: '/goods-payments', label: 'ใบสำคัญจ่าย', en: 'Goods / Material Payments', icon: <IconWallet /> },
       {
         to: '/payroll', label: 'เบิกและจ่ายเงินเดือน', en: 'Advance / Payroll', icon: <IconUsers />,
