@@ -95,6 +95,7 @@ export const RESOURCES: Resource[] = [
   { key: 'foundry-formula', route: '/foundry-formula', label: 'สูตรผลิตโรงหล่อ', section: 'ฐานข้อมูล · Database' },
   { key: 'transport-pricing', route: '/transport-pricing', label: 'รถขนส่งปูน', section: 'ฐานข้อมูล · Database' },
   { key: 'employees', route: '/employees', label: 'รายชื่อพนักงาน', section: 'ฐานข้อมูล · Database' },
+  { key: 'assets', route: '/assets', label: 'สินทรัพย์', section: 'ฐานข้อมูล · Database' },
 
   { key: 'salary-structure', route: '/salary-structure', label: 'ปรับโครงสร้างเงินเดือน', section: 'ระบบ · System' },
   { key: 'settings', route: '/settings', label: 'ตั้งค่าระบบ', section: 'ระบบ · System' },

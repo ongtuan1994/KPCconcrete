@@ -7,7 +7,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import { CUSTOMER_MASTER, PRODUCTS, STOCK_MATERIALS, type DeliveryTicket, type Customer, type Product } from './real'
+import { CUSTOMER_MASTER, PRODUCTS, STOCK_MATERIALS, DIESEL_PRICE_PER_LITER, VEHICLES, type DeliveryTicket, type Customer, type Product } from './real'
 
 /** Codes of the seed foundry stock materials (site: 'foundry') — used to tell a
     re-added seed material from a genuinely new one. */
@@ -282,6 +282,27 @@ export const GOODS_PAYMENT_CATEGORIES: GoodsPaymentCategory[] = [
 /** For a 'ค่าซื้อวัตถุดิบ' voucher — which SITE the raw materials are for. */
 export type GoodsPaymentSite = 'แพล้นปูน' | 'โรงหล่อ'
 
+/** สินทรัพย์ (asset registry) — vehicles / equipment owned per SITE. */
+export interface Asset {
+  id: string
+  name: string          /* ชื่อสินทรัพย์ เช่น "รถโม่ 001" */
+  type?: string         /* ประเภท เช่น รถโม่ / รถกะบะ / รถโฟล์คลิฟท์ */
+  plate?: string        /* ทะเบียน (ถ้ามี) */
+  site: GoodsPaymentSite /* แพล้นปูน / โรงหล่อ — เลือกเสมอ */
+  vehicleId?: string    /* ผูกกับหมายเลขรถโม่ (VEHICLES) ถ้าเป็นรถโม่ */
+  note?: string
+  createdBy?: string
+  createdAt?: string
+}
+
+/** Seed asset list — the 4 mixer trucks (แพล้นปูน) plus the foundry (โรงหล่อ)
+    pickup and forklift. Applied once; add/edit/delete then persist over it. */
+export const SEED_ASSETS: Asset[] = [
+  ...VEHICLES.map((v) => ({ id: `asset_veh_${v.id}`, name: `รถโม่ ${v.id}`, type: 'รถโม่', plate: v.plate, site: 'แพล้นปูน' as GoodsPaymentSite, vehicleId: v.id })),
+  { id: 'asset_pickup_bg6262', name: 'รถกะบะ', type: 'รถกะบะ', plate: 'บง 6262', site: 'โรงหล่อ' },
+  { id: 'asset_forklift_1', name: 'รถโฟล์คลิฟท์', type: 'รถโฟล์คลิฟท์', site: 'โรงหล่อ' },
+]
+
 export interface GoodsPayment {
   id: string         /* = gpNo */
   gpNo: string       /* voucher no. PVYYMMDD-XXXX, e.g. PV690718-0001 */
@@ -322,13 +343,33 @@ export interface ExpenseRecord {
   site: GoodsPaymentSite      /* แพล้นปูน / โรงหล่อ — required on every expense */
   supplier?: string   /* ผู้รับเงิน / ซัพพลายเออร์ (optional) */
   detail?: string     /* รายละเอียดค่าใช้จ่าย */
-  amount: number      /* baht */
+  amount: number      /* baht — for ค่าน้ำมัน this equals liters × pricePerLiter */
   withVat?: boolean   /* ลง VAT — defaults to true when omitted */
+  /** Fuel (ค่าน้ำมัน) details — present only when category === 'ค่าน้ำมัน'. */
+  vehicleId?: string       /* รถโม่ ที่เติมน้ำมัน */
+  liters?: number          /* จำนวนลิตรที่เติม */
+  pricePerLiter?: number   /* ราคาต่อลิตร (ไฮดีเซล) */
+  odometer?: number        /* เข็มไมล์ (กม.) ณ เวลาที่เติม */
   note?: string
   /** เลขที่ใบสำคัญจ่ายที่ออกจากรายการนี้ — set once billed (links back to the voucher). */
   voucherNo?: string
   createdBy?: string
   createdAt: string
+}
+
+/** A ไฮดีเซล pump price effective from a given date (yyyy-mm-dd). The price for any
+    fill date is the latest entry with `date` on or before it. Built up automatically
+    as ค่าน้ำมัน records are saved. */
+export interface DieselPrice { date: string; price: number }
+
+/** ราคาไฮดีเซล (บาท/ลิตร) effective on `onDate` — the newest schedule entry dated on
+    or before it, falling back to the seed rate when the schedule has nothing earlier. */
+export function dieselPriceOn(prices: DieselPrice[], onDate: string): number {
+  let best: DieselPrice | null = null
+  for (const p of prices) {
+    if (p.date <= onDate && (!best || p.date > best.date)) best = p
+  }
+  return best ? best.price : DIESEL_PRICE_PER_LITER
 }
 
 /** Payroll payment voucher (ใบทำจ่ายเงินเดือน) — recording a salary payment to
@@ -1014,6 +1055,12 @@ export interface CreatedDocs {
   goodsPayments: GoodsPayment[]
   /** บันทึกรายจ่าย — recorded expenses awaiting/linked to vouchers, newest first. */
   expenseRecords: ExpenseRecord[]
+  /** สินทรัพย์ (asset registry) — seeded from SEED_ASSETS, then user-maintained. */
+  assets: Asset[]
+  /** ไฮดีเซล price schedule (บาท/ลิตร by date) — prefills the ค่าน้ำมัน form from the
+      rate effective on the fill date. A point is upserted each time a fuel expense
+      is saved, so the schedule tracks pump-price changes over time. */
+  dieselPrices: DieselPrice[]
   /** Foundry goods-delivery notes (ใบส่งสินค้าโรงหล่อ) — newest first. */
   foundryDeliveries: FoundryDelivery[]
   /** Payroll payment vouchers (ใบทำจ่ายเงินเดือน) — newest first. */
@@ -1088,7 +1135,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
 
@@ -1148,6 +1195,13 @@ function read(): CreatedDocs {
       purchaseOrders: (v.purchaseOrders ?? []).map((p) => ({ ...p, status: p.status ?? 'รอรับของ' })),
       goodsPayments: v.goodsPayments ?? [],
       expenseRecords: v.expenseRecords ?? [],
+      /* Migrate the legacy single last-used price into an open-ended schedule point. */
+      dieselPrices: v.dieselPrices ?? (() => {
+        const legacy = (v as { dieselPricePerLiter?: number }).dieselPricePerLiter
+        return typeof legacy === 'number' ? [{ date: '2000-01-01', price: legacy }] : []
+      })(),
+      /* Seed the asset registry on first run (existing browsers had no field). */
+      assets: v.assets ?? SEED_ASSETS,
       foundryDeliveries: v.foundryDeliveries ?? [],
       /* Backfill the detailed pay-slip fields for records saved before the
          breakdown existed (older shape only had additions/deductions). */
@@ -1559,6 +1613,28 @@ export function restoreExpenseRecord(id: string) {
 export function markExpenseRecordsBilled(ids: string[], voucherNo: string) {
   const set = new Set(ids)
   commit({ ...state, expenseRecords: state.expenseRecords.map((e) => (set.has(e.id) ? { ...e, voucherNo } : e)) })
+}
+/** Record the ไฮดีเซล price on a fill date (upsert by date), so future ค่าน้ำมัน
+    records prefill the rate effective on their own date. No-op on invalid input or
+    when the same date already holds this price. */
+export function recordDieselPrice(date: string, price: number) {
+  if (!date || !price || price <= 0) return
+  const rounded = Math.round(price * 100) / 100
+  const existing = state.dieselPrices.find((p) => p.date === date)
+  if (existing && existing.price === rounded) return
+  const rest = state.dieselPrices.filter((p) => p.date !== date)
+  commit({ ...state, dieselPrices: [...rest, { date, price: rounded }].sort((a, b) => a.date.localeCompare(b.date)) })
+}
+
+/* สินทรัพย์ (asset registry). */
+export function addAsset(a: Asset) {
+  commit({ ...state, assets: [stamp(a), ...state.assets] })
+}
+export function updateAsset(id: string, patch: Partial<Asset>) {
+  commit({ ...state, assets: state.assets.map((a) => (a.id === id ? { ...a, ...patch } : a)) })
+}
+export function removeAsset(id: string) {
+  commit({ ...state, assets: state.assets.filter((a) => a.id !== id) })
 }
 
 /* Foundry goods-delivery notes (ใบส่งสินค้าโรงหล่อ). */

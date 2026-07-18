@@ -91,6 +91,7 @@ export const NAV: NavGroup[] = [
         ],
       },
       { to: '/employees', label: 'รายชื่อพนักงาน', en: 'Employee List', icon: <IconUsers /> },
+      { to: '/assets', label: 'สินทรัพย์', en: 'Assets', icon: <IconTruck /> },
     ],
   },
   {

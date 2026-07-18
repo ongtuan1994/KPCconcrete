@@ -39,6 +39,7 @@ import { PlantMonitoring } from './pages/PlantMonitoring'
 import { PlantOperation } from './pages/PlantOperation'
 import { TruckFleet } from './pages/TruckFleet'
 import { Employees } from './pages/Employees'
+import { Assets } from './pages/Assets'
 import { LeaveRecords } from './pages/LeaveRecords'
 import { Attendance } from './pages/Attendance'
 import { SalaryStructure } from './pages/SalaryStructure'
@@ -129,6 +130,7 @@ export default function App() {
         <Route path="/plant-operation" element={<PlantOperation />} />
         <Route path="/fleet" element={<TruckFleet />} />
         <Route path="/employees" element={<Employees />} />
+        <Route path="/assets" element={<Assets />} />
         <Route path="/leave-records" element={<LeaveRecords />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/salary-structure" element={<SalaryStructure />} />
