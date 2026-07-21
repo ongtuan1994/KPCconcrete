@@ -153,9 +153,9 @@ export function DeliveryTickets() {
   )
 
   const cnt = (t: string) => monthRows.filter((x) => x.type === t).length
-  const sales = monthRows.filter((t) => t.amount > 0)
-  const totSales = sales.reduce((s, t) => s + t.amount, 0)
   const totM3 = monthRows.reduce((s, t) => s + t.m3, 0)
+  /* ปริมาณคอนกรีตที่ใช้กับโรงหล่อ (คิว) — รวม m3 ของใบจ่ายประเภทโรงหล่อ. */
+  const foundryM3 = monthRows.filter((t) => t.type === 'โรงหล่อ').reduce((s, t) => s + t.m3, 0)
 
   const toggleOne = (dtNo: string) => {
     const next = new Set(selected)
@@ -327,7 +327,7 @@ export function DeliveryTickets() {
       <div className="grid g-4" style={{ marginBottom: 24 }}>
         <KpiCard label="ใบจ่าย · Tickets" value={monthRows.length.toString()} note="ใบ" />
         <KpiCard label="ปริมาณรวม · Volume" value={totM3.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unit="m³" note="ผลิต+ส่ง" />
-        <KpiCard label="ยอดขาย · Sales" value={baht(totSales)} note="เฉพาะขายลูกค้า" />
+        <KpiCard label="คอนกรีตโรงหล่อ · Foundry" value={foundryM3.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unit="m³" note="ใช้กับโรงหล่อ" />
         <KpiCard label="ใช้ภายใน · Internal" value={cnt('โรงหล่อ').toString()} note="โรงหล่อ" invert />
       </div>
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
