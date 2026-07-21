@@ -6,10 +6,13 @@ import { INVOICES, baht, cleanProductName, customerLegalName, LATEST_MONTH, type
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
-    per-คิว pickup discount. `noTransport` marks a line excluded from the under-load
-    transport surcharge — true for ลูกค้ามารับเอง (no delivery) AND for บริษัทจัดส่ง
-    (ละเว้นค่าขนส่ง) lines (delivered, but the surcharge is waived). */
-interface LineDraft { code: string; qty: string; price: string; discount: string; selfPickup?: boolean; noTransport?: boolean }
+    per-คิว pickup discount. `chargedQty` is the portion of this line's คิว that the
+    company charges under-load transport on — set when pulling from tickets. A single
+    line can now mix บริษัทจัดส่ง (charged) and บริษัทจัดส่ง(ละเว้นค่าขนส่ง) (waived)
+    deliveries of the same product+price, so we track the charged คิว separately
+    instead of a per-line boolean. undefined ⇒ treat the whole line as charged
+    (e.g. manually-added lines); ลูกค้ามารับเอง lines get chargedQty 0. */
+interface LineDraft { code: string; qty: string; price: string; discount: string; selfPickup?: boolean; chargedQty?: number }
 
 const emptyLine = (): LineDraft => ({ code: PRODUCTS[0]?.code ?? '', qty: '', price: '', discount: '' })
 
@@ -146,9 +149,13 @@ export function NewInvoiceForm({
       })
       totalInclVat += amountInclVat
       /* Only concrete the company charges delivery on counts toward the under-load
-         transport surcharge — exclude foundry precast, ลูกค้ามารับเอง lines, and
-         บริษัทจัดส่ง(ละเว้นค่าขนส่ง) lines (both carry noTransport). */
-      if (p.site !== 'foundry' && !ld.noTransport) concreteQty += qty
+         transport surcharge — exclude foundry precast, ลูกค้ามารับเอง lines, and the
+         ละเว้นค่าขนส่ง portion of a delivered line. `chargedQty` holds the charged คิว
+         when the line came from tickets; undefined ⇒ charge the whole line (manual
+         line). Cap at the current qty so shrinking the line can't over-count. */
+      if (p.site !== 'foundry') {
+        concreteQty += ld.chargedQty != null ? Math.min(qty, ld.chargedQty) : qty
+      }
     }
 
     /* Under-load transport surcharge applies when charged concrete qty < 3 คิว.
@@ -292,29 +299,32 @@ export function NewInvoiceForm({
     for (const t of matched) {
       const masterPrice = productMap[t.prod]?.price || 0
       const effPrice = t.price || masterPrice
-      /* Three การรับของ buckets that must not merge with one another (different
-         discount / transport treatment), so key on the bucket too:
-         'self'     = ลูกค้ามารับเอง (discount + no transport)
-         'deliv-nt' = บริษัทจัดส่ง(ละเว้นค่าขนส่ง) (no discount, no transport)
-         'deliv'    = บริษัทจัดส่ง / legacy (no discount, charges transport) */
+      /* Two การรับของ buckets that must not merge (different net price):
+         'self'  = ลูกค้ามารับเอง (discount 100/คิว → different unit price)
+         'deliv' = บริษัทจัดส่ง — both "คิดค่าขนส่ง" and "ละเว้นค่าขนส่ง" share the
+                   same price, so they merge into ONE line. Whether the คิว is
+                   charged for the under-load fee is tracked via `chargedQty`. */
       const hasDiscount = pickupHasSelfDiscount(t.pickup)
       const chargesTransport = pickupChargesTransport(t.pickup)
-      const bucket = hasDiscount ? 'self' : chargesTransport ? 'deliv' : 'deliv-nt'
+      const bucket = hasDiscount ? 'self' : 'deliv'
+      const chargedM3 = chargesTransport ? t.m3 : 0
+      /* Count waived deliveries per ticket (they no longer get their own line). */
+      if (!hasDiscount && !chargesTransport) waiveTransportLines += 1
       const key = `${t.prod}__${effPrice}__${bucket}`
       const existing = byKey.get(key)
       if (existing) {
         existing.qty = String((Number(existing.qty) || 0) + t.m3)
+        existing.chargedQty = (existing.chargedQty ?? 0) + chargedM3
       } else {
         if (!t.price && masterPrice) priceFilledFromMaster += 1
         if (hasDiscount) selfPickupLines += 1
-        if (bucket === 'deliv-nt') waiveTransportLines += 1
         byKey.set(key, {
           code: t.prod,
           qty: String(t.m3),
           price: effPrice ? String(effPrice) : '',
           discount: hasDiscount ? String(SELF_PICKUP_DISCOUNT_PER_M3) : '',
+          chargedQty: chargedM3,
           ...(hasDiscount ? { selfPickup: true } : {}),
-          ...(!chargesTransport ? { noTransport: true } : {}),
         })
       }
     }
