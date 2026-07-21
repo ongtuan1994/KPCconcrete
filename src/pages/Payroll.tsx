@@ -434,6 +434,8 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   const [baseSalary, setBaseSalary] = useState('')
   const [experiencePay, setExperiencePay] = useState('')
   const [vehiclePay, setVehiclePay] = useState('')
+  /* OT amount — prefilled from the attendance log (นาที × อัตรา) but editable. */
+  const [otPay, setOtPay] = useState('')
   const [otherIncome, setOtherIncome] = useState('')
   /* deductions */
   const [socialSecurity, setSocialSecurity] = useState('')
@@ -482,6 +484,19 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     setDaysWorked(days ? String(days) : '')
   }
 
+  /* OT: prefill the amount = net OT นาที ในช่วง × อัตรา OT — still editable. Cleared
+     for employees set to ไม่รับ OT (ปรับโครงสร้าง). */
+  const otPrefill = (empId: string, from: string, to: string) => {
+    const st = salaryStructureFor(empId, created.salaryStructures)
+    if (st.otEligible === false) { setOtPay(''); return }
+    const rate = computeOtRate(st)
+    const mins = attendance
+      .filter((r) => r.empId === empId && (!from || r.date >= from) && (!to || r.date <= to))
+      .reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
+    const amt = Math.round(mins * rate * 100) / 100
+    setOtPay(amt ? String(amt) : '')
+  }
+
   useEffect(() => {
     if (!open) return
     const firstId = employees[0]?.id ?? ''
@@ -499,6 +514,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     advancePrefill(firstId, tm)
     tripFeePrefill(firstId, rf, rt)
     daysWorkedPrefill(firstId, rf, rt)
+    otPrefill(firstId, rf, rt)
   }, [open])
 
   const num = (s: string) => Number(s) || 0
@@ -522,10 +538,10 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     [attendance, employeeId, otFrom, otTo],
   )
   const otMinutes = otRecords.reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
-  const otAmount = otEligible ? Math.round(otMinutes * otRate * 100) / 100 : 0
 
-  /* For non-transport the "รักษารถ" income slot becomes the computed OT amount. */
-  const vehicleOrOt = isTransport ? num(vehiclePay) : otAmount
+  /* For non-transport the "รักษารถ" income slot carries the OT amount — prefilled
+     from the attendance log but editable via `otPay` (0 when ไม่รับ OT). */
+  const vehicleOrOt = isTransport ? num(vehiclePay) : (otEligible ? num(otPay) : 0)
 
   const effectiveBase = isLabor ? num(daysWorked) * dailyWage : num(baseSalary)
   const totalIncome = effectiveBase + num(experiencePay) + vehicleOrOt + num(otherIncome)
@@ -587,6 +603,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
               const [rf, rt] = monthRange(ym); setOtFrom(rf); setOtTo(rt); setTripFrom(rf); setTripTo(rt)
               tripFeePrefill(employeeId, rf, rt)
               daysWorkedPrefill(employeeId, rf, rt)
+              otPrefill(employeeId, rf, rt)
             }}>
               {monthOptions.map((m) => <option key={m} value={m}>{fmtMonthFull(m)}</option>)}
             </Select>
@@ -596,10 +613,10 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontFamily: 'var(--kpc-font-mono)', fontWeight: 600 }}>{ppNo}</div>
         </Field>
         <Field label="คำนวณ OT ตั้งแต่วันที่" hint="ดึงจากบันทึกลงเวลางาน">
-          <Input type="date" value={otFrom} onChange={(e) => setOtFrom(e.target.value)} />
+          <Input type="date" value={otFrom} onChange={(e) => { setOtFrom(e.target.value); otPrefill(employeeId, e.target.value, otTo) }} />
         </Field>
         <Field label="จนถึงวันที่">
-          <Input type="date" value={otTo} onChange={(e) => setOtTo(e.target.value)} />
+          <Input type="date" value={otTo} onChange={(e) => { setOtTo(e.target.value); otPrefill(employeeId, otFrom, e.target.value) }} />
         </Field>
         <Field label="คำนวณเที่ยวรถโม่ ตั้งแต่วันที่" hint="ดึงค่าเที่ยววิ่งจากบันทึกเที่ยวรถโม่">
           <Input type="date" value={tripFrom} onChange={(e) => { setTripFrom(e.target.value); tripFeePrefill(employeeId, e.target.value, tripTo) }} />
@@ -608,7 +625,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           <Input type="date" value={tripTo} onChange={(e) => { setTripTo(e.target.value); tripFeePrefill(employeeId, tripFrom, e.target.value) }} />
         </Field>
         <Field label="พนักงาน" required style={{ gridColumn: '1 / -1' }} hint={selEmp ? `${selEmp.role} · ${DEPARTMENT_LABEL[selEmp.department].th}` : undefined}>
-          <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth); tripFeePrefill(e.target.value, tripFrom, tripTo); daysWorkedPrefill(e.target.value, otFrom, otTo) }}>
+          <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth); tripFeePrefill(e.target.value, tripFrom, tripTo); daysWorkedPrefill(e.target.value, otFrom, otTo); otPrefill(e.target.value, otFrom, otTo) }}>
             {employees.map((e) => {
               const done = existing.some((p) => p.employeeId === e.id && p.payMonth === payMonth)
               return <option key={e.id} value={e.id}>{e.name}{e.nickname ? ` (${e.nickname})` : ''} — {e.role}{done ? ' · ✓ สร้างแล้ว' : ''}</option>
@@ -639,10 +656,14 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           {isTransport ? (
             <Field label="รักษารถ"><Input type="number" step="0.01" min={0} placeholder="0" value={vehiclePay} onChange={(e) => setVehiclePay(e.target.value)} /></Field>
           ) : (
-            <Field label="OT" hint={otEligible ? `พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที` : 'พนักงานนี้ตั้งค่าไม่รับ OT (ปรับโครงสร้าง)'}>
-              <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: otEligible ? 1 : 0.55, color: otEligible ? undefined : 'var(--kpc-text-faint)' }}>
-                {otEligible ? baht(otAmount) : 'ไม่รับ OT'}
-              </div>
+            <Field label="OT" hint={otEligible ? `พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที · แก้ไขได้` : 'พนักงานนี้ตั้งค่าไม่รับ OT (ปรับโครงสร้าง)'}>
+              {otEligible ? (
+                <Input type="number" step="0.01" min={0} placeholder="0" value={otPay} onChange={(e) => setOtPay(e.target.value)} />
+              ) : (
+                <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: 0.55, color: 'var(--kpc-text-faint)' }}>
+                  ไม่รับ OT
+                </div>
+              )}
             </Field>
           )}
           <Field label="ค่าเที่ยววิ่ง" hint="ดึงจากบันทึกเที่ยวรถโม่ตามช่วงวันที่ · แก้ไขได้">
