@@ -34,8 +34,8 @@ export function Settings() {
   const handleBackup = async () => {
     setBackingUp(true)
     try {
-      const { filename } = await downloadBackup()
-      alert(`สำรองข้อมูลเรียบร้อย\nไฟล์: ${filename}`)
+      const { filename, stores } = await downloadBackup()
+      alert(`สำรองข้อมูลเรียบร้อย (${stores} ชุดข้อมูล)\nไฟล์: ${filename}`)
     } catch {
       alert('สำรองข้อมูลไม่สำเร็จ กรุณาลองใหม่')
     } finally {
@@ -47,11 +47,17 @@ export function Settings() {
     const file = files?.[0]
     if (restoreRef.current) restoreRef.current.value = '' /* allow re-picking the same file */
     if (!file) return
-    if (!confirm('กู้คืนข้อมูลจากไฟล์นี้? ข้อมูลปัจจุบันในเครื่องนี้จะถูกเขียนทับทั้งหมด')) return
+    if (!confirm('กู้คืนข้อมูลจากไฟล์นี้?\n\nข้อมูลในเครื่องจะถูกแทนที่ให้ตรงกับไฟล์สำรองทั้งหมด และข้อมูลที่สร้างขึ้นหลังวันที่สำรองจะถูกลบออก\nแนะนำให้กด "Backup ข้อมูล" เก็บสถานะปัจจุบันไว้ก่อน')) return
     setRestoring(true)
     try {
-      const { stores } = await restoreBackup(file)
-      alert(`กู้คืนข้อมูลเรียบร้อย (${stores} รายการ)\nระบบจะโหลดหน้าใหม่`)
+      const { stores, removed, exportedAt } = await restoreBackup(file)
+      const when = exportedAt ? new Date(exportedAt).toLocaleString('th-TH') : 'ไม่ระบุวันที่'
+      alert(
+        `กู้คืนข้อมูลเรียบร้อย\n` +
+        `จากไฟล์สำรองวันที่: ${when}\n` +
+        `กู้คืน ${stores} ชุดข้อมูล${removed > 0 ? ` · ล้างข้อมูลส่วนเกิน ${removed} ชุด` : ''}\n\n` +
+        `ระบบจะโหลดหน้าใหม่`,
+      )
       location.reload()
     } catch (e) {
       alert(`กู้คืนข้อมูลไม่สำเร็จ: ${e instanceof Error ? e.message : 'ไฟล์ไม่ถูกต้อง'}`)
