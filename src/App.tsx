@@ -4,7 +4,7 @@ import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Settings } from './pages/Settings'
 import { AuditReport } from './pages/AuditReport'
-import { ROUTE_RESOURCE, roleAllowsResource, landingRouteFor, useCurrentUser, usePerms } from './data/auth'
+import { ROUTE_RESOURCE, roleAllowsResource, roleAllowsRoute, landingRouteFor, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
 import { Commission } from './pages/Commission'
@@ -53,6 +53,7 @@ function Guard({ children }: { children: ReactElement }) {
   const perms = usePerms()
   const loc = useLocation()
   const key = ROUTE_RESOURCE[loc.pathname]
+  if (user && !roleAllowsRoute(user.role, loc.pathname)) return <NoAccess />
   if (key && user) {
     const lvl = perms[user.role]?.[key] ?? 'none'
     /* Perm-matrix level OR a hard role allowlist for sensitive pages. */

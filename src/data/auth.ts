@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react'
 
 /* ───────── Roles & users ───────── */
 
-export type Role = 'Admin' | 'Board' | 'Auditor' | 'Manager' | 'Accountant'
+export type Role = 'Admin' | 'Board' | 'Auditor' | 'Manager' | 'Accountant' | 'Guest'
 
 /** Display labels for each role (Thai · English). */
 export const ROLE_LABEL: Record<Role, { th: string; en: string }> = {
@@ -20,9 +20,15 @@ export const ROLE_LABEL: Record<Role, { th: string; en: string }> = {
   Auditor: { th: 'ผู้ตรวจสอบ', en: 'Auditor' },
   Manager: { th: 'ผู้จัดการ', en: 'Manager' },
   Accountant: { th: 'พนักงานบัญชี', en: 'Accountant' },
+  Guest: { th: 'ผู้เยี่ยมชม', en: 'Guest' },
 }
 
-export const ROLES: Role[] = ['Admin', 'Board', 'Auditor', 'Manager', 'Accountant']
+export const ROLES: Role[] = ['Admin', 'Board', 'Auditor', 'Manager', 'Accountant', 'Guest']
+
+/** Roles that can never write, whatever the permission matrix says — an 'edit'
+    cell is downgraded to 'view' for these (see setPerm / levelFor). */
+const READ_ONLY_ROLES: Role[] = ['Guest']
+export const isReadOnlyRole = (role: Role): boolean => READ_ONLY_ROLES.includes(role)
 
 export interface User {
   no: number
@@ -112,6 +118,8 @@ ROUTE_RESOURCE['/fuel-report'] = 'expense-records'
 /* ประเภทบัญชี cost center (master list) shares the บันทึกรายจ่าย gate. */
 ROUTE_RESOURCE['/cost-centers'] = 'expense-records'
 /* Stock-reconcile history pages share their stock's gate. */
+/* Alias route for the truck-fleet page — same gate as รถขนส่งปูน. */
+ROUTE_RESOURCE['/fleet'] = 'transport-pricing'
 ROUTE_RESOURCE['/stock-reconcile'] = 'stock'
 ROUTE_RESOURCE['/foundry-materials-reconcile'] = 'foundry-materials'
 ROUTE_RESOURCE['/foundry-stock-reconcile'] = 'foundry-stock'
@@ -121,7 +129,7 @@ ROUTE_RESOURCE['/foundry-stock-reconcile'] = 'foundry-stock'
     configurable perms say. Used for sensitive pages. */
 const ALL_BUT_MANAGER: Role[] = ['Admin', 'Board', 'Auditor', 'Accountant']
 export const RESOURCE_ROLE_ALLOW: Record<string, Role[]> = {
-  'monthly-report': ['Admin', 'Board', 'Auditor'],
+  'monthly-report': ['Admin', 'Board', 'Auditor', 'Guest'],
   'salary-structure': ['Admin', 'Board', 'Auditor'],
   /* Manager cannot access these sales documents. */
   'delivery-tickets': ALL_BUT_MANAGER,
@@ -134,10 +142,21 @@ export function roleAllowsResource(role: Role, key: string): boolean {
   return !allow || allow.includes(role)
 }
 
+/** Ungated routes (no permission row of their own) that a read-only guest still
+    shouldn't reach — e.g. the personal งานของฉัน page. */
+const GUEST_BLOCKED_ROUTES = new Set(['/my-work'])
+/** Whether `role` may open `path` at all, covering the ungated personal pages
+    that the permission matrix doesn't model. */
+export function roleAllowsRoute(role: Role, path: string): boolean {
+  return !(isReadOnlyRole(role) && GUEST_BLOCKED_ROUTES.has(path))
+}
+
 /** Landing route after login — every user is taken to งานของฉัน (/my-work), the
     personal, ungated page that all roles can access. role/perms are kept in the
     signature for the callers but no longer affect the destination. */
-export function landingRouteFor(_role: Role, _perms: PermMatrix): string {
+export function landingRouteFor(role: Role, _perms: PermMatrix): string {
+  /* Guests have no personal page — start them on the first page they can read. */
+  if (isReadOnlyRole(role)) return '/plant-operation'
   return '/my-work'
 }
 
@@ -183,6 +202,21 @@ export const DEFAULT_PERMS: PermMatrix = {
   Accountant: roleRow(E, {
     'audit-report': V, pricing: V, 'foundry-formula': V, 'transport-pricing': V,
     employees: V, 'salary-structure': V, settings: N,
+  }),
+  /* Guest — no access by default; read-only on the agreed shortlist. Writes are
+     blocked outright by READ_ONLY_ROLES, so these cells can never become 'edit'. */
+  Guest: roleRow(N, {
+    'plant-operation': V,      /* Today Operation */
+    'monthly-report': V,       /* รายงานประจำเดือน / ปี */
+    'tax-reports': V,          /* รายงานภาษีซื้อ / ขาย */
+    ledger: V,                 /* ลูกหนี้ / เจ้าหนี้ */
+    stock: V,                  /* คลังวัตถุดิบแพล้นปูน */
+    'foundry-materials': V,    /* คลังวัตถุดิบโรงหล่อ */
+    pricing: V,                /* ราคาสินค้า / ค่าขนส่ง */
+    'transport-pricing': V,    /* รถขนส่งปูน */
+    employees: V,              /* รายชื่อพนักงาน */
+    suppliers: V,              /* ทะเบียนซัพพลายเออร์ */
+    'customer-master': V,      /* ทะเบียนลูกค้า */
   }),
 }
 
@@ -310,11 +344,13 @@ export function logout() {
   commit({ ...state, session: null, activity, currentSessionId: null })
 }
 
-/** Set the access level for one (role, resource) cell. */
+/** Set the access level for one (role, resource) cell. Read-only roles (Guest)
+    can be granted or denied access, but never write access. */
 export function setPerm(role: Role, resourceKey: string, level: Level) {
+  const lvl: Level = isReadOnlyRole(role) && level === 'edit' ? 'view' : level
   commit({
     ...state,
-    perms: { ...state.perms, [role]: { ...state.perms[role], [resourceKey]: level } },
+    perms: { ...state.perms, [role]: { ...state.perms[role], [resourceKey]: lvl } },
   })
 }
 
@@ -375,9 +411,11 @@ export function clearActivity() {
   commit({ ...state, activity: keep })
 }
 
-/** Resolve the access level for a role + resource against current state. */
+/** Resolve the access level for a role + resource against current state. A
+    read-only role never resolves to 'edit', even if a stored matrix says so. */
 export function levelFor(role: Role, resourceKey: string): Level {
-  return state.perms[role]?.[resourceKey] ?? 'none'
+  const lvl = state.perms[role]?.[resourceKey] ?? 'none'
+  return isReadOnlyRole(role) && lvl === 'edit' ? 'view' : lvl
 }
 
 /** Username of the currently logged-in user, or '' when signed out.

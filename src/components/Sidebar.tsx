@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { NAV, type NavItem, type NavGroup } from '../nav'
 import { Logo } from './icons'
-import { ROUTE_RESOURCE, roleAllowsResource, useCurrentUser, usePerms } from '../data/auth'
+import { ROUTE_RESOURCE, roleAllowsResource, roleAllowsRoute, useCurrentUser, usePerms } from '../data/auth'
 
 export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const user = useCurrentUser()
@@ -12,6 +12,7 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
       role has at least View on that resource. */
   const canSee = (to: string) => {
     const key = ROUTE_RESOURCE[to]
+    if (user && !roleAllowsRoute(user.role, to)) return false
     if (!key || !user) return !key ? true : false
     if (!roleAllowsResource(user.role, key)) return false
     const lvl = perms[user.role]?.[key] ?? 'none'

@@ -12,6 +12,7 @@ import {
 } from '../data/auth'
 
 const ROLE_TONE: Record<Role, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
+  Guest: 'neutral',
   Admin: 'info',
   Board: 'success',
   Auditor: 'neutral',
