@@ -117,53 +117,39 @@ function Tank({ x, topY, w, h }: { x: number; topY: number; w: number; h: number
   )
 }
 
-/** Side-view concrete mixer truck illustration (drum + cab + wheels). White-bodied;
-    `big` trucks (10-ล้อ 6-คิว) render larger than the smaller 6-ล้อ ones. */
-function MixerTruck({ big }: { big?: boolean }) {
-  const body = '#ffffff'
-  const edge = '#94a3b8'
+/** Real photo of the mixer truck — files live in /public/trucks/00X.jpg
+    (same source as the Truck Fleet page). */
+function MixerTruck({ id }: { id: string }) {
   return (
-    <svg viewBox="0 0 168 86" width={big ? '98%' : '66%'} preserveAspectRatio="xMidYMid meet" style={{ display: 'block', margin: '0 auto' }} role="img" aria-label="รถโม่คอนกรีต">
-      {/* chassis */}
-      <rect x={14} y={58} width={140} height={6} rx={2} fill="#64748b" />
-      {/* mixing drum (tilted barrel) — white */}
-      <g transform="rotate(-6 82 42)">
-        <rect x={40} y={24} width={82} height={34} rx={17} fill={body} stroke={edge} strokeWidth={2} />
-        <ellipse cx={122} cy={41} rx={9} ry={17} fill="#f1f5f9" stroke={edge} strokeWidth={2} />
-        {[0, 1, 2, 3].map((i) => (
-          <line key={i} x1={52 + i * 18} y1={25} x2={44 + i * 18} y2={57} stroke={edge} strokeWidth={2} opacity={0.5} />
-        ))}
-      </g>
-      {/* discharge chute (back-left) */}
-      <polygon points="20,44 40,48 34,62 20,58" fill="#cbd5e1" stroke={edge} strokeWidth={1} />
-      {/* cab (front-right) — white */}
-      <rect x={128} y={34} width={28} height={26} rx={4} fill={body} stroke={edge} strokeWidth={2} />
-      <rect x={132} y={38} width={16} height={12} rx={2} fill="#dbeafe" />
-      {/* wheels */}
-      {[40, 112, 140].map((cx) => (
-        <g key={cx}>
-          <circle cx={cx} cy={68} r={11} fill="#1f2937" />
-          <circle cx={cx} cy={68} r={4.5} fill="#9aa3af" />
-        </g>
-      ))}
-    </svg>
+    <img
+      src={`/trucks/${id}.jpg`}
+      alt={`รถโม่คอนกรีตหมายเลข ${id}`}
+      loading="lazy"
+      style={{ width: '100%', height: 160, objectFit: 'contain', display: 'block', borderRadius: 10, background: '#f3f4f6' }}
+    />
   )
 }
 
-/** One mixer-truck number card — shows จำนวนรอบการขนส่ง for the truck. */
-function TruckCard({ id, plate, driver, maxM3, trips }: { id: string; plate: string; driver: string; maxM3: number; trips: number }) {
+/** One mixer-truck number card — จำนวนรอบการขนส่ง + น้ำมันที่เติม for the truck. */
+function TruckCard({ id, plate, driver, maxM3, trips, liters }: { id: string; plate: string; driver: string; maxM3: number; trips: number; liters: number }) {
   return (
     <div className="card stack" style={{ gap: 8, padding: 16 }}>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <span className="mono" style={{ fontSize: 15, fontWeight: 700, color: 'var(--kpc-text-strong)' }}>รถ {id}</span>
         <Badge tone="neutral" square>{maxM3} คิว</Badge>
       </div>
-      <MixerTruck big={maxM3 >= 6} />
-      <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
-        <span className="mono" style={{ fontSize: 30, fontWeight: 800, color: 'var(--kpc-primary-ink, #3730a3)', lineHeight: 1 }}>{qm(trips)}</span>
-        <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>เที่ยว</span>
+      <MixerTruck id={id} />
+      <div className="row" style={{ alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+        <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
+          <span className="mono" style={{ fontSize: 30, fontWeight: 800, color: 'var(--kpc-primary-ink, #3730a3)', lineHeight: 1 }}>{qm(trips)}</span>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>เที่ยว</span>
+        </div>
+        <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
+          <span className="mono" style={{ fontSize: 30, fontWeight: 800, color: '#b45309', lineHeight: 1 }}>{qm(liters)}</span>
+          <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>ลิตร</span>
+        </div>
       </div>
-      <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>จำนวนเที่ยวสะสมเดือนนี้</span>
+      <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>เที่ยววิ่ง · น้ำมันที่เติม สะสมเดือนนี้</span>
       <div className="row" style={{ justifyContent: 'space-between', fontSize: 12, color: 'var(--kpc-text-faint)', borderTop: '1px solid var(--kpc-border-soft, #f1f5f9)', paddingTop: 8 }}>
         <span className="mono">{plate}</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{driver}</span>
@@ -263,6 +249,18 @@ export function PlantOperation() {
     return m
   }, [created.tickets, created.hidden.tickets, thisMonth])
   const totalTrips = VEHICLES.reduce((s, v) => s + (tripsByTruck[v.id] ?? 0), 0)
+
+  /* จำนวนลิตรที่เติมสะสมเดือนนี้ per mixer truck — summed from this month's
+     บันทึกรายจ่าย ค่าน้ำมัน records (each fill carries vehicleId + liters). */
+  const litersByTruck = useMemo(() => {
+    const m: Record<string, number> = { '001': 0, '002': 0, '003': 0, '004': 0 }
+    for (const e of created.expenseRecords) {
+      if (e.category !== 'ค่าน้ำมัน' || !e.vehicleId || !e.liters) continue
+      if (e.date.slice(0, 7) !== thisMonth) continue
+      if (m[e.vehicleId] != null) m[e.vehicleId] += e.liters
+    }
+    return m
+  }, [created.expenseRecords, thisMonth])
 
   return (
     <>
@@ -393,7 +391,7 @@ export function PlantOperation() {
       </div>
       <div className="grid g-4" style={{ gap: 16 }}>
         {VEHICLES.map((v) => (
-          <TruckCard key={v.id} id={v.id} plate={v.plate} driver={v.driver} maxM3={v.maxM3} trips={tripsByTruck[v.id] ?? 0} />
+          <TruckCard key={v.id} id={v.id} plate={v.plate} driver={v.driver} maxM3={v.maxM3} trips={tripsByTruck[v.id] ?? 0} liters={litersByTruck[v.id] ?? 0} />
         ))}
       </div>
 
