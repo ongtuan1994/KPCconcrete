@@ -8,7 +8,9 @@ import { DocModal } from '../components/documents/DocModal'
 import { BillingNoteDoc } from '../components/documents/BillingNoteDoc'
 import { NewBillingNoteForm } from '../components/documents/NewBillingNoteForm'
 import { BILLING_NOTES, baht, LATEST_MONTH, monthLabel, monthShort, type BillingNote } from '../data/selectors'
-import { useCreatedDocs, removeBillingNote, CAN_DELETE } from '../data/createdDocs'
+import { useCreatedDocs, removeBillingNote, restoreBillingNote, type DeletedBillingNote } from '../data/createdDocs'
+import { useCan } from '../data/auth'
+import { fmtThaiDateTime } from '../utils/datetime'
 import { downloadCsv } from '../utils/csv'
 
 export function BillingNotes() {
@@ -20,6 +22,8 @@ export function BillingNotes() {
   const [active, setActive] = useState<BillingNote | null>(null)
   const [showForm, setShowForm] = useState(false)
   const created = useCreatedDocs()
+  /* ใบวางบิลอยู่ใต้สิทธิ์เดียวกับใบกำกับภาษี (ROUTE_RESOURCE['/billing'] = 'invoices'). */
+  const canDelete = useCan('invoices').edit
 
   const hiddenSet = useMemo(() => new Set(created.hidden.billingNotes), [created.hidden.billingNotes])
   const allBns = useMemo(
@@ -42,14 +46,37 @@ export function BillingNotes() {
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบวางบิล', ref: r.no, label: r.no, sub: `${r.customer} · ${baht(r.total)}`, route: '/billing' }} /> },
     { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
-    ...(CAN_DELETE ? [{
+    ...(canDelete ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
       cell: (r: BillingNote) => (
         <Button variant="ghost" size="sm" onClick={() => {
-          if (confirm(`ลบใบวางบิล ${r.no} ?\n(เฉพาะโหมดทดสอบ)`)) removeBillingNote(r.no)
+          if (confirm(`ลบใบวางบิล ${r.no} ?\nระบบจะเก็บไว้ในประวัติการลบด้านล่าง (กู้คืนได้)`)) removeBillingNote(r)
         }} style={{ color: 'var(--kpc-danger)' }} aria-label="ลบ">✕</Button>
+      ),
+    }] : []),
+  ]
+
+  /* ประวัติการลบของงวดที่เลือก — แสดงต่อท้ายตารางหลัก. */
+  const deletedRows = useMemo(
+    () => created.deletedBillingNotes.filter((d) => month === 'all' || d.month === month),
+    [created.deletedBillingNotes, month],
+  )
+  const deletedColumns: Column<DeletedBillingNote>[] = [
+    { key: 'no', header: 'เลขที่เอกสาร', cell: (r) => r.no, className: 'docno' },
+    { key: 'month', header: 'งวด', align: 'center', cell: (r) => <span className="th">{monthShort(r.month)}</span> },
+    { key: 'cust', header: 'ลูกค้า', cell: (r) => r.customer },
+    { key: 'n', header: 'จำนวนใบกำกับ', align: 'center', cell: (r) => <Badge tone="info" pip={false} square>{r.invoices.length} ใบ</Badge> },
+    { key: 'total', header: 'ยอดวางบิล', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
+    { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
+    { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
+    ...(canDelete ? [{
+      key: 'restore',
+      header: '',
+      align: 'center' as const,
+      cell: (r: DeletedBillingNote) => (
+        <Button variant="ghost" size="sm" onClick={() => { if (confirm(`กู้คืนใบวางบิล ${r.no} ?`)) restoreBillingNote(r.no) }}>กู้คืน</Button>
       ),
     }] : []),
   ]
@@ -83,6 +110,17 @@ export function BillingNotes() {
         </div>
       </div>
       <DataTable columns={columns} rows={rows} pageSize={10} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} ใบวางบิล`} />
+
+      {deletedRows.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>ประวัติการลบใบวางบิล</h3>
+            <Badge tone="danger" square pip={false}>{deletedRows.length}</Badge>
+            <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>· เก็บไว้ตรวจสอบย้อนหลัง</span>
+          </div>
+          <DataTable columns={deletedColumns} rows={deletedRows} pageSize={12} totalLabel={(f, t, total) => `แสดง ${f}–${t} จาก ${total} รายการที่ถูกลบ`} />
+        </div>
+      )}
 
       <DocModal open={!!active} title={active ? `ใบวางบิล ${active.no}` : ''} onClose={() => setActive(null)}>
         {active && <BillingNoteDoc bn={active} />}

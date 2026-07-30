@@ -1040,6 +1040,7 @@ export interface DeletedPurchaseOrder extends PurchaseOrder { deletedAt: string;
 export interface DeletedGoodsPayment extends GoodsPayment { deletedAt: string; deletedBy: string }
 export interface DeletedExpenseRecord extends ExpenseRecord { deletedAt: string; deletedBy: string }
 export interface DeletedInvoice extends Invoice { deletedAt: string; deletedBy: string }
+export interface DeletedBillingNote extends BillingNote { deletedAt: string; deletedBy: string }
 export interface DeletedReceipt extends Receipt { deletedAt: string; deletedBy: string }
 export interface DeletedFoundryDelivery extends FoundryDelivery { deletedAt: string; deletedBy: string }
 
@@ -1164,6 +1165,8 @@ export interface CreatedDocs {
   deletedExpenseRecords: DeletedExpenseRecord[]
   /** Audit history of deleted ใบกำกับภาษี — newest first. */
   deletedInvoices: DeletedInvoice[]
+  /** Audit history of deleted ใบวางบิล — newest first. */
+  deletedBillingNotes: DeletedBillingNote[]
   /** Audit history of deleted ใบเสร็จรับเงิน — newest first. */
   deletedReceipts: DeletedReceipt[]
   /** Audit history of deleted ใบส่งสินค้าโรงหล่อ — newest first. */
@@ -1171,7 +1174,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], fuelSeedV1: false, dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], fuelSeedV1: false, dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedBillingNotes: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
 
@@ -1292,6 +1295,7 @@ function read(): CreatedDocs {
       deletedGoodsPayments: v.deletedGoodsPayments ?? [],
       deletedExpenseRecords: v.deletedExpenseRecords ?? [],
       deletedInvoices: v.deletedInvoices ?? [],
+      deletedBillingNotes: v.deletedBillingNotes ?? [],
       deletedReceipts: v.deletedReceipts ?? [],
       deletedFoundryDeliveries: v.deletedFoundryDeliveries ?? [],
     }
@@ -1451,12 +1455,30 @@ export function restoreInvoice(no: string) {
     invoices: wasSeed ? state.invoices : [unstampDeleted(rec) as Invoice, ...state.invoices],
   })
 }
-export function removeBillingNote(no: string) {
-  const wasCreated = state.billingNotes.some((b) => b.no === no)
+/** Delete a billing note (ใบวางบิล) and keep an audit snapshot. Takes the full
+    record so a seed note (which has no store entry) can still be snapshotted;
+    created ones are removed from the list, seed ones hidden by no. The invoices
+    it grouped are not stamped, so they become billable again straight away. */
+export function removeBillingNote(bn: BillingNote) {
+  const wasCreated = state.billingNotes.some((b) => b.no === bn.no)
   commit({
     ...state,
-    billingNotes: state.billingNotes.filter((b) => b.no !== no),
-    hidden: wasCreated ? state.hidden : { ...state.hidden, billingNotes: [...state.hidden.billingNotes, no] },
+    billingNotes: state.billingNotes.filter((b) => b.no !== bn.no),
+    hidden: wasCreated ? state.hidden : { ...state.hidden, billingNotes: [...state.hidden.billingNotes, bn.no] },
+    deletedBillingNotes: [stampDeleted(bn), ...state.deletedBillingNotes.filter((d) => d.no !== bn.no)],
+  })
+}
+/** Undo a removeBillingNote — re-adds a user-created note or un-hides a seed one,
+    and drops it from the deletion history. */
+export function restoreBillingNote(no: string) {
+  const rec = state.deletedBillingNotes.find((d) => d.no === no)
+  if (!rec) return
+  const wasSeed = state.hidden.billingNotes.includes(no)
+  commit({
+    ...state,
+    deletedBillingNotes: state.deletedBillingNotes.filter((d) => d.no !== no),
+    hidden: wasSeed ? { ...state.hidden, billingNotes: state.hidden.billingNotes.filter((x) => x !== no) } : state.hidden,
+    billingNotes: wasSeed ? state.billingNotes : [unstampDeleted(rec) as BillingNote, ...state.billingNotes],
   })
 }
 /** Delete a receipt (ใบเสร็จรับเงิน) and keep an audit snapshot. Full record so a
