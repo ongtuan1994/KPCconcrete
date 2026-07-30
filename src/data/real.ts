@@ -490,12 +490,15 @@ export const CUSTOMER_MAP: Record<string, Customer> = Object.fromEntries(CUSTOME
 
 export type PayMethod = 'เครดิต' | 'เงินสด' | 'โอน' | 'เช็ค' | ''
 
-export interface Vehicle { id: string; maxM3: number; driver: string; plate: string }
+/* maxM3 = พิกัดที่ใช้แสดงทุกหน้าจอ/เอกสาร (ความจุตามสเปกรถ)
+   entryMaxM3 = เพดานที่ "บันทึกได้" ตอนกรอกใบจ่ายคอนกรีต — ตั้งสูงกว่าพิกัดได้
+   เพราะหน้างานบรรทุกเกินพิกัดเล็กน้อยเป็นเรื่องปกติ ส่วนที่แสดงยังคงเป็น maxM3. */
+export interface Vehicle { id: string; maxM3: number; entryMaxM3: number; driver: string; plate: string }
 export const VEHICLES: Vehicle[] = [
-  { id: '001', maxM3: 6, driver: 'มนตรี ธนบัตร', plate: '80-6158' },
-  { id: '002', maxM3: 6, driver: 'เจนภพ เย็นกลาง', plate: '80-5298' },
-  { id: '003', maxM3: 3, driver: 'ศุภชัย ซื่อเลื่อม', plate: '80-6288' },
-  { id: '004', maxM3: 3, driver: 'นายพงศกร พรหมจรรย์', plate: '80-5664' },
+  { id: '001', maxM3: 6, entryMaxM3: 7, driver: 'มนตรี ธนบัตร', plate: '80-6158' },
+  { id: '002', maxM3: 6, entryMaxM3: 7, driver: 'เจนภพ เย็นกลาง', plate: '80-5298' },
+  { id: '003', maxM3: 3, entryMaxM3: 4, driver: 'ศุภชัย ซื่อเลื่อม', plate: '80-6288' },
+  { id: '004', maxM3: 3, entryMaxM3: 4, driver: 'นายพงศกร พรหมจรรย์', plate: '80-5664' },
 ]
 export const VEHICLE_MAP: Record<string, Vehicle> = Object.fromEntries(VEHICLES.map((v) => [v.id, v]))
 

@@ -144,7 +144,8 @@ export function NewDeliveryTicketForm({
     if (needsVehicle) {
       if (!vehicle) return setErr('กรุณาเลือกหมายเลขรถ')
       const v = VEHICLE_MAP[vehicle]
-      if (v && q > v.maxM3) return setErr(`รถ ${v.id} ขนได้สูงสุด ${v.maxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
+      /* เพดานที่บันทึกได้ = entryMaxM3 (สูงกว่าพิกัด maxM3 ที่แสดงไว้). */
+      if (v && q > v.entryMaxM3) return setErr(`รถ ${v.id} บันทึกได้สูงสุด ${v.entryMaxM3} คิว (ใส่ ${q} คิวเกินกำหนด)`)
     }
     if (!issuer) return setErr('กรุณาเลือกผู้จ่ายสินค้า')
 
@@ -320,14 +321,16 @@ export function NewDeliveryTicketForm({
             ค่าขนส่ง) — โรงหล่อ/ใช้เอง และลูกค้ามารับเอง ไม่ต้องเลือก. */}
         {type === 'ขายลูกค้า' && pickupIsDelivered(pickup) && (
           <>
+            {/* ป้ายกำกับยังแสดงพิกัดรถ (maxM3) ตามเดิม — เตือน/บล็อกเมื่อเกินเพดาน
+                ที่บันทึกได้ (entryMaxM3) เท่านั้น. */}
             <Field label="หมายเลขรถ" required hint={(() => {
               const v = VEHICLE_MAP[vehicle]; if (!v) return ''
               const q = Number(m3)
-              if (q && q > v.maxM3) return `เกินพิกัด ${v.maxM3} คิว`
+              if (q && q > v.entryMaxM3) return `บันทึกได้สูงสุด ${v.entryMaxM3} คิว`
               return `ขนได้สูงสุด ${v.maxM3} คิว`
             })()} error={(() => {
               const v = VEHICLE_MAP[vehicle]; const q = Number(m3)
-              return !!(v && q && q > v.maxM3)
+              return !!(v && q && q > v.entryMaxM3)
             })()}>
               <Select value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
                 {VEHICLES.map((v) => (
