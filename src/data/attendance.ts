@@ -11,6 +11,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { EMPLOYEES, type Employee } from './employees'
+import { mergeEmployees } from './createdDocs'
 import { createRemoteSync } from './supabase'
 
 export const SHIFT_START_MIN = 8 * 60   /* 08:00 */
@@ -94,6 +95,28 @@ export function computeAttendance(r: AttendanceRecord): AttendanceCalc {
   const otNetMin = inM != null || outM != null ? otRawMin - lateMin : 0
   const workedMin = inM != null && outM != null ? Math.max(0, outM - inM) : 0
   return { lateMin, otRawMin, otNetMin, workedMin }
+}
+
+/** ผู้จัดการ follow a different ลืมลงเวลา rule (see effectiveAttendance). Reads
+    the live roster, so promoting someone to ฝ่ายผู้จัดการ on ทะเบียนพนักงาน
+    applies straight away. */
+function isManagerId(empId: string): boolean {
+  return mergeEmployees().some((e) => e.id === empId && e.department === 'manager')
+}
+
+/** สาย / OT after the "ลืมลงเวลา" rules:
+      - พนักงานทั่วไป ที่ลืมลงเวลา → ไม่คิด OT (สายยังคิดปกติ)
+      - ผู้จัดการ ที่ลืมลงเวลา → ไม่คิดสาย (OT ยังได้ และไม่หักสายออกจาก OT)
+    A record with both punches comes back exactly as computeAttendance gives it.
+
+    This is the number payroll must pay on, so หน้าบันทึกลงเวลา, ฟอร์มทำจ่าย
+    เงินเดือน and the bulk payroll tool all go through here — calling
+    computeAttendance directly skips the rules and makes the two pages disagree. */
+export function effectiveAttendance(r: AttendanceRecord): AttendanceCalc {
+  const c = computeAttendance(r)
+  if (!resolvePunches(r).forgot) return c
+  if (isManagerId(r.empId)) return { ...c, lateMin: 0, otNetMin: c.otRawMin }
+  return { ...c, otRawMin: 0, otNetMin: 0 }
 }
 
 /* ───────── persisted state ───────── */

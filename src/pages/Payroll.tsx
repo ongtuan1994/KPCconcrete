@@ -16,7 +16,7 @@ import { DEPARTMENT_LABEL } from '../data/employees'
 import { salaryStructureFor, computeOtRate } from '../data/salaryStructure'
 import { truckTripFeeForDriver } from '../data/truckTripFee'
 import { useCurrentUser } from '../data/auth'
-import { useAttendance, computeAttendance } from '../data/attendance'
+import { useAttendance, effectiveAttendance } from '../data/attendance'
 import {
   useCreatedDocs, useEmployees, useEmployeeIndex, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport,
   type PayrollPayment, type PayMethodOut, type AdvancePayment, type PayrollReport, type PayrollReportScope, type PayrollReportRow, type PayrollReportSection,
@@ -494,7 +494,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     const rate = computeOtRate(st)
     const mins = attendance
       .filter((r) => r.empId === empId && (!from || r.date >= from) && (!to || r.date <= to))
-      .reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
+      .reduce((s, r) => s + effectiveAttendance(r).otNetMin, 0)
     const amt = Math.round(mins * rate * 100) / 100
     setOtPay(amt ? String(amt) : '')
   }
@@ -539,7 +539,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     () => attendance.filter((r) => r.empId === employeeId && (!otFrom || r.date >= otFrom) && (!otTo || r.date <= otTo)),
     [attendance, employeeId, otFrom, otTo],
   )
-  const otMinutes = otRecords.reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
+  const otMinutes = otRecords.reduce((s, r) => s + effectiveAttendance(r).otNetMin, 0)
 
   /* For non-transport the "รักษารถ" income slot carries the OT amount — prefilled
      from the attendance log but editable via `otPay` (0 when ไม่รับ OT). */
@@ -872,7 +872,7 @@ function BulkPayrollForm({ open, onClose, existing }: { open: boolean; onClose: 
       const otRate = computeOtRate(struct)
       const otEligible = struct.otEligible !== false
       const otRecords = attendance.filter((r) => r.empId === emp.id && (!otFrom || r.date >= otFrom) && (!otTo || r.date <= otTo))
-      const otMinutes = otRecords.reduce((s, r) => s + computeAttendance(r).otNetMin, 0)
+      const otMinutes = otRecords.reduce((s, r) => s + effectiveAttendance(r).otNetMin, 0)
       const otAmount = otEligible ? Math.round(otMinutes * otRate * 100) / 100 : 0
       const daysWorked = isLabor ? new Set(otRecords.map((r) => r.date)).size : undefined
       const dailyWage = struct.dailyWage

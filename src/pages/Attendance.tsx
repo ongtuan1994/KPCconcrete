@@ -12,7 +12,7 @@ import { salaryStructureFor } from '../data/salaryStructure'
 import { useCan } from '../data/auth'
 import {
   useAttendance, importScanFiles, upsertManual, removeAttendance, clearAttendance,
-  computeAttendance, resolvePunches, SHIFT_START_MIN, SHIFT_END_MIN, type AttendanceRecord, type HalfDayLeave,
+  computeAttendance, effectiveAttendance, resolvePunches, SHIFT_START_MIN, SHIFT_END_MIN, type AttendanceRecord, type HalfDayLeave,
   useScanMap, matchScanIdentity, setScanAlias, clearScanAlias, identityKey,
 } from '../data/attendance'
 import { downloadCsv } from '../utils/csv'
@@ -82,16 +82,11 @@ export function Attendance() {
 
   const isManager = useCallback((empId: string) => empById.get(empId)?.department === 'manager', [empById])
 
-  /* Effective สาย / OT for a record after the "ลืมลงเวลา" rules:
-     - พนักงานทั่วไป ที่ลืมลงเวลา → ไม่คิด OT (สายยังคิดปกติ)
-     - ผู้จัดการ ที่ลืมลงเวลา → ไม่คิดสาย (OT ยังได้ และไม่หักสายออกจาก OT)
-     Records without a forgotten punch are unchanged. */
-  const effOf = useCallback((r: AttendanceRecord) => {
-    const c = computeAttendance(r)
-    if (!resolvePunches(r).forgot) return { lateMin: c.lateMin, otRawMin: c.otRawMin, otNetMin: c.otNetMin }
-    if (isManager(r.empId)) return { lateMin: 0, otRawMin: c.otRawMin, otNetMin: c.otRawMin }
-    return { lateMin: c.lateMin, otRawMin: 0, otNetMin: 0 }
-  }, [isManager])
+  /* สาย / OT after the "ลืมลงเวลา" rules — shared with the payroll OT prefill so
+     both pages always report the same minutes (see effectiveAttendance). Rebound
+     when the roster changes so the memos below recompute if a ฝ่าย edit moves
+     someone in or out of the ผู้จัดการ rule. */
+  const effOf = useCallback((r: AttendanceRecord) => effectiveAttendance(r), [employees])
 
   /* Date-range + name filtered set (status filter applied after, so the status
      pills can show counts for the current scope). */
