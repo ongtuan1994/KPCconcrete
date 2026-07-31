@@ -76,7 +76,7 @@ export const EMPLOYEES: Employee[] = [
   { id: 'E001', name: 'นายสหรัฐ เพ็ชรฉิม',  nickname: 'เบนซ์', role: 'ผู้จัดการ',     department: 'manager', site: 'foundry', nationality: 'ไทย', startDate: '2022-02-07', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-37798-5' },
 
   /* Accounting */
-  { id: 'E002', name: 'น.ส.เพียงแข ดันยูชน', nickname: 'ใหม่',    role: 'บัญชี',         department: 'accounting', site: 'plant', nationality: 'ไทย', startDate: '2022-05-04', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-46462-7' },
+  { id: 'E002', name: 'น.ส.เพียงแข ตันยุชน', nickname: 'ใหม่',    role: 'บัญชี',         department: 'accounting', site: 'plant', nationality: 'ไทย', startDate: '2022-05-04', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '429-2-46462-7' },
 
   /* Production — Thai staff */
   { id: 'E003', name: 'นายชัยวัฒน์ ขุนเพ็ชร', nickname: 'บริ้ง',   role: 'พนักงานผลิต', department: 'production', site: 'plant', nationality: 'ไทย', startDate: '2022-04-16', bankName: 'ธ.ทหารไทยธนชาต (ttb)', bankAccount: '791-2-07364-5' },
