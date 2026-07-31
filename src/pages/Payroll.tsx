@@ -18,7 +18,7 @@ import { truckTripFeeForDriver } from '../data/truckTripFee'
 import { useCurrentUser } from '../data/auth'
 import { useAttendance, effectiveAttendance } from '../data/attendance'
 import {
-  useCreatedDocs, useEmployees, useEmployeeIndex, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport,
+  useCreatedDocs, useEmployees, useEmployeeIndex, addPayrollPayment, updatePayrollPayment, removePayrollPayment, addAdvance, updateAdvance, removeAdvance, addGeneralReport,
   type PayrollPayment, type PayMethodOut, type AdvancePayment, type PayrollReport, type PayrollReportScope, type PayrollReportRow, type PayrollReportSection,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -59,6 +59,13 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${Number(y) + 543}`
 }
 /** First and last day (ISO) of a "YYYY-MM" period. */
+/** OT is paid in whole baht: ตั้งแต่ .5 ปัดขึ้น, ต่ำกว่านั้นปัดลง. Net OT can be
+    negative (สาย เกิน ล่วงเวลา), so the .5 rounds away from zero — a 12.50
+    deduction becomes 13, not 12. */
+function roundBaht(v: number): number {
+  return (Math.sign(v) * Math.round(Math.abs(v))) || 0
+}
+
 function monthRange(ym: string): [string, string] {
   const [y, m] = ym.split('-').map(Number)
   if (!y || !m) return ['', '']
@@ -110,6 +117,9 @@ export function Payroll() {
   const isAdmin = useCurrentUser()?.role === 'Admin'
   const [slip, setSlip] = useState<PayrollPayment | null>(null)
   const [deposit, setDeposit] = useState<PayrollPayment | null>(null)
+  /* Vouchers opened for editing — the same forms used to create them. */
+  const [editPp, setEditPp] = useState<PayrollPayment | null>(null)
+  const [editAdv, setEditAdv] = useState<AdvancePayment | null>(null)
   /* Selected report group for the "สร้างรายงาน" action. */
   const created = useCreatedDocs()
   const navigate = useNavigate()
@@ -263,6 +273,7 @@ export function Payroll() {
     { key: 'method', header: 'วิธีจ่าย', align: 'center', cell: (r) => <Badge tone={METHOD_TONE[r.method]} pip={false} square>{r.method}</Badge> },
     { key: 'note', header: 'หมายเหตุ', cell: (r) => (r.note ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.note}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
+    { key: 'edit', header: '', align: 'center' as const, cell: (r: AdvancePayment) => <Button variant="ghost" size="sm" onClick={() => setEditAdv(r)}>แก้ไข</Button> },
     {
       key: 'del', header: '', align: 'center' as const,
       cell: (r: AdvancePayment) => (
@@ -386,9 +397,26 @@ export function Payroll() {
 
       <NewAdvanceForm open={showAdvance} onClose={() => setShowAdvance(false)} />
 
+      {/* Edit forms — separate instances so opening one never disturbs a
+          half-filled "create" form sitting behind it. */}
+      <NewPayrollForm
+        open={!!editPp}
+        onClose={() => setEditPp(null)}
+        existing={all}
+        editing={editPp}
+        onSaved={(p) => { setEditPp(null); setSlip(p) }}
+      />
+
+      <NewAdvanceForm open={!!editAdv} onClose={() => setEditAdv(null)} editing={editAdv} />
+
       {isAdmin && <BulkPayrollForm open={showBulk} onClose={() => setShowBulk(false)} existing={all} />}
 
-      <DocModal open={!!slip} title={slip ? `สลิปเงินเดือน ${slip.ppNo} · ${slip.employeeName}` : ''} onClose={() => setSlip(null)}>
+      <DocModal
+        open={!!slip}
+        title={slip ? `สลิปเงินเดือน ${slip.ppNo} · ${slip.employeeName}` : ''}
+        onClose={() => setSlip(null)}
+        extraActions={slip && <Button variant="secondary" onClick={() => { setEditPp(slip); setSlip(null) }}>แก้ไข</Button>}
+      >
         {slip && <PaySlipDoc pp={slip} />}
       </DocModal>
 
@@ -399,7 +427,10 @@ export function Payroll() {
   )
 }
 
-function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: PayrollPayment[]; onSaved: (p: PayrollPayment) => void }) {
+/** Create a ใบทำจ่ายเงินเดือน, or edit one that already exists when `editing` is
+    supplied — same form, same validation, but the เลขที่ is kept and the fields
+    load from the saved voucher instead of the attendance/structure prefills. */
+function NewPayrollForm({ open, onClose, existing, editing, onSaved }: { open: boolean; onClose: () => void; existing: PayrollPayment[]; editing?: PayrollPayment | null; onSaved: (p: PayrollPayment) => void }) {
   const created = useCreatedDocs()
   const attendance = useAttendance()
   const employees = useEmployees()
@@ -448,7 +479,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
 
-  const ppNo = useMemo(() => nextPpNo(existing), [existing, open])
+  const ppNo = useMemo(() => editing?.ppNo ?? nextPpNo(existing), [existing, open, editing])
 
   /* Pull standing values (เงินเดือน/ประสบการณ์/ปกส.) from the salary structure. */
   const applyStructure = (empId: string) => {
@@ -495,12 +526,33 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     const mins = attendance
       .filter((r) => r.empId === empId && (!from || r.date >= from) && (!to || r.date <= to))
       .reduce((s, r) => s + effectiveAttendance(r).otNetMin, 0)
-    const amt = Math.round(mins * rate * 100) / 100
+    const amt = roundBaht(mins * rate)
     setOtPay(amt ? String(amt) : '')
   }
 
   useEffect(() => {
     if (!open) return
+    /* Editing: load the voucher as saved. The prefills are deliberately skipped —
+       they would overwrite figures that were already adjusted by hand. Only the
+       OT / เที่ยวรถโม่ date ranges are re-derived (they aren't stored on the
+       voucher), and touching either one re-pulls that figure as usual. */
+    if (editing) {
+      const [ef, et] = monthRange(editing.payMonth)
+      const transport = employees.find((e) => e.id === editing.employeeId)?.department === 'transport'
+      const str = (n: number | undefined) => (n ? String(n) : '')
+      setPayMonth(editing.payMonth); setEmployeeId(editing.employeeId)
+      setOtFrom(ef); setOtTo(et); setTripFrom(ef); setTripTo(et)
+      setDaysWorked(str(editing.daysWorked))
+      setBaseSalary(str(editing.baseSalary)); setExperiencePay(str(editing.experiencePay))
+      /* vehiclePay carries ค่ารักษารถ for ฝ่ายขนส่ง and the OT amount for everyone else. */
+      setVehiclePay(transport ? str(editing.vehiclePay) : '')
+      setOtPay(transport ? '' : str(editing.vehiclePay))
+      setOtherIncome(str(editing.otherIncome))
+      setSocialSecurity(str(editing.socialSecurity)); setAdvance(str(editing.advance))
+      setOtherDeduction(str(editing.otherDeduction))
+      setPayDate(editing.payDate); setMethod(editing.method); setNote(editing.note ?? ''); setErr('')
+      return
+    }
     const firstId = employees[0]?.id ?? ''
     /* Default งวดเดือน to the latest period that already has a payment (continue
        that payroll run), or this month when nothing has been paid yet. */
@@ -517,7 +569,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     tripFeePrefill(firstId, rf, rt)
     daysWorkedPrefill(firstId, rf, rt)
     otPrefill(firstId, rf, rt)
-  }, [open])
+  }, [open, editing])
 
   const num = (s: string) => Number(s) || 0
   /* Day-rate workers earn daysWorked × dailyWage; everyone else a monthly salary. */
@@ -543,7 +595,9 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
 
   /* For non-transport the "รักษารถ" income slot carries the OT amount — prefilled
      from the attendance log but editable via `otPay` (0 when ไม่รับ OT). */
-  const vehicleOrOt = isTransport ? num(vehiclePay) : (otEligible ? num(otPay) : 0)
+  /* OT always lands on a whole baht, whether it came from the prefill or was
+     typed over by hand. ค่ารักษารถ (transport) keeps its satang. */
+  const vehicleOrOt = isTransport ? num(vehiclePay) : (otEligible ? roundBaht(num(otPay)) : 0)
 
   const effectiveBase = isLabor ? num(daysWorked) * dailyWage : num(baseSalary)
   const totalIncome = effectiveBase + num(experiencePay) + vehicleOrOt + num(otherIncome)
@@ -556,8 +610,9 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
     if (!emp) return setErr('กรุณาเลือกพนักงาน')
     if (!payMonth) return setErr('กรุณาเลือกงวดเดือน')
     /* No duplicate voucher for the same employee + งวดเดือน — must delete the
-       existing one before creating a new one. */
-    if (existing.some((p) => p.employeeId === emp.id && p.payMonth === payMonth)) {
+       existing one before creating a new one. The voucher being edited is its
+       own match, so it is excluded. */
+    if (existing.some((p) => p.employeeId === emp.id && p.payMonth === payMonth && p.ppNo !== ppNo)) {
       return setErr(`มีใบทำจ่ายของ "${emp.name}" ในงวด ${fmtMonthFull(payMonth)} อยู่แล้ว — กรุณาลบใบเดิมก่อนจึงจะสร้างใหม่ได้`)
     }
     if (isLabor) {
@@ -575,25 +630,35 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
       baseSalary: effectiveBase, experiencePay: num(experiencePay), specialPay: 0,
       vehiclePay: vehicleOrOt, otherIncome: num(otherIncome), totalIncome,
       socialSecurity: num(socialSecurity), advance: num(advance), otherDeduction: num(otherDeduction), totalDeduction,
-      netAmount: net, payDate, method, note: note.trim() || undefined, createdAt: new Date().toISOString(),
+      netAmount: net, payDate, method, note: note.trim() || undefined,
+      createdAt: editing?.createdAt ?? new Date().toISOString(),
     }
-    addPayrollPayment(pp)
+    if (editing) updatePayrollPayment(pp)
+    else addPayrollPayment(pp)
     onSaved(pp)
   }
 
   return (
-    <Modal open={open} title="บันทึกใบทำจ่ายเงินเดือน" onClose={onClose} maxWidth={680}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>บันทึก</Button></>}>
-      <div className="card" style={{ padding: '10px 14px', marginBottom: 12, background: 'var(--kpc-warning-50, #fffbeb)', border: '1px solid var(--kpc-warning-200, #fde68a)', borderRadius: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-warning-ink, #b45309)', marginBottom: 4 }}>
-          ⚠️ ก่อนเริ่มบันทึกจ่ายเงินเดือน โปรดตรวจเช็คว่ามีการทำรายการดังต่อไปนี้เรียบร้อยแล้ว
+    <Modal open={open} title={editing ? `แก้ไขใบทำจ่ายเงินเดือน · ${ppNo}` : 'บันทึกใบทำจ่ายเงินเดือน'} onClose={onClose} maxWidth={680}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>{editing ? 'บันทึกการแก้ไข' : 'บันทึก'}</Button></>}>
+      {!editing && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 12, background: 'var(--kpc-warning-50, #fffbeb)', border: '1px solid var(--kpc-warning-200, #fde68a)', borderRadius: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--kpc-warning-ink, #b45309)', marginBottom: 4 }}>
+            ⚠️ ก่อนเริ่มบันทึกจ่ายเงินเดือน โปรดตรวจเช็คว่ามีการทำรายการดังต่อไปนี้เรียบร้อยแล้ว
+          </div>
+          <ol style={{ margin: 0, paddingLeft: 22, fontSize: 13, color: 'var(--kpc-text-strong)', lineHeight: 1.7 }}>
+            <li>บันทึกเบิกล่วงหน้า</li>
+            <li>บันทึกลงเวลางาน</li>
+            <li>บันทึกค่าเที่ยวรถโม่</li>
+          </ol>
         </div>
-        <ol style={{ margin: 0, paddingLeft: 22, fontSize: 13, color: 'var(--kpc-text-strong)', lineHeight: 1.7 }}>
-          <li>บันทึกเบิกล่วงหน้า</li>
-          <li>บันทึกลงเวลางาน</li>
-          <li>บันทึกค่าเที่ยวรถโม่</li>
-        </ol>
-      </div>
+      )}
+      {editing && (
+        <div className="card" style={{ padding: '10px 14px', marginBottom: 12, background: 'var(--kpc-surface-alt)', border: '1px solid var(--kpc-border)', borderRadius: 8, fontSize: 13, color: 'var(--kpc-text-muted)' }}>
+          กำลังแก้ไขใบเดิม — เลขที่และผู้บันทึกไม่เปลี่ยน · ตัวเลขที่โหลดมาคือค่าที่บันทึกไว้
+          หากต้องการดึงค่าใหม่จากบันทึกลงเวลา/เที่ยวรถโม่ ให้แก้ช่วงวันที่ด้านล่าง
+        </div>
+      )}
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="grid g-2" style={{ gap: 12, marginBottom: 4 }}>
@@ -629,7 +694,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
         <Field label="พนักงาน" required style={{ gridColumn: '1 / -1' }} hint={selEmp ? `${selEmp.role} · ${DEPARTMENT_LABEL[selEmp.department].th}` : undefined}>
           <Select value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); applyStructure(e.target.value); advancePrefill(e.target.value, payMonth); tripFeePrefill(e.target.value, tripFrom, tripTo); daysWorkedPrefill(e.target.value, otFrom, otTo); otPrefill(e.target.value, otFrom, otTo) }}>
             {employees.map((e) => {
-              const done = existing.some((p) => p.employeeId === e.id && p.payMonth === payMonth)
+              const done = existing.some((p) => p.employeeId === e.id && p.payMonth === payMonth && p.ppNo !== ppNo)
               return <option key={e.id} value={e.id}>{e.name}{e.nickname ? ` (${e.nickname})` : ''} — {e.role}{done ? ' · ✓ สร้างแล้ว' : ''}</option>
             })}
           </Select>
@@ -658,9 +723,9 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
           {isTransport ? (
             <Field label="รักษารถ"><Input type="number" step="0.01" min={0} placeholder="0" value={vehiclePay} onChange={(e) => setVehiclePay(e.target.value)} /></Field>
           ) : (
-            <Field label="OT" hint={otEligible ? `พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที · แก้ไขได้` : 'พนักงานนี้ตั้งค่าไม่รับ OT (ปรับโครงสร้าง)'}>
+            <Field label="OT" hint={otEligible ? `พบ ${otRecords.length} วันในช่วง · ${otMinutes} นาที × ${otRate.toFixed(2)} บาท/นาที = ${baht(roundBaht(otMinutes * otRate))} (ปัดเป็นจำนวนเต็ม) · แก้ไขได้` : 'พนักงานนี้ตั้งค่าไม่รับ OT (ปรับโครงสร้าง)'}>
               {otEligible ? (
-                <Input type="number" step="0.01" min={0} placeholder="0" value={otPay} onChange={(e) => setOtPay(e.target.value)} />
+                <Input type="number" step="1" min={0} placeholder="0" value={otPay} onChange={(e) => setOtPay(e.target.value)} />
               ) : (
                 <div className="input" style={{ background: 'var(--kpc-surface-alt)', display: 'flex', alignItems: 'center', fontWeight: 600, opacity: 0.55, color: 'var(--kpc-text-faint)' }}>
                   ไม่รับ OT
@@ -707,7 +772,8 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
   )
 }
 
-function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Record a เบิกล่วงหน้า, or edit an existing one when `editing` is supplied. */
+function NewAdvanceForm({ open, onClose, editing }: { open: boolean; onClose: () => void; editing?: AdvancePayment | null }) {
   const created = useCreatedDocs()
   const employees = useEmployees()
 
@@ -719,7 +785,7 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
   const [note, setNote] = useState('')
   const [err, setErr] = useState('')
 
-  const advNo = useMemo(() => nextAdvNo(created.advances), [created.advances, open])
+  const advNo = useMemo(() => editing?.advNo ?? nextAdvNo(created.advances), [created.advances, open, editing])
 
   /* หักจากงวดเดือน dropdown options (Thai) — this month + 17 previous, merged with
      any period that already has an advance. */
@@ -744,19 +810,27 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
 
   useEffect(() => {
     if (!open) return
+    if (editing) {
+      setDate(editing.date); setPayMonth(editing.payMonth); setEmployeeId(editing.employeeId)
+      setAmount(String(editing.amount)); setMethod(editing.method); setNote(editing.note ?? ''); setErr('')
+      return
+    }
     const firstId = employees[0]?.id ?? ''
     /* Default งวดที่หัก to the latest period that already has an advance, else this month. */
     const latestAdv = [...new Set(created.advances.map((a) => a.payMonth))].sort().reverse()[0]
     setDate(todayIso()); setPayMonth(latestAdv ?? thisMonth()); setEmployeeId(firstId)
     amountPrefill(firstId); setMethod('เงินสดย่อย'); setNote(''); setErr('')
-  }, [open])
+  }, [open, editing])
 
   const emp = employees.find((e) => e.id === employeeId)
   const struct = salaryStructureFor(employeeId, created.salaryStructures)
   const isLabor = emp?.department === 'labor' || struct.dailyWage > 0
   /* แรงงาน: เพดาน 3,000 บาท · อื่นๆ: ไม่เกินเงินเดือนของตัวเอง */
   const limit = isLabor ? LABOR_ADVANCE_CAP : struct.baseSalary
-  const already = sumAdvances(created.advances, employeeId, payMonth)
+  /* When editing, the row's own amount must not count against the เพดาน — it is
+     being replaced, not added on top. */
+  const editingSelf = editing && editing.employeeId === employeeId && editing.payMonth === payMonth
+  const already = sumAdvances(created.advances, employeeId, payMonth) - (editingSelf ? editing.amount : 0)
   const remaining = Math.max(0, limit - already)
 
   const submit = () => {
@@ -770,15 +844,17 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
 
     const a: AdvancePayment = {
       id: advNo, advNo, date, payMonth, employeeId: emp.id, employeeName: emp.name,
-      amount: amt, method, note: note.trim() || undefined, createdAt: new Date().toISOString(),
+      amount: amt, method, note: note.trim() || undefined,
+      createdAt: editing?.createdAt ?? new Date().toISOString(),
     }
-    addAdvance(a)
+    if (editing) updateAdvance(a)
+    else addAdvance(a)
     onClose()
   }
 
   return (
-    <Modal open={open} title="บันทึกเบิกล่วงหน้า" onClose={onClose} maxWidth={560}
-      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>บันทึก</Button></>}>
+    <Modal open={open} title={editing ? `แก้ไขใบเบิกล่วงหน้า · ${advNo}` : 'บันทึกเบิกล่วงหน้า'} onClose={onClose} maxWidth={560}
+      footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>{editing ? 'บันทึกการแก้ไข' : 'บันทึก'}</Button></>}>
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="grid g-2" style={{ gap: 12 }}>
@@ -873,7 +949,7 @@ function BulkPayrollForm({ open, onClose, existing }: { open: boolean; onClose: 
       const otEligible = struct.otEligible !== false
       const otRecords = attendance.filter((r) => r.empId === emp.id && (!otFrom || r.date >= otFrom) && (!otTo || r.date <= otTo))
       const otMinutes = otRecords.reduce((s, r) => s + effectiveAttendance(r).otNetMin, 0)
-      const otAmount = otEligible ? Math.round(otMinutes * otRate * 100) / 100 : 0
+      const otAmount = otEligible ? roundBaht(otMinutes * otRate) : 0
       const daysWorked = isLabor ? new Set(otRecords.map((r) => r.date)).size : undefined
       const dailyWage = struct.dailyWage
       const effectiveBase = isLabor ? (daysWorked ?? 0) * dailyWage : struct.baseSalary

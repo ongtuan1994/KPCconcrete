@@ -1920,6 +1920,16 @@ export function addPayrollPayment(pp: PayrollPayment) {
 export function removePayrollPayment(ppNo: string) {
   commit({ ...state, payrollPayments: state.payrollPayments.filter((p) => p.ppNo !== ppNo) })
 }
+/** Save an edited ใบทำจ่ายเงินเดือน in place — เลขที่ stays the same, and the
+    original ผู้บันทึก / วันที่บันทึก are preserved so a correction doesn't look
+    like a brand-new voucher. */
+export function updatePayrollPayment(pp: PayrollPayment) {
+  commit({
+    ...state,
+    payrollPayments: state.payrollPayments.map((p) =>
+      p.ppNo === pp.ppNo ? { ...pp, createdBy: p.createdBy, createdAt: p.createdAt } : p),
+  })
+}
 
 /* Salary structure per employee (ปรับโครงสร้างเงินเดือน). */
 export function setSalaryStructure(employeeId: string, structure: SalaryStructure) {
@@ -1942,6 +1952,14 @@ export function removeLeaveRecord(id: string) {
 }
 export function removeAdvance(advNo: string) {
   commit({ ...state, advances: state.advances.filter((a) => a.advNo !== advNo) })
+}
+/** Save an edited ใบเบิกล่วงหน้า in place — same เลขที่ and same ผู้บันทึก. */
+export function updateAdvance(a: AdvancePayment) {
+  commit({
+    ...state,
+    advances: state.advances.map((x) =>
+      x.advNo === a.advNo ? { ...a, createdBy: x.createdBy, createdAt: x.createdAt } : x),
+  })
 }
 
 export function restoreAllHidden() {
