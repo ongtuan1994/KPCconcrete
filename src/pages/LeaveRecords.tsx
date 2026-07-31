@@ -5,9 +5,8 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { Modal } from '../components/Modal'
 import { IconPlus } from '../components/icons'
-import { EMPLOYEES } from '../data/employees'
 import { salaryStructureFor } from '../data/salaryStructure'
-import { useCreatedDocs, addLeaveRecord, removeLeaveRecord, type LeaveRecord } from '../data/createdDocs'
+import { useCreatedDocs, useEmployees, useEmployeeIndex, addLeaveRecord, removeLeaveRecord, type LeaveRecord } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 const LEAVE_TYPES = ['ลากิจ', 'ลาป่วย', 'ลาพักร้อน', 'ลาอื่นๆ']
@@ -37,8 +36,17 @@ function daysInclusive(from: string, to: string): number {
 
 export function LeaveRecords() {
   const created = useCreatedDocs()
-  const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
-  const records = created.leaveRecords
+  const employees = useEmployees()
+  /* Show each record under the employee's CURRENT name, not the one stamped on
+     it when it was saved — a corrected name has to show up on old records too. */
+  const empIndex = useEmployeeIndex()
+  const records = useMemo(
+    () => created.leaveRecords.map((r) => {
+      const name = empIndex.get(r.employeeId)?.name
+      return name && name !== r.employeeName ? { ...r, employeeName: name } : r
+    }),
+    [created.leaveRecords, empIndex],
+  )
 
   const [from, setFrom] = useState(monthStartIso)
   const [to, setTo] = useState(todayIso)

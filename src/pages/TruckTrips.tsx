@@ -6,7 +6,7 @@ import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS, VEHICLE_MAP } from '../data/real'
 import { qm, monthShort } from '../data/selectors'
 import { useCreatedDocs, setTruckTrip, addGeneralReport, type TruckTripEntry, type GeneralReport } from '../data/createdDocs'
-import { TEN_WHEEL, SPECIAL_DRIVERS, DRIVER_OPTIONS, isSpecialDriver, rowFee, ticketISO } from '../data/truckTripFee'
+import { TEN_WHEEL, specialDrivers, driverOptions, isSpecialDriver, rowFee, ticketISO } from '../data/truckTripFee'
 import { downloadCsv } from '../utils/csv'
 
 /* The four mixer trucks. 001/002 are 10-wheel (bigger), 003/004 are 6-wheel.
@@ -35,6 +35,11 @@ function isoToThai(iso: string): string {
 export function TruckTrips() {
   const created = useCreatedDocs()
   const navigate = useNavigate()
+
+  /* Driver picker follows the live roster, so a renamed ผู้จัดการ shows up here
+     under the new name (the old spelling still counts as เหมา for old tickets). */
+  const drivers = useMemo(() => driverOptions(), [created.employeesAdded, created.employeeEdits])
+  const flatFeeDrivers = useMemo(() => specialDrivers(), [created.employeesAdded, created.employeeEdits])
 
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
   const allTickets = useMemo(
@@ -248,8 +253,8 @@ export function TruckTrips() {
                         style={{ padding: '4px 8px', fontSize: 13, minWidth: 150 }}
                       >
                         {/* Keep any custom saved driver selectable even if not in the list. */}
-                        {!DRIVER_OPTIONS.includes(r.driver) && r.driver && <option value={r.driver}>{r.driver}</option>}
-                        {DRIVER_OPTIONS.map((d) => <option key={d} value={d}>{d}{d === r.defDriver ? ' (ประจำรถ)' : ''}{SPECIAL_DRIVERS.has(d) ? ' · เหมา' : ''}</option>)}
+                        {!drivers.includes(r.driver) && r.driver && <option value={r.driver}>{r.driver}</option>}
+                        {drivers.map((d) => <option key={d} value={d}>{d}{d === r.defDriver ? ' (ประจำรถ)' : ''}{flatFeeDrivers.has(d) ? ' · เหมา' : ''}</option>)}
                       </Select>
                     ) : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>}
                   </td>

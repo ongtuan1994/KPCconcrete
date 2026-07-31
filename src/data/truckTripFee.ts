@@ -3,26 +3,39 @@
    ค่าเที่ยววิ่ง. Keep every rate change here so both stay in sync. */
 import { VEHICLES, VEHICLE_MAP, type DeliveryTicket } from './real'
 import { EMPLOYEES } from './employees'
-import type { TruckTripEntry } from './createdDocs'
+import { mergeEmployees, type TruckTripEntry } from './createdDocs'
 
 /* 001/002 = 10 ล้อ (bigger); 003/004 = 6 ล้อ. */
 export const TEN_WHEEL = new Set(['001', '002'])
 
 /* ผู้จัดการ + คนขับรถนอก ได้ค่าเที่ยวแบบเหมา (ไม่คิด เกิน20/หลัง18/หลัง22). */
 export const OUTSIDE_DRIVER = 'คนขับรถนอก'
-export const MANAGER_DRIVERS = EMPLOYEES.filter((e) => e.department === 'manager').map((e) => e.name)
-export const SPECIAL_DRIVERS = new Set<string>([...MANAGER_DRIVERS, OUTSIDE_DRIVER])
+/* Manager names as they are spelled in the seed roster — kept so tickets saved
+   under a previous spelling still match after a name is corrected. */
+const SEED_MANAGER_DRIVERS = EMPLOYEES.filter((e) => e.department === 'manager').map((e) => e.name)
+
+/** ผู้จัดการที่ขับรถเอง, ชื่อปัจจุบัน — follows edits made on ทะเบียนพนักงาน. */
+export function managerDrivers(): string[] {
+  return mergeEmployees().filter((e) => e.department === 'manager').map((e) => e.name)
+}
+
+/** Names that get the flat (เหมา) trip fee — current manager names, the seed
+    spellings, and คนขับรถนอก. */
+export function specialDrivers(): Set<string> {
+  return new Set<string>([...managerDrivers(), ...SEED_MANAGER_DRIVERS, OUTSIDE_DRIVER])
+}
+
 const SPECIAL_FEE_TEN = 100
 const SPECIAL_FEE_SIX = 80
 const OT_BONUS = 10
 
 /** Driver picker options: fleet drivers + ผู้จัดการ + คนขับรถนอก. */
-export const DRIVER_OPTIONS = Array.from(
-  new Set([...VEHICLES.map((v) => v.driver), ...MANAGER_DRIVERS, OUTSIDE_DRIVER]),
-)
+export function driverOptions(): string[] {
+  return Array.from(new Set([...VEHICLES.map((v) => v.driver), ...managerDrivers(), OUTSIDE_DRIVER]))
+}
 
 export function isSpecialDriver(driver: string | undefined): boolean {
-  return !!driver && SPECIAL_DRIVERS.has(driver)
+  return !!driver && specialDrivers().has(driver)
 }
 
 /** Base per-trip rate: 10 ล้อ 35 (40 if เกิน 20 กม.) · 6 ล้อ 25 (30 if เกิน 20 กม.). */

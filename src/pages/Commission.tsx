@@ -5,8 +5,7 @@ import { Button, Input, MonthPeriodSelect } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DELIVERY_TICKETS } from '../data/real'
 import { qm, prodShort } from '../data/selectors'
-import { useCreatedDocs, addGeneralReport, type CommissionReport } from '../data/createdDocs'
-import { EMPLOYEES } from '../data/employees'
+import { useCreatedDocs, useEmployees, addGeneralReport, type CommissionReport } from '../data/createdDocs'
 import { salaryStructureFor } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
 
@@ -41,16 +40,17 @@ function isoToThai(iso: string): string {
 export function Commission() {
   const created = useCreatedDocs()
   const navigate = useNavigate()
+  const employees = useEmployees()
   /* Hide employees whose salary structure (ปรับโครงสร้าง) sets
      commissionEligible = false. Commission rates key on full name, so we match
      by employee name. */
   const ineligibleNames = useMemo(() => {
     const set = new Set<string>()
-    for (const e of [...created.employeesAdded, ...EMPLOYEES]) {
+    for (const e of employees) {
       if (salaryStructureFor(e.id, created.salaryStructures).commissionEligible === false) set.add(e.name)
     }
     return set
-  }, [created.employeesAdded, created.salaryStructures])
+  }, [employees, created.salaryStructures])
   const rates = useMemo(
     () => created.commissionRates.filter((r) => !ineligibleNames.has(r.name)),
     [created.commissionRates, ineligibleNames],

@@ -14,7 +14,7 @@ import { CUSTOMER_MASTER, PRODUCTS, STOCK_MATERIALS, DIESEL_PRICE_PER_LITER, VEH
 const STOCK_SEED_FOUNDRY_CODES = new Set(STOCK_MATERIALS.filter((m) => m.site === 'foundry').map((m) => m.code))
 import type { MixDesign } from './mixDesign'
 import type { FoundryFormula } from './foundryFormula'
-import type { Employee } from './employees'
+import { EMPLOYEES, type Employee } from './employees'
 import { CREDITOR_MASTER, type Creditor } from './creditors'
 import type { ImportedTaxRow } from './taxReports'
 import { currentUserName } from './auth'
@@ -38,7 +38,7 @@ function stamp<T extends AuditStamp>(rec: T): T {
 export type CustomerEdit = Partial<Pick<Customer, 'phone' | 'creditLimit' | 'creditDays' | 'address' | 'taxId' | 'legalName' | 'customerName' | 'unit'>>
 
 /** Editable subset of Employee fields kept on top of the EMPLOYEES roster. */
-export type EmployeeEdit = Partial<Pick<Employee, 'nickname' | 'role' | 'department' | 'site' | 'nationality' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
+export type EmployeeEdit = Partial<Pick<Employee, 'name' | 'nickname' | 'role' | 'department' | 'site' | 'nationality' | 'startDate' | 'phone' | 'bankName' | 'bankAccount'>>
 
 /** Editable subset of Creditor (ซัพพลายเออร์) fields merged on top of the
     creditor master (and suppliersAdded). Keyed by supplier id. */
@@ -2268,6 +2268,49 @@ export function useSuppliers(): Creditor[] {
     const base = [...s.suppliersAdded, ...CREDITOR_MASTER]
     return base.map((c) => (s.supplierEdits[c.id] ? { ...c, ...s.supplierEdits[c.id] } : c))
   }, [s.suppliersAdded, s.supplierEdits])
+}
+
+/** Every employee the system knows about — user-added first, then the seed
+    EMPLOYEES roster, deduped by id, with per-employee edits (ชื่อ-สกุล / ชื่อเล่น /
+    ตำแหน่ง / สังกัด / บัญชีธนาคาร …) applied on top. Deleted (hidden) staff are
+    KEPT here so historical documents can still resolve their name. Safe to call
+    outside React. */
+export function mergeEmployees(s: CreatedDocs = state): Employee[] {
+  const seen = new Set<string>()
+  const out: Employee[] = []
+  for (const base of [...s.employeesAdded, ...EMPLOYEES]) {
+    if (seen.has(base.id)) continue
+    seen.add(base.id)
+    const edit = s.employeeEdits[base.id]
+    out.push(edit ? { ...base, ...edit } : base)
+  }
+  return out
+}
+
+/** The live employee roster for lists and pickers — mergeEmployees() minus
+    anyone deleted. Single source of truth for "who works here now", shared by
+    ทะเบียนพนักงาน and every employee picker (เบิกล่วงหน้า, ทำจ่ายเงินเดือน, ลงเวลา,
+    วันลา, โครงสร้างเงินเดือน, ค่าคอมมิชชั่น) so editing a name or ชื่อเล่น once
+    updates every page at the same time. */
+export function useEmployees(): Employee[] {
+  const s = useCreatedDocs()
+  return useMemo(() => {
+    const hidden = new Set(s.hidden.employees)
+    return mergeEmployees(s).filter((e) => !hidden.has(e.id))
+  }, [s.employeesAdded, s.employeeEdits, s.hidden.employees])
+}
+
+/** Employee lookup by รหัสพนักงาน, deleted staff included — for showing the
+    CURRENT name on documents that stamped one when they were created (ใบเบิก,
+    ใบทำจ่ายเงินเดือน, บันทึกวันลา). Correcting a misspelled name should fix the
+    old vouchers too, so those screens read through this instead of their
+    snapshot. */
+export function useEmployeeIndex(): Map<string, Employee> {
+  const s = useCreatedDocs()
+  return useMemo(
+    () => new Map(mergeEmployees(s).map((e) => [e.id, e] as const)),
+    [s.employeesAdded, s.employeeEdits],
+  )
 }
 
 /** Merged ประเภทบัญชี cost center list — built-in defaults first, then user-added.

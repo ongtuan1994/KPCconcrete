@@ -6,8 +6,8 @@ import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
-import { EMPLOYEES, type Employee } from '../data/employees'
-import { useCreatedDocs, addGeneralReport, type AttendanceReport } from '../data/createdDocs'
+import { type Employee } from '../data/employees'
+import { useCreatedDocs, useEmployees, addGeneralReport, type AttendanceReport } from '../data/createdDocs'
 import { salaryStructureFor } from '../data/salaryStructure'
 import { useCan } from '../data/auth'
 import {
@@ -77,7 +77,7 @@ export function Attendance() {
   const [editing, setEditing] = useState<AttendanceRecord | null>(null)
   const [adding, setAdding] = useState(false)
 
-  const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
+  const employees = useEmployees()
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees])
 
   const isManager = useCallback((empId: string) => empById.get(empId)?.department === 'manager', [empById])

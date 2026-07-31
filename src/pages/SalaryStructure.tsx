@@ -8,8 +8,8 @@ import { DocModal } from '../components/documents/DocModal'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { COMPANY } from '../data/real'
-import { EMPLOYEES, DEPARTMENT_LABEL, yearsOfService, type Employee } from '../data/employees'
-import { useCreatedDocs, setSalaryStructure, addSalaryStructureAdjustment, removeEmployee, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
+import { DEPARTMENT_LABEL, yearsOfService, type Employee } from '../data/employees'
+import { useCreatedDocs, useEmployees, setSalaryStructure, addSalaryStructureAdjustment, removeEmployee, type SalaryStructure, type StructureChange, type SalaryStructureAdjustment } from '../data/createdDocs'
 import { useCurrentUser, currentUserName } from '../data/auth'
 import { salaryStructureFor, hasSalaryStructure, computeOtRate } from '../data/salaryStructure'
 import { downloadCsv } from '../utils/csv'
@@ -30,11 +30,7 @@ export function SalaryStructure() {
   const role = useCurrentUser()?.role
   const canReport = role === 'Admin' || role === 'Board'
 
-  const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
-  const employees = useMemo(
-    () => [...created.employeesAdded, ...EMPLOYEES].filter((e) => !hiddenEmp.has(e.id)),
-    [created.employeesAdded, hiddenEmp],
-  )
+  const employees = useEmployees()
 
   const rows = useMemo<Row[]>(
     () =>
@@ -370,7 +366,8 @@ function AdjustForm({ open, employees, onClose }: { open: boolean; employees: Em
   const emp = employees.find((e) => e.id === employeeId)
   const cur = salaryStructureFor(employeeId, created.salaryStructures)
   const isLabor = emp?.department === 'labor' || cur.dailyWage > 0
-  const startDate = created.employeeEdits[employeeId]?.startDate ?? emp?.startDate
+  /* `employees` already carries employeeEdits, so วันเริ่มงาน is the edited one. */
+  const startDate = emp?.startDate
   const tenure = yearsOfService(startDate) ?? 'ยังไม่ระบุวันเริ่มงาน'
   const curBase = isLabor ? cur.dailyWage : cur.baseSalary
   const newBase = applyAdj(baseAdj, curBase)

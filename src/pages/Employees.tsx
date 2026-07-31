@@ -7,7 +7,6 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import {
-  EMPLOYEES,
   DEPARTMENT_LABEL,
   SITE_LABEL,
   NATIONALITIES,
@@ -18,19 +17,13 @@ import {
   type Site,
   type Nationality,
 } from '../data/employees'
-import { useCreatedDocs, addEmployee, updateEmployee, removeEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeEdit, type EmployeeReport } from '../data/createdDocs'
+import { useCreatedDocs, useEmployees, addEmployee, updateEmployee, removeEmployee, addEmployeeTermination, removeEmployeeTermination, addGeneralReport, type EmployeeReport } from '../data/createdDocs'
 import { useCurrentUser } from '../data/auth'
 import { downloadCsv } from '../utils/csv'
 
 const SITE_TONE: Record<Site, 'info' | 'success' | 'warning' | 'neutral' | 'danger'> = {
   plant: 'info',
   foundry: 'warning',
-}
-
-function mergeEmployee(e: Employee, edits: Record<string, EmployeeEdit>): Employee {
-  const edit = edits[e.id]
-  if (!edit) return e
-  return { ...e, ...edit }
 }
 
 /** Allocate the next E-prefixed sequential id, scanning both seed + added rows
@@ -54,13 +47,7 @@ export function Employees() {
   const navigate = useNavigate()
   const terminatedSet = useMemo(() => new Set(created.terminations.map((t) => t.empId)), [created.terminations])
 
-  const hiddenEmp = useMemo(() => new Set(created.hidden.employees), [created.hidden.employees])
-  const list = useMemo(
-    () => [...created.employeesAdded, ...EMPLOYEES]
-      .filter((e) => !hiddenEmp.has(e.id))
-      .map((e) => mergeEmployee(e, created.employeeEdits)),
-    [created.employeeEdits, created.employeesAdded, hiddenEmp],
-  )
+  const list = useEmployees()
 
   const rows = useMemo(() => {
     const base = list.filter((e) => {
@@ -379,6 +366,7 @@ function NewEmployeeForm({
 }
 
 function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; onClose: () => void }) {
+  const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
   const [role, setRole] = useState('')
   const [department, setDepartment] = useState<Department>('production')
@@ -393,6 +381,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
 
   useEffect(() => {
     if (!employee) return
+    setName(employee.name)
     setNickname(employee.nickname ?? '')
     setRole(employee.role)
     setDepartment(employee.department)
@@ -410,6 +399,7 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
 
   const save = () => {
     updateEmployee(employee.id, {
+      name: name.trim() || undefined,
       nickname: nickname.trim() || undefined,
       role: role.trim() || employee.role,
       department,
@@ -466,11 +456,15 @@ function EmployeeEditForm({ employee, onClose }: { employee: Employee | null; on
           {terminated && <Badge tone="danger" pip={false} square>พ้นสภาพแล้ว</Badge>}
         </span>
         <span style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>
-          ชื่อ-สกุลและรหัสไม่สามารถแก้ไขได้ — ฟิลด์อื่นแก้ไขแล้วบันทึกลง localStorage
+          รหัสพนักงานแก้ไขไม่ได้ — ฟิลด์อื่นแก้ไขแล้วบันทึกลง localStorage
+          และมีผลกับทุกหน้าที่ดึงรายชื่อพนักงาน (เบิกล่วงหน้า, ทำจ่ายเงินเดือน, ลงเวลา, วันลา ฯลฯ)
         </span>
       </div>
 
       <div className="grid g-2" style={{ gap: 12 }}>
+        <Field label="ชื่อ-สกุล" required hint="เว้นว่างเพื่อกลับไปใช้ชื่อเดิมในทะเบียน" style={{ gridColumn: '1 / -1' }}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น น.ส.เพียงแข ตันยุชน" />
+        </Field>
         <Field label="ชื่อเล่น">
           <Input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="เช่น พีช" />
         </Field>

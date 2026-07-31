@@ -4,7 +4,7 @@ import { PageHeader } from '../components/Layout'
 import { Button, Card, Field, Input, Select } from '../components/ui'
 import { DocModal } from '../components/documents/DocModal'
 import { MidMonthAdvanceReportDoc } from '../components/documents/MidMonthAdvanceReportDoc'
-import { EMPLOYEES, type Employee } from '../data/employees'
+import { type Employee } from '../data/employees'
 import { salaryStructureFor } from '../data/salaryStructure'
 import { monthLabel } from '../data/selectors'
 import { bahtText } from '../data/bahtText'
@@ -12,6 +12,7 @@ import {
   addGeneralReport,
   addAdvance,
   useCreatedDocs,
+  useEmployees,
   type AdvancePayment,
   type MidMonthAdvanceReport,
   type MidMonthAdvanceRow,
@@ -184,6 +185,7 @@ function GroupTable({
 export function MidMonthAdvance() {
   const navigate = useNavigate()
   const created = useCreatedDocs()
+  const roster = useEmployees()
   const [month, setMonth] = useState<number>(CURRENT_MONTH)
   const [day, setDay] = useState<string>(String(DEFAULT_DAY))
   const [plant, setPlant] = useState<Draft[]>([])
@@ -191,25 +193,13 @@ export function MidMonthAdvance() {
   const [foundry, setFoundry] = useState<Draft[]>([])
   const [err, setErr] = useState<string>('')
 
-  /* Live roster = added employees + static seed, with per-employee edits applied.
-     Excludes anyone who is hidden, พ้นสภาพ (สิ้นสภาพ), or an เด็กฝึกงาน (intern) —
-     none of whom take a mid-month advance. New hires show up here immediately. */
+  /* The shared roster (useEmployees — edits applied, deleted staff dropped) minus
+     anyone พ้นสภาพ (สิ้นสภาพ) or an เด็กฝึกงาน (intern), none of whom take a
+     mid-month advance. New hires show up here immediately. */
   const liveEmployees = useMemo(() => {
-    const hidden = new Set(created.hidden.employees)
     const terminated = new Set(created.terminations.map((t) => t.empId))
-    const seen = new Set<string>()
-    const out: Employee[] = []
-    for (const base of [...created.employeesAdded, ...EMPLOYEES]) {
-      if (seen.has(base.id)) continue
-      seen.add(base.id)
-      if (hidden.has(base.id) || terminated.has(base.id)) continue
-      const edit = created.employeeEdits[base.id]
-      const e = edit ? { ...base, ...edit } : base
-      if (e.department === 'intern') continue
-      out.push(e)
-    }
-    return out
-  }, [created.employeesAdded, created.employeeEdits, created.hidden.employees, created.terminations])
+    return roster.filter((e) => !terminated.has(e.id) && e.department !== 'intern')
+  }, [roster, created.terminations])
 
   const plantMembers = useMemo(() => liveEmployees.filter(isPlantThai).sort(sortPlant), [liveEmployees])
   const foundryThMembers = useMemo(() => liveEmployees.filter(isFoundryThai).sort(sortPlant), [liveEmployees])

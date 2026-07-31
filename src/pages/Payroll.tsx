@@ -12,13 +12,13 @@ import { DepositSlipDoc } from '../components/documents/DepositSlipDoc'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { DELIVERY_TICKETS } from '../data/real'
-import { EMPLOYEES, DEPARTMENT_LABEL } from '../data/employees'
+import { DEPARTMENT_LABEL } from '../data/employees'
 import { salaryStructureFor, computeOtRate } from '../data/salaryStructure'
 import { truckTripFeeForDriver } from '../data/truckTripFee'
 import { useCurrentUser } from '../data/auth'
 import { useAttendance, computeAttendance } from '../data/attendance'
 import {
-  useCreatedDocs, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport,
+  useCreatedDocs, useEmployees, useEmployeeIndex, addPayrollPayment, removePayrollPayment, addAdvance, removeAdvance, addGeneralReport,
   type PayrollPayment, type PayMethodOut, type AdvancePayment, type PayrollReport, type PayrollReportScope, type PayrollReportRow, type PayrollReportSection,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
@@ -113,22 +113,25 @@ export function Payroll() {
   /* Selected report group for the "สร้างรายงาน" action. */
   const created = useCreatedDocs()
   const navigate = useNavigate()
-  const all = created.payrollPayments
-  const advAll = created.advances
 
-  /* Resolve each employee's current SITE + สัญชาติ (master + edits) for grouping. */
-  const empInfo = useMemo(() => {
-    const m = new Map<string, { site: string; nationality?: string }>()
-    for (const e of [...created.employeesAdded, ...EMPLOYEES]) {
-      if (m.has(e.id)) continue
-      const edit = created.employeeEdits[e.id]
-      m.set(e.id, { site: edit?.site ?? e.site ?? 'plant', nationality: edit?.nationality ?? e.nationality })
-    }
-    return m
-  }, [created.employeesAdded, created.employeeEdits])
+  /* Employee master by รหัส (edits applied, พนักงานที่ลบไปแล้วรวมด้วย) — used to
+     resolve the CURRENT ชื่อ-สกุล / สังกัด / บัญชี on vouchers that stamped those
+     values when they were created. */
+  const empIndex = useEmployeeIndex()
+
+  /* Every ใบทำจ่าย / ใบเบิก is re-labelled with the employee's current name, so
+     correcting a name on ทะเบียนพนักงาน also fixes the vouchers, slips, ใบนำฝาก
+     and reports built from them. Falls back to the stamped name if the รหัส is
+     no longer in the roster. */
+  const withCurrentName = <T extends { employeeId: string; employeeName: string }>(rec: T): T => {
+    const name = empIndex.get(rec.employeeId)?.name
+    return name && name !== rec.employeeName ? { ...rec, employeeName: name } : rec
+  }
+  const all = useMemo(() => created.payrollPayments.map(withCurrentName), [created.payrollPayments, empIndex])
+  const advAll = useMemo(() => created.advances.map(withCurrentName), [created.advances, empIndex])
 
   const inScope = (empId: string, scope: PayrollReportScope): boolean => {
-    const info = empInfo.get(empId)
+    const info = empIndex.get(empId)
     const site = info?.site ?? 'plant'
     const nat = info?.nationality
     if (scope === 'plant') return site === 'plant'
@@ -192,8 +195,7 @@ export function Payroll() {
      stamped on the payment, then the (possibly edited) employee master record. */
   const resolveAccount = (pp: PayrollPayment): string => {
     if (pp.bankAccount) return pp.bankAccount
-    const emp = [...created.employeesAdded, ...EMPLOYEES].find((e) => e.id === pp.employeeId)
-    return created.employeeEdits[pp.employeeId]?.bankAccount || emp?.bankAccount || ''
+    return empIndex.get(pp.employeeId)?.bankAccount || ''
   }
 
   /* Distinct pay periods present in each dataset, newest first — feeds the
@@ -317,7 +319,7 @@ export function Payroll() {
             <KpiCard label="จ่ายสุทธิรวม · Net paid" value={baht(totalNet)} note="ทุกงวด" invert />
             <KpiCard
               label="ใบทำจ่าย/พนักงาน · Vouchers/Emp"
-              value={`${monthFilter ? all.filter((p) => p.payMonth === monthFilter).length : all.length} / ${empInfo.size}`}
+              value={`${monthFilter ? all.filter((p) => p.payMonth === monthFilter).length : all.length} / ${empIndex.size}`}
               note={monthFilter ? `งวด ${fmtMonth(monthFilter)} · ใบทำจ่ายที่สร้าง` : 'ทุกงวด · ใบทำจ่ายที่สร้าง'}
             />
           </div>
@@ -400,7 +402,7 @@ export function Payroll() {
 function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; onClose: () => void; existing: PayrollPayment[]; onSaved: (p: PayrollPayment) => void }) {
   const created = useCreatedDocs()
   const attendance = useAttendance()
-  const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
+  const employees = useEmployees()
   /* Delivery tickets (for the auto-pulled ค่าเที่ยววิ่ง = truck-trip fee). */
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
   const allTickets = useMemo(
@@ -707,7 +709,7 @@ function NewPayrollForm({ open, onClose, existing, onSaved }: { open: boolean; o
 
 function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const created = useCreatedDocs()
-  const employees = useMemo(() => [...created.employeesAdded, ...EMPLOYEES], [created.employeesAdded])
+  const employees = useEmployees()
 
   const [date, setDate] = useState(todayIso())
   const [payMonth, setPayMonth] = useState(thisMonth())
@@ -827,9 +829,10 @@ function NewAdvanceForm({ open, onClose }: { open: boolean; onClose: () => void 
 function BulkPayrollForm({ open, onClose, existing }: { open: boolean; onClose: () => void; existing: PayrollPayment[] }) {
   const created = useCreatedDocs()
   const attendance = useAttendance()
+  const roster = useEmployees()
   const employees = useMemo(
-    () => [...created.employeesAdded, ...EMPLOYEES].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
-    [created.employeesAdded],
+    () => [...roster].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
+    [roster],
   )
   const hiddenSet = useMemo(() => new Set(created.hidden.tickets), [created.hidden.tickets])
   const allTickets = useMemo(
