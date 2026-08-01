@@ -2,22 +2,18 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { NAV, type NavItem, type NavGroup } from '../nav'
 import { Logo } from './icons'
-import { ROUTE_RESOURCE, roleAllowsResource, roleAllowsRoute, useCurrentUser, usePerms } from '../data/auth'
+import { canViewRoute, useCurrentUser, usePerms } from '../data/auth'
 
 export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const user = useCurrentUser()
   const perms = usePerms()
 
   /** A nav item is visible when it maps to no gated resource, or the current
-      role has at least View on that resource. */
-  const canSee = (to: string) => {
-    const key = ROUTE_RESOURCE[to]
-    if (user && !roleAllowsRoute(user.role, to)) return false
-    if (!key || !user) return !key ? true : false
-    if (!roleAllowsResource(user.role, key)) return false
-    const lvl = perms[user.role]?.[key] ?? 'none'
-    return lvl === 'view' || lvl === 'edit'
-  }
+      role has at least View on that resource. A hub item (รายงาน) shows when at
+      least one of its tabs is visible. */
+  const canSee = (to: string) => canViewRoute(user, perms, to)
+  const canSeeItem = (it: NavItem) =>
+    it.tabs?.length ? it.tabs.some(canSee) : canSee(it.to)
 
   return (
     <>
@@ -32,12 +28,16 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
       </div>
 
       {NAV.map((group, gi) => (
-        <SidebarGroup key={gi} group={group} onClose={onClose} canSee={canSee} />
+        <SidebarGroup key={gi} group={group} onClose={onClose} canSee={canSee} canSeeItem={canSeeItem} />
       ))}
     </aside>
     </>
   )
 }
+
+/** Whether `path` belongs to this item — its own route, or any tab it hosts
+    (the รายงาน hub stays highlighted while you switch tabs). */
+const itemOwns = (it: NavItem, path: string) => it.to === path || !!it.tabs?.includes(path)
 
 /** Renders one nav group. When `group.collapsible` is set, its section header
     becomes a toggle that shows/hides the group's items. */
@@ -45,15 +45,17 @@ function SidebarGroup({
   group,
   onClose,
   canSee,
+  canSeeItem,
 }: {
   group: NavGroup
   onClose?: () => void
   canSee: (to: string) => boolean
+  canSeeItem: (it: NavItem) => boolean
 }) {
   const loc = useLocation()
-  const items = group.items.filter((it) => canSee(it.to))
+  const items = group.items.filter(canSeeItem)
   /* Keep the section open when a route inside it is active. */
-  const hasActive = items.some((it) => it.to === loc.pathname || (it.children ?? []).some((c) => c.to === loc.pathname))
+  const hasActive = items.some((it) => itemOwns(it, loc.pathname) || (it.children ?? []).some((c) => c.to === loc.pathname))
   const [open, setOpen] = useState(true)
   if (items.length === 0) return null
 
@@ -64,7 +66,12 @@ function SidebarGroup({
     it.children?.length ? (
       <NavBranch key={it.to} item={it} onClose={onClose} canSee={canSee} />
     ) : (
-      <NavLink key={it.to} to={it.to} onClick={onClose} className={({ isActive }) => ['nav-item', isActive ? 'active' : ''].filter(Boolean).join(' ')}>
+      <NavLink
+        key={it.to}
+        to={it.to}
+        onClick={onClose}
+        className={({ isActive }) => ['nav-item', isActive || itemOwns(it, loc.pathname) ? 'active' : ''].filter(Boolean).join(' ')}
+      >
         {it.icon}
         {it.label}
       </NavLink>

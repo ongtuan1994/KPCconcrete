@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Login } from './pages/Login'
 import { Settings } from './pages/Settings'
-import { AuditReport } from './pages/AuditReport'
+import { Reports, ReportsIndex } from './pages/Reports'
 import { ROUTE_RESOURCE, roleAllowsResource, roleAllowsRoute, landingRouteFor, useCurrentUser, usePerms } from './data/auth'
 import { DeliveryTickets } from './pages/DeliveryTickets'
 import { TruckTrips } from './pages/TruckTrips'
@@ -23,12 +23,8 @@ import { Receipts } from './pages/Receipts'
 import { CustomerMaster } from './pages/CustomerMaster'
 import { CustomerSummary } from './pages/CustomerSummary'
 import { Creditors } from './pages/Creditors'
-import { Ledger } from './pages/Ledger'
 import { Suppliers } from './pages/Suppliers'
 import { CostCenters } from './pages/CostCenters'
-import { MonthlyReport } from './pages/MonthlyReport'
-import { TaxReports } from './pages/TaxReports'
-import { GeneralReports } from './pages/GeneralReports'
 import { MyWork } from './pages/MyWork'
 import { Stock } from './pages/Stock'
 import { MaterialLedger } from './pages/MaterialLedger'
@@ -104,17 +100,20 @@ export default function App() {
         <Route path="/billing" element={<BillingNotes />} />
         <Route path="/receipts" element={<Receipts />} />
         <Route path="/customer-master" element={<CustomerMaster />} />
-        <Route path="/ledger" element={<Ledger />} />
+        <Route path="/ledger" element={<Reports />} />
         {/* Legacy direct routes still work; the menu now uses the combined /ledger. */}
         <Route path="/customers" element={<CustomerSummary />} />
         <Route path="/creditors" element={<Creditors />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/cost-centers" element={<CostCenters />} />
-        <Route path="/monthly-report" element={<MonthlyReport />} />
-        <Route path="/tax-reports" element={<TaxReports />} />
-        <Route path="/general-reports" element={<GeneralReports />} />
+        {/* รายงาน hub — one menu, one tab per report. Every tab keeps its own
+            route so existing links and per-report permissions are unchanged. */}
+        <Route path="/reports" element={<ReportsIndex />} />
+        <Route path="/monthly-report" element={<Reports />} />
+        <Route path="/tax-reports" element={<Reports />} />
+        <Route path="/general-reports" element={<Reports />} />
+        <Route path="/audit-report" element={<Reports />} />
         <Route path="/my-work" element={<MyWork />} />
-        <Route path="/audit-report" element={<AuditReport />} />
         {/* Legacy yearly-report path → unified monthly/yearly page. */}
         <Route path="/yearly-report" element={<Navigate to={landing} replace />} />
         <Route path="/stock" element={<Stock />} />

@@ -151,6 +151,20 @@ export function roleAllowsRoute(role: Role, path: string): boolean {
   return !(isReadOnlyRole(role) && GUEST_BLOCKED_ROUTES.has(path))
 }
 
+/** Whether the signed-in user may open `route` at all. The sidebar items and the
+    รายงาน tab bar both decide what to show with this, so a hidden menu entry and
+    a blocked route can never disagree. Ungated routes (no resource row) are open
+    to anyone signed in. */
+export function canViewRoute(user: User | null, perms: PermMatrix, route: string): boolean {
+  if (user && !roleAllowsRoute(user.role, route)) return false
+  const key = ROUTE_RESOURCE[route]
+  if (!key) return true
+  if (!user) return false
+  if (!roleAllowsResource(user.role, key)) return false
+  const lvl = perms[user.role]?.[key] ?? 'none'
+  return lvl === 'view' || lvl === 'edit'
+}
+
 /** Landing route after login — every user is taken to งานของฉัน (/my-work), the
     personal, ungated page that all roles can access. role/perms are kept in the
     signature for the callers but no longer affect the destination. */

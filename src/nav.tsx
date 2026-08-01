@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconPie, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconSearch, IconClock, IconCalendar, IconPlant } from './components/icons'
+import { IconOrder, IconCart, IconInvoice, IconReceipt, IconBars, IconStock, IconTag, IconUsers, IconTruck, IconWallet, IconSliders, IconClock, IconCalendar, IconPlant } from './components/icons'
 
 export interface NavItem {
   to: string
@@ -8,6 +8,10 @@ export interface NavItem {
   icon: ReactNode
   /** Optional submenu rendered (indented, collapsible) under this item. */
   children?: NavItem[]
+  /** Routes this item owns as tabs (a hub page such as รายงาน). The item stays
+      highlighted on any of them, and is shown when the role may open at least
+      one — so a role with no report access sees no รายงาน menu at all. */
+  tabs?: string[]
 }
 export interface NavGroup {
   section?: string // section header (Thai · English)
@@ -16,22 +20,32 @@ export interface NavGroup {
   items: NavItem[]
 }
 
+/** The รายงาน hub — one sidebar entry, one tab per report. Order here is the tab
+    order; the first tab the role may open is where /reports lands. Each tab keeps
+    its own route (and therefore its own permission row), so old links such as
+    /general-reports still work and open the matching tab. */
+export interface ReportTab {
+  id: string
+  to: string
+  label: string // Thai — tab caption
+  en: string
+}
+export const REPORT_TABS: ReportTab[] = [
+  { id: 'monthly', to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report' },
+  { id: 'general', to: '/general-reports', label: 'รายงานทั่วไป', en: 'General Reports' },
+  { id: 'tax', to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)' },
+  { id: 'audit', to: '/audit-report', label: 'รายงาน Audit', en: 'Audit Report' },
+  { id: 'ledger', to: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', en: 'Debtors / Creditors' },
+]
+/** Hub route — the sidebar points here; it forwards to the first allowed tab. */
+export const REPORTS_ROUTE = '/reports'
+
 export const NAV: NavGroup[] = [
   {
     items: [
       { to: '/my-work', label: 'งานของฉัน', en: 'My Work', icon: <IconCalendar /> },
       { to: '/plant-operation', label: 'Today Operation', en: 'การดำเนินงานวันนี้', icon: <IconPlant /> },
-    ],
-  },
-  {
-    section: 'รายงาน · Reports',
-    collapsible: true,
-    items: [
-      { to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report', icon: <IconBars /> },
-      { to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)', icon: <IconInvoice /> },
-      { to: '/general-reports', label: 'รายงานทั่วไป', en: 'General Reports', icon: <IconBars /> },
-      { to: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', en: 'Debtors / Creditors', icon: <IconPie /> },
-      { to: '/audit-report', label: 'รายงาน Audit', en: 'Audit Report', icon: <IconSearch /> },
+      { to: REPORTS_ROUTE, label: 'รายงาน', en: 'Reports', icon: <IconBars />, tabs: REPORT_TABS.map((t) => t.to) },
     ],
   },
   {
@@ -119,4 +133,9 @@ for (const g of NAV) {
       ROUTE_META[child.to] = { label: child.label, en: child.en, section }
     }
   }
+}
+/* Each รายงาน tab keeps its own title in the topbar even though the sidebar
+   shows a single เมนู. */
+for (const t of REPORT_TABS) {
+  ROUTE_META[t.to] = { label: t.label, en: t.en, section: 'รายงาน' }
 }
