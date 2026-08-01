@@ -13,6 +13,8 @@ import { downloadCsv } from '../utils/csv'
 const TARGET_M3 = 500
 const ALLOW_M3 = 490
 const num2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** เงินค่าคอมแสดง/เก็บเป็นจำนวนเต็มบาท — ไม่มีทศนิยม. */
+const baht0 = (n: number) => Math.round(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 /** "DD/MM/YY" (พ.ศ.) → ISO "YYYY-MM-DD" (ค.ศ.). 69 → 2026. */
@@ -87,7 +89,8 @@ export function Commission() {
       ? `อนุโลม (${ALLOW_M3}–${TARGET_M3} คิว)`
       : `ไม่ถึงเป้า (< ${ALLOW_M3} คิว) — ไม่จ่ายค่าคอมมิชชั่น`
 
-  const lines = rates.map((r) => ({ name: r.name, rate: r.rate, amount: qualifies ? round2(r.rate * volume) : 0 }))
+  /* ค่าคอมต่อคนปัดเป็นจำนวนเต็มบาท (ปัดครึ่งขึ้น) — ยอดรวมจึงเป็นจำนวนเต็มด้วย. */
+  const lines = rates.map((r) => ({ name: r.name, rate: r.rate, amount: qualifies ? Math.round(r.rate * volume) : 0 }))
   const total = lines.reduce((s, l) => s + l.amount, 0)
 
   const exportCsv = () => {
@@ -175,7 +178,7 @@ export function Commission() {
         <KpiCard label="ยอดขายให้ลูกค้า · Volume" value={qm(volume)} note={`คิว · ${custTickets} ใบจ่าย`} />
         <KpiCard label="เป้าหมาย · Target" value={`${TARGET_M3}`} note={`คิว (อนุโลม ${ALLOW_M3})`} />
         <KpiCard label="สถานะ · Status" value={qualifies ? 'ได้ค่าคอม' : 'ไม่ได้'} note={status} invert={qualifies} />
-        <KpiCard label="ค่าคอมรวม · Total" value={num2(total)} note="บาท" />
+        <KpiCard label="ค่าคอมรวม · Total" value={baht0(total)} note="บาท" />
       </div>
 
       {!qualifies && (
@@ -202,12 +205,12 @@ export function Commission() {
                 <td style={{ color: 'var(--kpc-text-faint)' }}>{i + 1}</td>
                 <td className="th">{l.name}</td>
                 <td className="num mono">{num2(l.rate)}</td>
-                <td className="num mono" style={{ fontWeight: 600, color: l.amount ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>{num2(l.amount)}</td>
+                <td className="num mono" style={{ fontWeight: 600, color: l.amount ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>{baht0(l.amount)}</td>
               </tr>
             ))}
             <tr style={{ borderTop: '2px solid var(--kpc-neutral-300)', fontWeight: 700 }}>
               <td colSpan={3} className="num">รวมทั้งหมด</td>
-              <td className="num mono">{num2(total)}</td>
+              <td className="num mono">{baht0(total)}</td>
             </tr>
           </tbody>
         </table>

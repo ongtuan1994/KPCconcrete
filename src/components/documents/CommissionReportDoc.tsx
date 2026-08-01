@@ -3,6 +3,9 @@ import { qm } from '../../data/selectors'
 import type { CommissionReport } from '../../data/createdDocs'
 
 const num2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+/** เงินค่าคอมพิมพ์เป็นจำนวนเต็มบาท — ปัดตอนแสดงผลด้วย เพื่อให้รายงานเก่าที่เก็บ
+    ทศนิยมไว้แล้วพิมพ์ออกมาเป็นจำนวนเต็มเหมือนกัน. */
+const baht0 = (n: number) => Math.round(n).toLocaleString('en-US', { maximumFractionDigits: 0 })
 
 function fmtCreated(iso: string): string {
   const d = new Date(iso)
@@ -54,13 +57,13 @@ export function CommissionReportDoc({ report }: { report: CommissionReport }) {
               <td className="c">{i + 1}</td>
               <td>{l.name}</td>
               <td className="n mono">{num2(l.rate)}</td>
-              <td className="n mono">{num2(l.amount)}</td>
+              <td className="n mono">{baht0(l.amount)}</td>
               <td></td>
             </tr>
           ))}
           <tr className="trr-total">
             <td colSpan={3} className="c">รวมทั้งหมด</td>
-            <td className="n mono">{num2(report.total)}</td>
+            <td className="n mono">{baht0(report.total)}</td>
             <td></td>
           </tr>
         </tbody>
@@ -70,8 +73,8 @@ export function CommissionReportDoc({ report }: { report: CommissionReport }) {
       <table className="trr-table" style={{ maxWidth: 460 }}>
         <tbody>
           <tr><td>ค่ารักษามาตรฐานก้อนปูน</td><td className="n mono" style={{ width: 140 }}>—</td><td style={{ width: 50 }}>บาท</td></tr>
-          <tr><td>ค่ายอดขายตามเป้าหมายที่ตั้งไว้</td><td className="n mono">{num2(report.total)}</td><td>บาท</td></tr>
-          <tr className="trr-total"><td>รวม</td><td className="n mono">{num2(report.total)}</td><td>บาท</td></tr>
+          <tr><td>ค่ายอดขายตามเป้าหมายที่ตั้งไว้</td><td className="n mono">{baht0(report.total)}</td><td>บาท</td></tr>
+          <tr className="trr-total"><td>รวม</td><td className="n mono">{baht0(report.total)}</td><td>บาท</td></tr>
         </tbody>
       </table>
 
