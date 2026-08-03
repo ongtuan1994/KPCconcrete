@@ -8,6 +8,15 @@ export const COMPANY = {
   address: "6/138 หมู่ 1 ตำบลบางนอน อำเภอเมือง จังหวัดระนอง 85000",
   taxId: "0855557000138",
   tel: "093-582-6138",
+  /** บัญชีรับโอนของบริษัท — พิมพ์บนเอกสารที่ลูกค้าใช้ชำระเงิน (ใบวางบิล).
+      พร้อมเพย์ผูกกับเลขประจำตัวผู้เสียภาษีนิติบุคคล จึงตรงกับ taxId ด้านบน. */
+  bank: {
+    name: "ทหารไทยธนชาต",
+    branch: "ระนอง",
+    accountNo: "4292460450",
+    accountName: "บจก.กิจไพศาลคอนกรีต",
+    promptPay: "0855557000138",
+  },
 } as const
 
 export interface Month { num: number; key: string; label: string; short: string }

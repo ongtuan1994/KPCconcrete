@@ -60,6 +60,17 @@
 }
 .doc-sheet .doc-totals .grand .val { color: var(--kpc-primary-ink); }
 
+/* บัญชีโอนเงิน — compact boxed block under the totals on ใบวางบิล. */
+.doc-sheet .doc-pay {
+  margin-top: 30px; border: 1px solid var(--kpc-neutral-300); border-radius: 6px;
+  padding: 10px 14px; font-size: 13.5px; line-height: 1.75;
+}
+.doc-sheet .doc-pay .ttl { font-weight: 700; margin-bottom: 2px; }
+.doc-sheet .doc-pay .prow { display: flex; flex-wrap: wrap; gap: 2px 22px; }
+.doc-sheet .doc-pay .k { color: var(--kpc-text-muted); }
+.doc-sheet .doc-pay .v { font-weight: 600; }
+.doc-sheet .doc-pay .mono { font-family: var(--kpc-font-mono); letter-spacing: 0.3px; }
+
 .doc-sheet .doc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; }
 .doc-sheet .doc-sign .s { text-align: center; }
 .doc-sheet .doc-sign .s .line { border-top: 1px dotted var(--kpc-neutral-400); margin-bottom: 6px; height: 40px; }
@@ -245,6 +256,9 @@
   .doc-sheet table.doc-lines th { padding: 6px; font-size: 12px; }
   .doc-sheet table.doc-lines td { padding: 6px; }
   .doc-sheet .doc-foot { margin-top: 8px; }
+  /* Keep the bank block tight on paper — it sits between the totals and the
+     pinned signature block, so every mm it takes is a mm the line table loses. */
+  .doc-sheet .doc-pay { margin-top: 18px; padding: 6px 10px; font-size: 12.5px; line-height: 1.6; }
 
   /* Pin signature block 30mm above the physical paper bottom, inset 13mm to
      line up with the page's side margins. */

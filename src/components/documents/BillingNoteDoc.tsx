@@ -1,4 +1,4 @@
-import { DocShell, MetaRow, Signatures } from './DocShell'
+import { DocShell, MetaRow, PaymentInfo, Signatures } from './DocShell'
 import { baht, customerLegal, type BillingNote } from '../../data/selectors'
 import { bahtText } from '../../data/bahtText'
 
@@ -57,6 +57,8 @@ export function BillingNoteDoc({ bn }: { bn: BillingNote }) {
           <div className="trow grand"><span className="lab">รวมยอดวางบิล</span><span className="val">{baht(bn.total)}</span></div>
         </div>
       </div>
+
+      <PaymentInfo />
 
       <Signatures left="ผู้รับวางบิล" right="ผู้วางบิล" />
     </DocShell>

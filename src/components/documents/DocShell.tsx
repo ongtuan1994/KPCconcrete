@@ -36,6 +36,30 @@ export function DocShell({
   )
 }
 
+/** บัญชีโอนเงินของบริษัท — พิมพ์บนเอกสารที่ลูกค้าใช้ชำระเงิน (ใบวางบิล) เพื่อให้
+    โอนได้เลยโดยไม่ต้องโทรถามเลขบัญชี. */
+export function PaymentInfo() {
+  const b = COMPANY.bank
+  return (
+    <div className="doc-pay">
+      <div className="ttl">บัญชีโอนเงิน</div>
+      <div className="prow">
+        <span><span className="k">ธนาคาร </span><span className="v">{b.name}</span></span>
+        <span><span className="k">สาขา </span><span className="v">{b.branch}</span></span>
+      </div>
+      <div className="prow">
+        <span><span className="k">เลขที่บัญชี </span><span className="v mono">{b.accountNo}</span></span>
+      </div>
+      <div className="prow">
+        <span><span className="k">ชื่อบัญชี </span><span className="v">{b.accountName}</span></span>
+      </div>
+      <div className="prow">
+        <span><span className="k">พร้อมเพย์ </span><span className="v mono">{b.promptPay}</span></span>
+      </div>
+    </div>
+  )
+}
+
 export function MetaRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
   return (
     <div className="mrow">
