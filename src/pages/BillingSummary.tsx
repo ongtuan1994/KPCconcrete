@@ -13,8 +13,9 @@ import { downloadCsv } from '../utils/csv'
 const money2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** `transport` marks the ค่าขนส่งไม่เต็มเที่ยว row — it has no คิว, so the volume
-    column shows a dash and its baht is listed instead. */
-interface DetailRow { dtNo: string; prodCode: string; prodName: string; m3: number; transport?: boolean; trips?: number; baht?: number }
+    column shows a dash and จำนวนเที่ยว is printed beside the name instead. The
+    baht stays out of the sheet: it is already inside the invoice's ยอดรวม. */
+interface DetailRow { dtNo: string; prodCode: string; prodName: string; m3: number; transport?: boolean; trips?: number }
 interface InvGroup { inv: Invoice; rows: DetailRow[] }
 interface ProdTotal { code: string; name: string; m3: number }
 interface BnSummary {
@@ -50,7 +51,7 @@ function summarize(bn: BillingNote, ticketByRef: Map<string, DeliveryTicket>): B
       const amt = l.amountInclVat ?? l.amount
       transportTrips += l.qty
       transportBaht += amt
-      rows.push({ dtNo: '', prodCode: l.code, prodName: l.name, m3: 0, transport: true, trips: l.qty, baht: amt })
+      rows.push({ dtNo: '', prodCode: l.code, prodName: l.name, m3: 0, transport: true, trips: l.qty })
     }
     return { inv, rows }
   })
@@ -215,9 +216,8 @@ function BillingSummaryDoc({ bn, summary }: { bn: BillingNote; summary: BnSummar
                 {j === 0 && <td rowSpan={g.rows.length} className="ctr">{g.inv.date}</td>}
                 {j === 0 && <td rowSpan={g.rows.length} className="ctr mono">{g.inv.no}</td>}
                 <td className="mono">{r.dtNo || '—'}</td>
-                {/* ค่าขนส่งไม่เต็มเที่ยวไม่มีคิว — ใส่จำนวนเที่ยว/เงินไว้ในช่องรายละเอียดแทน
-                    (ช่องบาทถูก rowSpan ด้วยยอดรวมของใบกำกับอยู่แล้ว). */}
-                <td>{r.transport ? `${r.prodName} · ${qm(r.trips ?? 0)} เที่ยว (${money2(r.baht ?? 0)} บาท)` : r.prodName}</td>
+                {/* ค่าขนส่งไม่เต็มเที่ยวไม่มีคิว — ใส่จำนวนเที่ยวไว้ในช่องรายละเอียดแทน. */}
+                <td>{r.transport ? `${r.prodName} · ${qm(r.trips ?? 0)} เที่ยว` : r.prodName}</td>
                 <td className="num">{r.transport ? '—' : qm(r.m3)}</td>
                 {j === 0 && <td rowSpan={g.rows.length} className="num">{money2(g.inv.total)}</td>}
               </tr>
@@ -245,7 +245,7 @@ function BillingSummaryDoc({ bn, summary }: { bn: BillingNote; summary: BnSummar
             <tr>
               {summary.products.length === 0 && <td rowSpan={sumRowCount} className="bs-sumhead">สรุปวางบิล</td>}
               <td colSpan={3}>
-                ค่าขนส่งไม่เต็มเที่ยว · รวม {qm(summary.transportTrips)} เที่ยว เป็นเงิน {money2(summary.transportBaht)} บาท
+                ค่าขนส่งไม่เต็มเที่ยว · รวม {qm(summary.transportTrips)} เที่ยว
               </td>
               <td className="num">—</td>
               {summary.products.length === 0 && <td rowSpan={sumRowCount} className="num">{money2(summary.totalBaht)}</td>}
