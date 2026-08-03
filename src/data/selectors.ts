@@ -170,8 +170,8 @@ export interface Invoice {
       the customer registry's legalName, editable per invoice. */
   legalName?: string
   /** Tax-branch designation for นิติบุคคล customers. 'head' prints "สำนักงานใหญ่";
-      'branch' prints "สาขาที่ <branchCode>". Undefined ⇒ not printed (individuals /
-      older invoices). */
+      'branch' prints "สาขาที่ <branchCode>". Undefined ⇒ not printed (individuals,
+      older invoices, or a นิติบุคคล issued with the "ไม่แสดง" option). */
   taxBranch?: 'head' | 'branch'
   /** Branch code (เลขที่สาขา, e.g. "00001") — set only when taxBranch === 'branch'. */
   branchCode?: string
@@ -330,7 +330,8 @@ export interface BillingNote {
   entityType?: 'person' | 'company'
   /** ชื่อนิติบุคคล printed as นามลูกค้า when entityType === 'company'. */
   legalName?: string
-  /** Tax-branch designation for นิติบุคคล: 'head' → สำนักงานใหญ่, 'branch' → สาขาที่ <branchCode>. */
+  /** Tax-branch designation for นิติบุคคล: 'head' → สำนักงานใหญ่, 'branch' → สาขาที่ <branchCode>.
+      Undefined ⇒ not printed (บุคคลธรรมดา or the "ไม่แสดง" option). */
   taxBranch?: 'head' | 'branch'
   /** Branch code (เลขที่สาขา) — set only when taxBranch === 'branch'. */
   branchCode?: string

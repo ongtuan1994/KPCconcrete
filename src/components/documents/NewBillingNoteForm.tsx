@@ -44,7 +44,8 @@ export function NewBillingNoteForm({
      Mirrors the tax-invoice form so a ใบวางบิล can print the นิติบุคคล name too. */
   const [asCompany, setAsCompany] = useState(false)
   const [legalName, setLegalName] = useState<string>('')
-  const [taxBranch, setTaxBranch] = useState<'head' | 'branch'>('head')
+  /* 'none' = ไม่พิมพ์บรรทัดสำนักงานใหญ่/สาขาเลย — บันทึกเป็น taxBranch: undefined. */
+  const [taxBranch, setTaxBranch] = useState<'head' | 'branch' | 'none'>('head')
   const [branchCode, setBranchCode] = useState<string>('')
   /* Prefill the ชื่อนิติบุคคล from the customer registry when ticking company. */
   useEffect(() => {
@@ -96,7 +97,7 @@ export function NewBillingNoteForm({
       customer: customer.trim(),
       entityType: asCompany ? 'company' : 'person',
       legalName: asCompany ? legalName.trim() : undefined,
-      taxBranch: asCompany ? taxBranch : undefined,
+      taxBranch: asCompany && taxBranch !== 'none' ? taxBranch : undefined,
       branchCode: asCompany && taxBranch === 'branch' ? branchCode.trim() : undefined,
       invoices: selected.slice().sort((a, b) => parseInt(a.date, 10) - parseInt(b.date, 10)),
       total: Math.round(total * 100) / 100,
@@ -143,11 +144,12 @@ export function NewBillingNoteForm({
             <Field label="ชื่อนิติบุคคล" required hint="ดึงจากทะเบียนลูกค้าถ้ามี — แก้ไข/กรอกเองได้ · พิมพ์เป็นนามลูกค้าบนใบวางบิล" style={{ gridColumn: '1 / -1' }}>
               <Input placeholder="เช่น บริษัท ... จำกัด / หจก. ..." value={legalName} onChange={(e) => setLegalName(e.target.value)} />
             </Field>
-            <Field label="สำนักงานใหญ่ / สาขา" hint="พิมพ์บนใบวางบิล" style={{ gridColumn: '1 / -1' }}>
+            <Field label="สำนักงานใหญ่ / สาขา" hint="พิมพ์บนใบวางบิล · เลือก “ไม่แสดง” เพื่อไม่พิมพ์บรรทัดนี้" style={{ gridColumn: '1 / -1' }}>
               <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div className="pills">
                   <Pill active={taxBranch === 'head'} onClick={() => setTaxBranch('head')}>สำนักงานใหญ่</Pill>
                   <Pill active={taxBranch === 'branch'} onClick={() => setTaxBranch('branch')}>สาขา</Pill>
+                  <Pill active={taxBranch === 'none'} onClick={() => setTaxBranch('none')}>ไม่แสดง</Pill>
                 </div>
                 {taxBranch === 'branch' && (
                   <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} />
