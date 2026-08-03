@@ -21,11 +21,16 @@ export function BillingNotes() {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState<BillingNote | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState<BillingNote | null>(null)
   const created = useCreatedDocs()
   /* ใบวางบิลอยู่ใต้สิทธิ์เดียวกับใบกำกับภาษี (ROUTE_RESOURCE['/billing'] = 'invoices'). */
-  const canDelete = useCan('invoices').edit
+  const canEdit = useCan('invoices').edit
 
   const hiddenSet = useMemo(() => new Set(created.hidden.billingNotes), [created.hidden.billingNotes])
+  /* แก้ไขได้เฉพาะใบที่ผู้ใช้ออกเอง — ใบวางบิลชุดตั้งต้นสร้างจากใบกำกับ ไม่มีระเบียนให้แก้. */
+  const createdSet = useMemo(() => new Set(created.billingNotes.map((b) => b.no)), [created.billingNotes])
+  const openEdit = (bn: BillingNote) => { setActive(null); setEditing(bn); setShowForm(true) }
+  const closeForm = () => { setShowForm(false); setEditing(null) }
   const allBns = useMemo(
     () => [...created.billingNotes, ...BILLING_NOTES].filter((b) => !hiddenSet.has(b.no)),
     [created.billingNotes, hiddenSet],
@@ -45,8 +50,16 @@ export function BillingNotes() {
     { key: 'total', header: 'ยอดวางบิล', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.createdBy} at={r.createdAt} /> },
     { key: 'audit', header: '', align: 'center', cell: (r) => <AuditButton item={{ category: 'sales', group: 'ใบวางบิล', ref: r.no, label: r.no, sub: `${r.customer} · ${baht(r.total)}`, route: '/billing' }} /> },
-    { key: 'act', header: '', align: 'center', cell: (r) => <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button> },
-    ...(canDelete ? [{
+    {
+      key: 'act', header: '', align: 'center',
+      cell: (r) => (
+        <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
+          {canEdit && createdSet.has(r.no) && <Button variant="ghost" size="sm" onClick={() => openEdit(r)}>แก้ไข</Button>}
+          <Button variant="ghost" size="sm" onClick={() => setActive(r)}>เปิดดู</Button>
+        </div>
+      ),
+    },
+    ...(canEdit ? [{
       key: 'del',
       header: '',
       align: 'center' as const,
@@ -71,7 +84,7 @@ export function BillingNotes() {
     { key: 'total', header: 'ยอดวางบิล', align: 'right', cell: (r) => baht(r.total), className: 'amt' },
     { key: 'delby', header: 'ผู้ลบ', cell: (r) => r.deletedBy || '—' },
     { key: 'delat', header: 'เวลาที่ลบ', cell: (r) => <span className="mono" style={{ fontSize: 13 }}>{fmtThaiDateTime(r.deletedAt)}</span> },
-    ...(canDelete ? [{
+    ...(canEdit ? [{
       key: 'restore',
       header: '',
       align: 'center' as const,
@@ -94,7 +107,7 @@ export function BillingNotes() {
               const slug = `billing-notes-${month === 'all' ? '2569' : monthLabel(month).replace(/\s+/g, '-')}`
               downloadCsv(slug, [head, ...body])
             }}>ส่งออก Excel</Button>
-            <Button variant="primary" onClick={() => setShowForm(true)}>+ เพิ่มใบวางบิล</Button>
+            <Button variant="primary" onClick={() => { setEditing(null); setShowForm(true) }}>+ เพิ่มใบวางบิล</Button>
           </>
         }
       />
@@ -122,16 +135,24 @@ export function BillingNotes() {
         </div>
       )}
 
-      <DocModal open={!!active} title={active ? `ใบวางบิล ${active.no}` : ''} onClose={() => setActive(null)}>
+      <DocModal
+        open={!!active}
+        title={active ? `ใบวางบิล ${active.no}` : ''}
+        onClose={() => setActive(null)}
+        extraActions={active && canEdit && createdSet.has(active.no)
+          ? <Button variant="secondary" onClick={() => openEdit(active)}>แก้ไข</Button>
+          : undefined}
+      >
         {active && <BillingNoteDoc bn={active} />}
       </DocModal>
 
       <NewBillingNoteForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={closeForm}
+        editBn={editing}
         createdBns={created.billingNotes}
         extraInvoices={created.invoices}
-        onIssued={(bn) => { setShowForm(false); setActive(bn) }}
+        onIssued={(bn) => { closeForm(); setActive(bn) }}
       />
     </>
   )

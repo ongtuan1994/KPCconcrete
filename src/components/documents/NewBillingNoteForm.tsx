@@ -1,39 +1,52 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select, Checkbox, Pill, pickerMonths } from '../ui'
 import { CUSTOMER_MASTER } from '../../data/real'
 import { INVOICES, BILLING_NOTES, baht, customerLegalName, LATEST_MONTH, type BillingNote, type Invoice } from '../../data/selectors'
-import { addBillingNote, useCreatedDocs } from '../../data/createdDocs'
+import { addBillingNote, updateBillingNote, useCreatedDocs } from '../../data/createdDocs'
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
 function pad4(n: number) { return String(n).padStart(4, '0') }
 
-function nextBnNo(month: number, existing: BillingNote[]) {
+/** Next free เลขที่ใบวางบิล for a งวด (BN69MM-NNNN), one past the highest already
+    taken. `used` carries every number in play — including deleted notes, which can
+    be restored later and would then collide. */
+function nextBnNo(month: number, used: Iterable<string>) {
   const prefix = `BN69${pad2(month)}-`
   let max = 0
-  for (const b of existing) {
-    if (b.no.startsWith(prefix)) {
-      const n = parseInt(b.no.slice(prefix.length), 10)
+  for (const no of used) {
+    if (no.startsWith(prefix)) {
+      const n = parseInt(no.slice(prefix.length), 10)
       if (!Number.isNaN(n) && n > max) max = n
     }
   }
   return `${prefix}${pad4(max + 1)}`
 }
 
+/** ออก / แก้ไขใบวางบิล. Passing `editBn` switches the form to edit mode: the note's
+    values are hydrated in, เลขที่เอกสาร is kept, and saving patches the existing
+    note instead of adding a new one. */
 export function NewBillingNoteForm({
   open,
   onClose,
   onIssued,
   createdBns,
   extraInvoices,
+  editBn,
 }: {
   open: boolean
   onClose: () => void
   onIssued: (bn: BillingNote) => void
   createdBns: BillingNote[]
   extraInvoices: Invoice[]
+  editBn?: BillingNote | null
 }) {
+  const isEdit = !!editBn
   const [customer, setCustomer] = useState('')
+  /* เลขที่ใบวางบิล — เติมอัตโนมัติจากงวด แต่แก้เป็นเลขจริงได้ก่อนออกใบ. `noDirty`
+     หยุดการเติมอัตโนมัติเมื่อผู้ใช้พิมพ์เอง (แบบเดียวกับฟอร์มใบกำกับภาษี). */
+  const [no, setNo] = useState<string>('')
+  const [noDirty, setNoDirty] = useState(false)
   /* Default งวด to the latest selectable month (current month while it's 2569). */
   const defaultMonth = pickerMonths().slice(-1)[0]?.num ?? LATEST_MONTH
   const [month, setMonth] = useState<number>(defaultMonth)
@@ -47,8 +60,35 @@ export function NewBillingNoteForm({
   /* 'none' = ไม่พิมพ์บรรทัดสำนักงานใหญ่/สาขาเลย — บันทึกเป็น taxBranch: undefined. */
   const [taxBranch, setTaxBranch] = useState<'head' | 'branch' | 'none'>('head')
   const [branchCode, setBranchCode] = useState<string>('')
-  /* Prefill the ชื่อนิติบุคคล from the customer registry when ticking company. */
+
+  /* Load the note being edited into the form. Runs only when the modal opens on a
+     new editBn — a note always has a customer and ≥1 invoice, so this always
+     changes state and the prefill effect below is guaranteed to run (and clear
+     the skip flag) right after. */
+  const skipLegalPrefill = useRef(false)
   useEffect(() => {
+    if (!open || !editBn) return
+    skipLegalPrefill.current = true
+    setCustomer(editBn.customer)
+    setMonth(editBn.month)
+    const dnum = parseInt(editBn.date, 10)
+    setDay(dnum >= 1 && dnum <= 31 ? String(dnum) : '')
+    setNo(editBn.no); setNoDirty(false)
+    setPicked(new Set(editBn.invoices.map((i) => i.no)))
+    setAsCompany(editBn.entityType === 'company')
+    setLegalName(editBn.legalName ?? '')
+    /* Saved notes store 'ไม่แสดง' as an absent taxBranch — show it as that choice
+       again, but only for a นิติบุคคล (บุคคลธรรมดา never prints the line). */
+    setTaxBranch(editBn.entityType === 'company' && !editBn.taxBranch ? 'none' : editBn.taxBranch ?? 'head')
+    setBranchCode(editBn.branchCode ?? '')
+    setErr('')
+  }, [open, editBn])
+
+  /* Prefill the ชื่อนิติบุคคล from the customer registry when ticking company —
+     except on the render right after hydrating an edit, which would otherwise
+     overwrite the name saved on the note. */
+  useEffect(() => {
+    if (skipLegalPrefill.current) { skipLegalPrefill.current = false; return }
     if (asCompany) setLegalName(customerLegalName(customer))
   }, [customer, asCompany])
 
@@ -61,28 +101,54 @@ export function NewBillingNoteForm({
   const allBns = useMemo(() => [...createdBns, ...BILLING_NOTES], [createdBns])
   const allInv = useMemo(() => [...extraInvoices, ...INVOICES], [extraInvoices])
 
+  /* เลขที่ที่ถูกใช้ไปแล้ว — รวมใบที่ลบไปด้วย เพราะกู้คืนได้ทีหลังแล้วจะชนกัน. */
+  const usedNos = useMemo(() => {
+    const s = new Set(allBns.map((b) => b.no))
+    for (const d of created.deletedBillingNotes) s.add(d.no)
+    return s
+  }, [allBns, created.deletedBillingNotes])
+
+  /* Keep the auto number in sync with งวด until the user types their own. Edit mode
+     keeps the note's existing number, so it never re-generates. */
+  useEffect(() => {
+    if (isEdit || noDirty) return
+    setNo(nextBnNo(month, usedNos))
+  }, [month, usedNos, noDirty, isEdit])
+
+  const noTrim = no.trim()
+  const noDuplicate = !isEdit && !!noTrim && usedNos.has(noTrim)
+
+  /* Selectable invoices = this customer's unpaid ones. When editing, the note's
+     own invoices stay listed even if one has since been marked จ่ายแล้ว — else
+     saving would silently drop it from the note. */
   const candidates = useMemo(() => {
     if (!customer.trim()) return [] as Invoice[]
     const cname = customer.trim()
-    return allInv.filter((i) => i.customer === cname && i.status !== 'paid')
-  }, [customer, allInv])
+    const unpaid = allInv.filter((i) => i.customer === cname && i.status !== 'paid')
+    if (!editBn) return unpaid
+    const seen = new Set(unpaid.map((i) => i.no))
+    return [...unpaid, ...editBn.invoices.filter((i) => i.customer === cname && !seen.has(i.no))]
+  }, [customer, allInv, editBn])
 
   const selected = useMemo(() => candidates.filter((i) => picked.has(i.no)), [candidates, picked])
   const total = useMemo(() => selected.reduce((s, i) => s + i.total, 0), [selected])
 
-  const toggle = (no: string) => {
+  const toggle = (invNo: string) => {
     const next = new Set(picked)
-    if (next.has(no)) next.delete(no); else next.add(no)
+    if (next.has(invNo)) next.delete(invNo); else next.add(invNo)
     setPicked(next)
   }
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setPicked(new Set()); setErr('')
     setAsCompany(false); setLegalName(''); setTaxBranch('head'); setBranchCode('')
+    setNo(''); setNoDirty(false)
   }
 
   const submit = () => {
     setErr('')
+    if (!noTrim) return setErr('กรุณากรอกเลขที่ใบวางบิล')
+    if (noDuplicate) return setErr(`เลขที่ใบวางบิล ${noTrim} ถูกใช้แล้ว`)
     if (!customer.trim()) return setErr('กรุณาเลือกหรือกรอกชื่อลูกค้า')
     if (selected.length === 0) return setErr('กรุณาเลือกใบกำกับที่ต้องการรวมในใบวางบิลอย่างน้อย 1 ใบ')
     if (asCompany && !legalName.trim()) return setErr('กรุณาระบุชื่อนิติบุคคล')
@@ -91,7 +157,8 @@ export function NewBillingNoteForm({
     const dateStr = dnum && dnum >= 1 && dnum <= 31 ? `${pad2(dnum)}/${pad2(month)}/69` : `__/${pad2(month)}/69`
 
     const bn: BillingNote = {
-      no: nextBnNo(month, allBns),
+      /* เลขที่เอกสารคงที่เมื่อแก้ไข — ใบวางบิลที่ส่งลูกค้าไปแล้วต้องอ้างเลขเดิมได้. */
+      no: editBn ? editBn.no : noTrim,
       month,
       date: dateStr,
       customer: customer.trim(),
@@ -102,7 +169,7 @@ export function NewBillingNoteForm({
       invoices: selected.slice().sort((a, b) => parseInt(a.date, 10) - parseInt(b.date, 10)),
       total: Math.round(total * 100) / 100,
     }
-    addBillingNote(bn)
+    if (editBn) updateBillingNote(bn); else addBillingNote(bn)
     onIssued(bn)
     reset()
   }
@@ -112,19 +179,41 @@ export function NewBillingNoteForm({
   return (
     <Modal
       open={open}
-      title="ออกใบวางบิลใหม่"
+      title={isEdit ? `แก้ไขใบวางบิล ${editBn!.no}` : 'ออกใบวางบิลใหม่'}
       onClose={close}
       maxWidth={720}
       footer={
         <>
           <Button variant="secondary" onClick={close}>ยกเลิก</Button>
-          <Button variant="primary" onClick={submit}>ออกใบวางบิล</Button>
+          <Button variant="primary" onClick={submit}>{isEdit ? 'บันทึกการแก้ไข' : 'ออกใบวางบิล'}</Button>
         </>
       }
     >
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
       <div className="grid g-3" style={{ marginBottom: 16 }}>
+        <Field
+          label="เลขที่ใบวางบิล"
+          required
+          hint={isEdit
+            ? 'เลขที่คงที่ — แก้ไขรายละเอียดอื่นได้'
+            : 'เติมอัตโนมัติจากงวด — แก้เป็นเลขอื่นได้ · ต้องไม่ซ้ำกับใบที่มีอยู่'}
+          style={{ gridColumn: '1 / -1' }}
+        >
+          <Input
+            className="input mono"
+            value={no}
+            readOnly={isEdit}
+            onChange={(e) => { setNo(e.target.value); setNoDirty(true) }}
+            placeholder="เช่น BN6907-0001"
+            style={isEdit ? { background: 'var(--kpc-surface-alt)' } : undefined}
+          />
+          {noDuplicate && (
+            <div style={{ color: 'var(--kpc-danger)', fontSize: 12, marginTop: 4 }}>
+              เลขที่ {noTrim} ถูกใช้แล้ว — กรุณาเปลี่ยนเป็นเลขอื่น
+            </div>
+          )}
+        </Field>
         <Field label="ลูกค้า" required style={{ gridColumn: '1 / -1' }}>
           <Input
             list="kpc-customer-list-bn"

@@ -1400,6 +1400,17 @@ export function removeInvoicePayment(id: string) {
 export function addBillingNote(bn: BillingNote) {
   commit({ ...state, billingNotes: [stamp(bn), ...state.billingNotes] })
 }
+/** Save an edited ใบวางบิล in place — เลขที่ stays the same, and the original
+    ผู้บันทึก / วันที่บันทึก are preserved so a correction doesn't look like a
+    brand-new note. Only user-created notes have a store entry to patch; seed
+    notes are read-only. */
+export function updateBillingNote(bn: BillingNote) {
+  commit({
+    ...state,
+    billingNotes: state.billingNotes.map((b) =>
+      b.no === bn.no ? { ...bn, createdBy: b.createdBy, createdAt: b.createdAt } : b),
+  })
+}
 export function addReceipt(rc: Receipt) {
   commit({ ...state, receipts: [stamp(rc), ...state.receipts] })
 }
