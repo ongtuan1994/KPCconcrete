@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select, Pill, Checkbox, pickerMonths } from '../ui'
 import { PRODUCTS, CUSTOMER_MASTER, DELIVERY_TICKETS, TRANSPORT_FEES, TRANSPORT_FULL_M3, SELF_PICKUP_DISCOUNT_PER_M3, pickupHasSelfDiscount, pickupChargesTransport, type DeliveryTicket, type Product } from '../../data/real'
-import { INVOICES, baht, cleanProductName, customerLegalName, LATEST_MONTH, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
+import { INVOICES, baht, cleanProductName, customerLegalName, LATEST_MONTH, TRANSPORT_LINE_CODE, type Invoice, type InvoiceLine, type InvStatus } from '../../data/selectors'
 import { addInvoice, useCreatedDocs, useProducts } from '../../data/createdDocs'
 
 /** `selfPickup` marks a line pulled from a ลูกค้ามารับเอง ticket: it carries the
@@ -180,7 +180,7 @@ export function NewInvoiceForm({
     const feeInclVat = transportApplicable ? Math.max(0, Number(transportFee) || 0) : 0
     const transportLine: InvoiceLine | null = feeInclVat > 0
       ? {
-          code: 'TRANSPORT',
+          code: TRANSPORT_LINE_CODE,
           name: 'ค่าขนส่งไม่เต็มเที่ยว',
           unit: 'ครั้ง',
           qty: 1,

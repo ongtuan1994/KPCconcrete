@@ -140,6 +140,9 @@ export function customerLegalName(name: string): string {
 
 /* ---------- invoice register (derived from real delivery tickets) ---------- */
 export type InvStatus = 'paid' | 'pending' | 'overdue'
+/** Line code of the ค่าขนส่งไม่เต็มเที่ยว surcharge. Not a real product — it carries
+    จำนวนเที่ยว in `qty` (unit ครั้ง), so reports must keep it out of the คิว totals. */
+export const TRANSPORT_LINE_CODE = 'TRANSPORT'
 export interface InvoiceLine {
   code: string; name: string; unit: string; qty: number;
   /** Pre-VAT unit price BEFORE discount. */
