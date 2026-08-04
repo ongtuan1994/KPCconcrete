@@ -11,7 +11,7 @@ export function BillingNoteDoc({ bn }: { bn: BillingNote }) {
       : bn.entityType === 'person' ? cust.person
         : cust.display
   return (
-    <DocShell docType="ใบวางบิล / ใบแจ้งหนี้" copyLabel="ต้นฉบับ / Original">
+    <DocShell docType="ใบวางบิล / ใบแจ้งหนี้" copyLabel="ต้นฉบับ / Original" sheetClass="billing">
       <div className="doc-meta-grid">
         <MetaRow k="นามลูกค้า :" v={displayName} />
         <MetaRow k="เลขที่เอกสาร :" v={bn.no} mono />

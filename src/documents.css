@@ -270,6 +270,16 @@
     margin: 0 !important;
   }
 
+  /* ใบวางบิล — ผู้รับวางบิล / ผู้วางบิล ต้องอยู่ชิดขอบล่างกระดาษ เหลือระยะแค่ 2mm
+     (ลูกค้าเซ็นแล้วฉีกส่วนล่างเก็บ) so this sheet overrides the shared 30mm pin.
+     The sheet's bottom padding drops to match, keeping the flowing content
+     (line table / totals / bank block) clear of the lowered signature block. */
+  .doc-sheet.billing { padding-bottom: 52mm !important; }
+  .doc-sheet.billing .doc-sign { bottom: 2mm !important; }
+  /* No topCap on this document — reclaim the reserved caption strip above the
+     dotted line so the whole block hugs the paper edge instead of floating. */
+  .doc-sheet.billing .doc-sign .s .cap-top-slot { min-height: 0 !important; margin-bottom: 8mm !important; }
+
   /* The pay slip flows top-down (no absolute signature) — full-page sheet with
      uniform margins; height grows with content but fills at least one page. */
   .doc-sheet.payslip {
