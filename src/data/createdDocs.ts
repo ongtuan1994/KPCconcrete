@@ -7,7 +7,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 import type { Invoice, BillingNote, Receipt } from './selectors'
-import { CUSTOMER_MASTER, PRODUCTS, STOCK_MATERIALS, DIESEL_PRICE_PER_LITER, VEHICLES, type DeliveryTicket, type Customer, type Product } from './real'
+import { CUSTOMER_MASTER, PRODUCTS, PRODUCT_MAP, STOCK_MATERIALS, DIESEL_PRICE_PER_LITER, VEHICLES, type DeliveryTicket, type Customer, type Product } from './real'
 
 /** Codes of the seed foundry stock materials (site: 'foundry') — used to tell a
     re-added seed material from a genuinely new one. */
@@ -2092,6 +2092,23 @@ export function removeProduct(code: string) {
     hidden: wasAdded ? state.hidden : { ...state.hidden, products: [...(state.hidden.products ?? []), code] },
   })
 }
+/** Resolve a product from the LIVE price list by its code — products added
+    through เพิ่มสินค้า first (they can shadow a seed code), then the seed master,
+    with the per-code edit (productEdits) applied. Returns undefined when the code
+    isn't a product at all (e.g. the ค่าขนส่ง surcharge line).
+
+    Non-hook twin of useProducts, so documents and selectors can name a product
+    that was added after the seed was written — the static PRODUCT_MAP alone
+    leaves those showing only their รหัสสินค้า (KPCF0009 …). Price is left off the
+    overlay on purpose: priceAdjustments belong to the price list, not to the
+    historical amount already captured on a document line. */
+export function liveProductByCode(code: string): Product | undefined {
+  const base = state.productsAdded.find((p) => p.code === code) ?? PRODUCT_MAP[code]
+  if (!base) return undefined
+  const e = state.productEdits[code]
+  return e ? { ...base, ...e } : base
+}
+
 /** True when a product code belongs to a user-added product (vs a seed product). */
 export function isAddedProduct(code: string): boolean {
   return state.productsAdded.some((p) => p.code === code)

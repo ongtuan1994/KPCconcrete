@@ -5,7 +5,7 @@
 
 import { DELIVERY_TICKETS, PRODUCT_MAP, CUSTOMER_MAP, MONTHS, VEHICLES, ZONE_ROUNDTRIP_KM, type DeliveryTicket } from './real'
 import { SEED_IMPORTED_TICKETS } from './ticketSeed'
-import { liveCustomerByName, backfillInvoiceInclVat } from './createdDocs'
+import { liveCustomerByName, liveProductByCode, backfillInvoiceInclVat } from './createdDocs'
 
 export { MONTHS }
 export const LATEST_MONTH = MONTHS[MONTHS.length - 1].num
@@ -71,11 +71,15 @@ export function vehicleForTicket(t: DeliveryTicket): string {
     product code, so documents lose nothing — they just don't print the brand. */
 export const cleanProductName = (name: string) => name.replace(/\s*\(ปูน[^)]*\)/g, '').trim()
 
-export function prodName(code: string) {
-  return cleanProductName(PRODUCT_MAP[code]?.name ?? code)
+/** ชื่อสินค้า for a product code, from the LIVE price list so products added /
+    renamed after the seed (KPCF0009 …) print their รายละเอียด instead of the bare
+    code. `fallback` is the name captured on the document line itself — used when
+    the code is no longer in the price list (deleted product, old document). */
+export function prodName(code: string, fallback?: string) {
+  return cleanProductName(liveProductByCode(code)?.name ?? fallback ?? code)
 }
 export function prodShort(code: string) {
-  const p = PRODUCT_MAP[code]
+  const p = liveProductByCode(code)
   if (!p) return code
   if (p.category === 'precast') return 'เสาเข็ม/คาน'
   /* Cement brand from product code: R2/P2 prefix = ดอกบัว, RO/PO = SCG */
@@ -89,7 +93,7 @@ export function prodShort(code: string) {
     Brand is derived from the product code: KPCR2…/KPCP2… = ดอกบัว, else SCG —
     same convention as prodShort. */
 export function cementBrandSuffix(code: string): string {
-  const p = PRODUCT_MAP[code]
+  const p = liveProductByCode(code)
   if (p && p.category !== 'concrete' && p.category !== 'lean') return ''
   return /^KPC[RP]2/.test(code) ? '(ดอกบัว)' : '(SCG)'
 }

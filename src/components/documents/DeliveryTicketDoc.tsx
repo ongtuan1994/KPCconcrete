@@ -1,6 +1,7 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
 import { customerLegal, qm, monthLabel, cleanProductName } from '../../data/selectors'
-import { COMPANY, PRODUCT_MAP, VEHICLE_MAP, pickupLabel, type DeliveryTicket } from '../../data/real'
+import { COMPANY, VEHICLE_MAP, pickupLabel, type DeliveryTicket } from '../../data/real'
+import { liveProductByCode } from '../../data/createdDocs'
 
 /** Printable A4 layout for a delivery ticket — mirrors the tax-invoice
     structure (header, meta-grid, lines table, optional note, 4-column
@@ -8,7 +9,8 @@ import { COMPANY, PRODUCT_MAP, VEHICLE_MAP, pickupLabel, type DeliveryTicket } f
     blank since pricing is finalized when the tax invoice is issued. */
 export function DeliveryTicketDoc({ ticket }: { ticket: DeliveryTicket }) {
   const cust = customerLegal(ticket.customer)
-  const prod = PRODUCT_MAP[ticket.prod]
+  /* ทะเบียนราคาปัจจุบัน — สินค้าที่เพิ่มใหม่ยังไม่มีในชุดข้อมูลตั้งต้น. */
+  const prod = liveProductByCode(ticket.prod)
   const vehicle = ticket.vehicle ? VEHICLE_MAP[ticket.vehicle] : null
   const driver = ticket.driver || vehicle?.driver || ''
 

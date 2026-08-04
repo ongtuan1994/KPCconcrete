@@ -1,7 +1,8 @@
 import { Modal } from '../Modal'
 import { Button, Badge, type Tone } from '../ui'
-import { type DeliveryTicket, PRODUCT_MAP, VEHICLE_MAP, pickupLabel, SELF_PICKUP_DISCOUNT_PER_M3 } from '../../data/real'
+import { type DeliveryTicket, VEHICLE_MAP, pickupLabel, SELF_PICKUP_DISCOUNT_PER_M3 } from '../../data/real'
 import { baht, qm, monthLabel } from '../../data/selectors'
+import { liveProductByCode } from '../../data/createdDocs'
 
 const TYPE_TONE: Record<string, Tone> = { ขายลูกค้า: 'info', โรงหล่อ: 'neutral', ใช้เอง: 'warning' }
 const PAY_TONE: Record<string, Tone> = { เครดิต: 'warning', เงินสด: 'success', โอน: 'info', เช็ค: 'warning' }
@@ -27,7 +28,7 @@ export function TicketDetailModal({
   onIssueInvoice: (t: DeliveryTicket) => void
 }) {
   if (!ticket) return null
-  const prod = PRODUCT_MAP[ticket.prod]
+  const prod = liveProductByCode(ticket.prod)
   return (
     <Modal
       open={open}

@@ -15,9 +15,8 @@ import { InvoiceZipDownload } from '../components/documents/InvoiceZipDownload'
 import { IconDownload } from '../components/icons'
 import { INVOICES, SEED_IMPORTED_INVOICES, RECEIPTS, baht, monthLabel, monthName, ticketYear, type Invoice, type InvStatus } from '../data/selectors'
 import { currentBuddhistYear, currentMonth, fmtThaiDateTime } from '../utils/datetime'
-import { PRODUCT_MAP } from '../data/real'
 import { useCan } from '../data/auth'
-import { useCreatedDocs, removeInvoice, restoreInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, type InvoicePayment, type DeletedInvoice } from '../data/createdDocs'
+import { useCreatedDocs, liveProductByCode, removeInvoice, restoreInvoice, updateInvoiceNo, addInvoicePayment, removeInvoicePayment, type InvoicePayment, type DeletedInvoice } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | InvStatus
@@ -37,7 +36,9 @@ function fmtThaiDate(iso: string): string {
 
 /** SITE of an invoice — โรงหล่อ if any line is a foundry product, else แพล้นปูน. */
 function invoiceSite(inv: Invoice): 'foundry' | 'plant' {
-  return inv.lines.some((l) => PRODUCT_MAP[l.code]?.site === 'foundry') ? 'foundry' : 'plant'
+  /* ทะเบียนราคาปัจจุบัน ไม่ใช่ PRODUCT_MAP ตายตัว — สินค้าโรงหล่อที่เพิ่มเข้ามาใหม่
+     ไม่มีในชุดข้อมูลตั้งต้น จะถูกจัดเป็นแพล้นปูนผิดถ้าอ่านจากชุดตั้งต้นอย่างเดียว. */
+  return inv.lines.some((l) => liveProductByCode(l.code)?.site === 'foundry') ? 'foundry' : 'plant'
 }
 
 const STATUS: Record<InvStatus, { th: string; tone: Tone }> = {

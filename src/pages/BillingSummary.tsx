@@ -36,7 +36,9 @@ function summarize(bn: BillingNote, ticketByRef: Map<string, DeliveryTicket>): B
       ? tks.map((t) => ({ dtNo: t.dtNo, prodCode: t.prod, prodName: prodName(t.prod), m3: t.m3 }))
       : inv.lines
           .filter((l) => l.code !== TRANSPORT_LINE_CODE)
-          .map((l) => ({ dtNo: '', prodCode: l.code, prodName: prodName(l.code), m3: l.qty }))
+          /* รายละเอียด: ชื่อสินค้าจากทะเบียนราคา ถ้าไม่พบรหัส (สินค้าถูกลบ / เอกสารเก่า)
+             ใช้ชื่อที่บันทึกไว้บนบรรทัดใบกำกับแทน แทนที่จะโชว์แต่รหัสสินค้า. */
+          .map((l) => ({ dtNo: '', prodCode: l.code, prodName: prodName(l.code, l.name), m3: l.qty }))
     for (const r of rows) {
       totalM3 += r.m3
       const e = prodMap.get(r.prodCode) ?? { code: r.prodCode, name: r.prodName, m3: 0 }
@@ -96,7 +98,8 @@ export function BillingSummary() {
     const m = new Map<string, BnSummary>()
     for (const bn of monthRows) m.set(bn.no, summarize(bn, ticketByRef))
     return m
-  }, [monthRows, ticketByRef])
+    /* ชื่อสินค้าอ่านจากทะเบียนราคาตอน summarize — สินค้าที่เพิ่ม/แก้ชื่อใหม่ต้องคำนวณซ้ำ. */
+  }, [monthRows, ticketByRef, created.productsAdded, created.productEdits])
 
   const totM3 = monthRows.reduce((s, b) => s + (summaries.get(b.no)?.totalM3 ?? 0), 0)
   const totValue = monthRows.reduce((s, b) => s + b.total, 0)
@@ -205,7 +208,8 @@ function BillingSummaryDoc({ bn, summary }: { bn: BillingNote; summary: BnSummar
             <th colSpan={2}>จำนวน</th>
           </tr>
           <tr>
-            <th style={{ width: '9%' }}>คิว</th>
+            {/* คิว สำหรับคอนกรีต · ชิ้น สำหรับสินค้าโรงหล่อ (แผ่น/ต้น) — ใช้คอลัมน์เดียวกัน. */}
+            <th style={{ width: '11%' }}>คิว/ชิ้น</th>
             <th style={{ width: '13%' }}>บาท</th>
           </tr>
         </thead>
