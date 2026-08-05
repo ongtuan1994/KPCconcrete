@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../Modal'
 import { Button, Field, Input, Select } from '../ui'
-import { CREDITOR_MASTER, type Creditor } from '../../data/creditors'
-import { addSupplier, updateSupplier, nextSupplierId, useCreatedDocs } from '../../data/createdDocs'
+import { type Creditor } from '../../data/creditors'
+import { addSupplier, updateSupplier, nextSupplierId, useSuppliers } from '../../data/createdDocs'
 
 const DEFAULT_CREDIT_DAYS = 30
 
@@ -24,7 +24,7 @@ export function NewSupplierForm({
   initialName?: string
   edit?: Creditor
 }) {
-  const created = useCreatedDocs()
+  const suppliers = useSuppliers()
   const isEdit = !!edit
   const [name, setName] = useState('')
   const [note, setNote] = useState('')
@@ -52,10 +52,10 @@ export function NewSupplierForm({
     setErr('')
     const nm = name.trim()
     if (!nm) return setErr('กรุณาระบุชื่อซัพพลายเออร์')
-    /* Reject duplicate names against the master + added suppliers, ignoring the
-       record being edited itself. */
-    const all = [...created.suppliersAdded, ...CREDITOR_MASTER]
-    if (all.some((c) => c.name === nm && c.id !== edit?.id)) {
+    /* Reject duplicate names against the CURRENT registry, ignoring the record
+       being edited itself. Checking the seed master compared against names that
+       may since have been renamed away. */
+    if (suppliers.some((c) => c.name === nm && c.id !== edit?.id)) {
       return setErr(`มีซัพพลายเออร์ "${nm}" อยู่แล้ว`)
     }
 
@@ -72,7 +72,7 @@ export function NewSupplierForm({
     }
 
     const c: Creditor = {
-      id: nextSupplierId(all),
+      id: nextSupplierId(suppliers),
       name: nm,
       terms,
       note: note.trim() || undefined,

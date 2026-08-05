@@ -4,11 +4,11 @@ import { PageHeader } from '../components/Layout'
 import { Button, Badge, Pill, SearchInput, type Tone } from '../components/ui'
 import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
-import { CREDITOR_MASTER, type Creditor } from '../data/creditors'
+import { type Creditor } from '../data/creditors'
 import { baht } from '../data/selectors'
 import { useCan } from '../data/auth'
 import { AuditButton } from '../components/AuditButton'
-import { addGeneralReport, useCreatedDocs, type LedgerReport } from '../data/createdDocs'
+import { addGeneralReport, useCreatedDocs, useSuppliers, type LedgerReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'credit' | 'cash' | 'overdue'
@@ -56,18 +56,21 @@ export function Creditors() {
   const navigate = useNavigate()
   const canPay = useCan('goods-payments').edit
   const created = useCreatedDocs()
+  /* Merged registry (master + added + renames) — reading the seed master here
+     left renamed suppliers showing their old name in the ledger. */
+  const suppliers = useSuppliers()
 
   /* Keep payable up-to-date: ใบสำคัญจ่าย (goods payments) issued in the app REDUCE
      the standing outstanding, matched by supplier name (netted, floored at 0). */
   const list = useMemo(() => {
     const paidBySupplier = new Map<string, number>()
     for (const gp of created.goodsPayments) paidBySupplier.set(gp.supplier, (paidBySupplier.get(gp.supplier) ?? 0) + gp.amount)
-    if (paidBySupplier.size === 0) return CREDITOR_MASTER
-    return CREDITOR_MASTER.map((c) => {
+    if (paidBySupplier.size === 0) return suppliers
+    return suppliers.map((c) => {
       const paid = paidBySupplier.get(c.name) ?? 0
       return paid > 0 ? { ...c, outstanding: Math.max(0, (c.outstanding ?? 0) - paid) } : c
     })
-  }, [created.goodsPayments])
+  }, [created.goodsPayments, suppliers])
 
   const rows = useMemo(
     () =>

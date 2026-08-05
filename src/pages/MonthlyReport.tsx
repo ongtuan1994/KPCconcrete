@@ -7,16 +7,16 @@ import { KpiCard, Donut, Legend, type Seg } from '../components/charts'
 import { INVOICES, prodShort, ticketYear, LATEST_MONTH, monthName, baht, bahtShort, qm } from '../data/selectors'
 import { AR_OUTSTANDING, AR_OUTSTANDING_TOTAL } from '../data/receivables'
 import { COMPANY, PRODUCT_MAP, DELIVERY_TICKETS } from '../data/real'
-import { CREDITOR_MASTER } from '../data/creditors'
 import { currentBuddhistYear, currentMonth } from '../utils/datetime'
 import { canSharePdf, deliverPdf } from '../utils/sharePdf'
-import { useCreatedDocs, useProducts } from '../data/createdDocs'
+import { useCreatedDocs, useProducts, useSuppliers } from '../data/createdDocs'
 
 const MIX_COLORS = ['var(--kpc-primary, #0E0EE6)', '#8585F8', '#B4B4FB', '#D8D8FD', '#969CA6', '#C2C8D0']
 
 export function MonthlyReport() {
   /* ---------- Real data = seed history + user-created documents ---------- */
   const created = useCreatedDocs()
+  const suppliers = useSuppliers()
   const products = useProducts()
   const priceOf = (code: string) => products.find((p) => p.code === code) ?? PRODUCT_MAP[code]
   const mergedTickets = [...created.tickets, ...DELIVERY_TICKETS]
@@ -237,7 +237,8 @@ export function MonthlyReport() {
     .map((d) => ({ label: d.name, value: d.amount }))
 
   /* ---------- AP (เงินที่บริษัทค้างจ่ายซัพพลายเออร์) — REAL creditor outstanding ---------- */
-  const creditors = [...created.suppliersAdded, ...CREDITOR_MASTER]
+  /* Merged registry so a renamed supplier reports under its current name. */
+  const creditors = suppliers
   const apList = creditors.filter((c) => (c.outstanding ?? 0) > 0).sort((a, b) => (b.outstanding ?? 0) - (a.outstanding ?? 0))
   const apTotal = Math.round(apList.reduce((s, c) => s + (c.outstanding ?? 0), 0) * 100) / 100
   const apCreditorCount = apList.length

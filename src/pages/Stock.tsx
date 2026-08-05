@@ -7,10 +7,9 @@ import { KpiCard } from '../components/charts'
 import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { STOCK_MATERIALS, type StockMaterial } from '../data/real'
-import { CREDITOR_MASTER } from '../data/creditors'
 import { baht, qm, prodShort } from '../data/selectors'
 import { MIX_PER_M3, ticketConsumption, stockStatus as status } from '../data/plantStock'
-import { useCreatedDocs, addStockReceipt, removeStockReceipt, addStockReconcile, setStockCost, addFoundryMaterial, removeFoundryMaterial, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
+import { useCreatedDocs, useSuppliers, addStockReceipt, removeStockReceipt, addStockReconcile, setStockCost, addFoundryMaterial, removeFoundryMaterial, addGeneralReport, CAN_DELETE, type StockReconcileLine, type StockReport } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
 type Filter = 'all' | 'low' | 'out'
@@ -370,6 +369,7 @@ type RcvLine = { code: string; qty: string }
 
 function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open: boolean; onClose: () => void; receivedByCode: Record<string, number>; materials: StockMaterial[] }) {
   const created = useCreatedDocs()
+  const suppliers = useSuppliers()
   const emptyLine = (): RcvLine => ({ code: materials[0]?.code ?? '', qty: '' })
   const [lines, setLines] = useState<RcvLine[]>([emptyLine()])
   const [date, setDate] = useState(todayIso())
@@ -426,8 +426,10 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
         </Field>
         <Field label="ผู้ขาย / ซัพพลายเออร์">
           <Input list="kpc-supplier-list-stock" placeholder="พิมพ์หรือเลือกซัพพลายเออร์" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+          {/* useSuppliers() = master + ที่เพิ่มเอง + การแก้ไขชื่อ. Reading the seed
+              master directly here kept offering renamed suppliers by their old name. */}
           <datalist id="kpc-supplier-list-stock">
-            {CREDITOR_MASTER.map((s) => <option key={s.id} value={s.name} />)}
+            {suppliers.map((s) => <option key={s.id} value={s.name} />)}
           </datalist>
         </Field>
         <Field label="เลขใบสำคัญจ่าย (ถ้ามี)" style={{ gridColumn: '1 / -1' }} hint="อ้างอิงใบสำคัญจ่ายที่เกี่ยวข้อง">
