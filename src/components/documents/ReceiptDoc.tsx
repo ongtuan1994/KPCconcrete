@@ -1,5 +1,5 @@
 import { DocShell, MetaRow, Signatures } from './DocShell'
-import { baht, customerLegal, type Receipt, INVOICES } from '../../data/selectors'
+import { baht, customerLegal, receiptBranchLabel, type Receipt, INVOICES } from '../../data/selectors'
 import { bahtText } from '../../data/bahtText'
 import { useCreatedDocs } from '../../data/createdDocs'
 
@@ -8,6 +8,7 @@ export function ReceiptDoc({ rc }: { rc: Receipt }) {
   const allInv = [...created.invoices, ...INVOICES]
   const invs = allInv.filter((i) => rc.invoiceNos.includes(i.no))
   const cust = customerLegal(rc.customer)
+  const branch = receiptBranchLabel(rc, invs)
   return (
     <DocShell docType="ใบเสร็จรับเงิน" copyLabel="ต้นฉบับ / Original">
       <div className="doc-meta-grid">
@@ -15,7 +16,12 @@ export function ReceiptDoc({ rc }: { rc: Receipt }) {
         <MetaRow k="เลขที่ :" v={rc.no} mono />
         <MetaRow k="ที่อยู่ :" v={cust.address} />
         <MetaRow k="วันที่ :" v={rc.date} mono />
-        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={<span className="mono">{cust.taxId}</span>} />
+        <MetaRow k="เลขประจำตัวผู้เสียภาษี :" v={
+          <span>
+            <span className="mono">{cust.taxId}</span>
+            {branch && <span> · {branch}</span>}
+          </span>
+        } />
         <MetaRow k="วิธีรับชำระ :" v={rc.method || '—'} />
       </div>
 

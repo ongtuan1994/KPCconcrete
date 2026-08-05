@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../Modal'
-import { Button, Field, Input, Select, Checkbox, pickerMonths } from '../ui'
+import { Button, Field, Input, Select, Checkbox, Pill, pickerMonths } from '../ui'
 import { CUSTOMER_MASTER } from '../../data/real'
 import { INVOICES, RECEIPTS, baht, LATEST_MONTH, type Invoice, type Receipt } from '../../data/selectors'
 import { addReceipt } from '../../data/createdDocs'
@@ -50,6 +50,12 @@ export function NewReceiptForm({
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [extraAmount, setExtraAmount] = useState<string>('')
   const [err, setErr] = useState<string>('')
+  /* 'none' = ไม่พิมพ์บรรทัดสำนักงานใหญ่/สาขาเลย — บันทึกเป็น taxBranch: undefined. */
+  const [taxBranch, setTaxBranch] = useState<'head' | 'branch' | 'none'>('none')
+  const [branchCode, setBranchCode] = useState<string>('')
+  /* Cleared whenever the ticked invoices change, so the auto-fill below can run
+     again; set as soon as the user touches the pills. */
+  const [branchTouched, setBranchTouched] = useState(false)
 
   const allReceipts = useMemo(() => [...createdReceipts, ...RECEIPTS], [createdReceipts])
   const allInv = useMemo(() => [...extraInvoices, ...INVOICES], [extraInvoices])
@@ -71,11 +77,30 @@ export function NewReceiptForm({
     const next = new Set(picked)
     if (next.has(no)) next.delete(no); else next.add(no)
     setPicked(next)
+    setBranchTouched(false)
   }
+
+  /* The invoices being settled already carry the buyer's สำนักงานใหญ่ / สาขา, and
+     the receipt has to match them, so follow the ticked invoices unless the user
+     overrides. Only when they all agree — a mix is not something to guess at. */
+  useEffect(() => {
+    if (branchTouched) return
+    const tagged = selected.filter((i) => i.taxBranch)
+    const key = (i: Invoice) => `${i.taxBranch}|${i.branchCode ?? ''}`
+    if (!tagged.length || tagged.some((i) => key(i) !== key(tagged[0]))) {
+      setTaxBranch('none'); setBranchCode('')
+      return
+    }
+    setTaxBranch(tagged[0].taxBranch as 'head' | 'branch')
+    setBranchCode(tagged[0].branchCode ?? '')
+  }, [selected, branchTouched])
+
+  const pickBranch = (v: 'head' | 'branch' | 'none') => { setBranchTouched(true); setTaxBranch(v) }
 
   const reset = () => {
     setCustomer(''); setMonth(defaultMonth); setDay(''); setMethod('เงินสด')
     setPicked(new Set()); setExtraAmount(''); setErr('')
+    setTaxBranch('none'); setBranchCode(''); setBranchTouched(false)
   }
 
   /* When opened with initialInvoiceNo (from the invoices page), prefill from
@@ -114,6 +139,7 @@ export function NewReceiptForm({
     const dnum = parseInt(day, 10)
     if (!dnum || dnum < 1 || dnum > 31) return setErr('กรุณาระบุวันที่รับเงิน (1–31)')
     if (total <= 0) return setErr('กรุณาเลือกใบกำกับ หรือกรอกจำนวนเงินที่รับ')
+    if (taxBranch === 'branch' && !branchCode.trim()) return setErr('กรุณาระบุเลขที่สาขา')
 
     const date = `${pad2(dnum)}/${pad2(month)}/69`
     const rc: Receipt = {
@@ -122,6 +148,8 @@ export function NewReceiptForm({
       invoiceNos: selected.map((i) => i.no),
       amount: Math.round(total * 100) / 100,
       method,
+      taxBranch: taxBranch !== 'none' ? taxBranch : undefined,
+      branchCode: taxBranch === 'branch' ? branchCode.trim() : undefined,
     }
     addReceipt(rc)
     onIssued(rc)
@@ -175,6 +203,22 @@ export function NewReceiptForm({
         </Field>
         <Field label="หรือกรอกยอดรับเอง (ถ้าไม่ใช่จากใบกำกับ)" hint="ปล่อยว่างเพื่อใช้ยอดรวมจากใบกำกับที่เลือก">
           <Input type="number" step="0.01" placeholder="เช่น 5000" value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} />
+        </Field>
+        <Field
+          label="สำนักงานใหญ่ / สาขา"
+          hint="พิมพ์ต่อท้ายเลขประจำตัวผู้เสียภาษีบนใบเสร็จ · ตั้งให้ตามใบกำกับที่เลือกอัตโนมัติ"
+          style={{ gridColumn: '1 / -1' }}
+        >
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="pills">
+              <Pill active={taxBranch === 'head'} onClick={() => pickBranch('head')}>สำนักงานใหญ่</Pill>
+              <Pill active={taxBranch === 'branch'} onClick={() => pickBranch('branch')}>สาขา</Pill>
+              <Pill active={taxBranch === 'none'} onClick={() => pickBranch('none')}>ไม่แสดง</Pill>
+            </div>
+            {taxBranch === 'branch' && (
+              <Input style={{ maxWidth: 180 }} placeholder="เลขที่สาขา เช่น 00001" value={branchCode} onChange={(e) => { setBranchTouched(true); setBranchCode(e.target.value) }} />
+            )}
+          </div>
         </Field>
       </div>
 

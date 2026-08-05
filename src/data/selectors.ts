@@ -297,7 +297,32 @@ function buildImportedInvoices(): Invoice[] {
 export const SEED_IMPORTED_INVOICES: Invoice[] = buildImportedInvoices()
 
 /* ---------- receipts (from paid invoices) ---------- */
-export interface Receipt { no: string; month: number; date: string; customer: string; invoiceNos: string[]; amount: number; method: string; createdBy?: string; createdAt?: string }
+export interface Receipt {
+  no: string; month: number; date: string; customer: string; invoiceNos: string[]
+  amount: number; method: string; createdBy?: string; createdAt?: string
+  /** Tax-branch designation for นิติบุคคล: 'head' → สำนักงานใหญ่, 'branch' → สาขาที่ <branchCode>.
+      Undefined ⇒ not printed. Stored at issue time so a later edit to the
+      invoices cannot change a receipt that has already gone out. */
+  taxBranch?: 'head' | 'branch'
+  /** Branch code (เลขที่สาขา) — set only when taxBranch === 'branch'. */
+  branchCode?: string
+}
+
+/** The สำนักงานใหญ่ / สาขา line to print on a receipt, or null for none.
+
+    Prefers what was stored when the receipt was issued. Receipts issued before
+    this field existed fall back to the invoices they settle, which already carry
+    the designation — but only when every tagged invoice agrees, because a
+    disagreement means we do not actually know which one belongs on the paper. */
+export function receiptBranchLabel(rc: Receipt, invs: Invoice[]): string | null {
+  if (rc.taxBranch) return rc.taxBranch === 'branch' ? `สาขาที่ ${rc.branchCode}` : 'สำนักงานใหญ่'
+  const tagged = invs.filter((i) => i.taxBranch)
+  if (!tagged.length) return null
+  const key = (i: Invoice) => `${i.taxBranch}|${i.branchCode ?? ''}`
+  const first = key(tagged[0])
+  if (tagged.some((i) => key(i) !== first)) return null
+  return tagged[0].taxBranch === 'branch' ? `สาขาที่ ${tagged[0].branchCode}` : 'สำนักงานใหญ่'
+}
 export const RECEIPTS: Receipt[] = (() => {
   const paid = INVOICES.filter((i) => i.status === 'paid')
   const byKey = new Map<string, Invoice[]>()
