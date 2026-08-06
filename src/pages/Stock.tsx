@@ -26,6 +26,8 @@ interface Movement {
   material: string
   unit: string
   qty: number
+  unitPrice?: number
+  amount?: number
   ref: string
   detail?: string
   by?: string
@@ -151,7 +153,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
     const out: Movement[] = []
     for (const r of created.stockReceipts) {
       if (!scopeCodes.has(r.code)) continue
-      out.push({ key: `in_${r.id}`, date: fmtDate(r.date), iso: r.date, sortAt: r.createdAt ?? r.date, kind: 'in', material: r.material, unit: r.unit, qty: r.qty, ref: r.voucherNo ?? '', detail: r.note, by: r.createdBy, at: r.createdAt, receiptId: r.id })
+      out.push({ key: `in_${r.id}`, date: fmtDate(r.date), iso: r.date, sortAt: r.createdAt ?? r.date, kind: 'in', material: r.material, unit: r.unit, qty: r.qty, unitPrice: r.unitPrice, amount: r.amount, ref: r.voucherNo ?? '', detail: r.note, by: r.createdBy, at: r.createdAt, receiptId: r.id })
     }
     if (!isFoundry) {
       for (const t of created.tickets) {
@@ -166,7 +168,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       for (const mv of created.stockMovements) {
         if (mv.kind !== 'in' || !scopeCodes.has(mv.code)) continue
         const mat = MAT_BY_CODE[mv.code]
-        out.push({ key: `mov_${mv.id}`, date: fmtDate(mv.date), iso: mv.date, sortAt: mv.createdAt ?? mv.date, kind: 'in', material: mat?.name ?? mv.code, unit: mat?.unit ?? '', qty: mv.qty, ref: mv.voucherNo ?? '', detail: [mv.supplier, mv.note].filter(Boolean).join(' · ') || undefined, by: mv.createdBy, at: mv.createdAt })
+        out.push({ key: `mov_${mv.id}`, date: fmtDate(mv.date), iso: mv.date, sortAt: mv.createdAt ?? mv.date, kind: 'in', material: mat?.name ?? mv.code, unit: mat?.unit ?? '', qty: mv.qty, unitPrice: mv.unitPrice, amount: mv.amount, ref: mv.voucherNo ?? '', detail: [mv.supplier, mv.note].filter(Boolean).join(' · ') || undefined, by: mv.createdBy, at: mv.createdAt })
       }
     }
     return out
@@ -179,6 +181,12 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
     { key: 'kind', header: 'ประเภท', align: 'center', cell: (r) => <Badge tone={r.kind === 'in' ? 'success' : 'danger'} pip={false} square>{r.kind === 'in' ? 'รับเข้า' : 'จ่ายออก'}</Badge> },
     { key: 'mat', header: 'วัตถุดิบ', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-strong)' }}>{r.material}</span> },
     { key: 'qty', header: 'จำนวน', align: 'right', cell: (r) => <span className="mono" style={{ fontWeight: 600, color: r.kind === 'in' ? '#15803d' : '#b91c1c' }}>{r.kind === 'in' ? '+' : '−'}{qm(r.qty)} {r.unit}</span> },
+    { key: 'price', header: 'หน่วยละ', align: 'right', cell: (r) => (r.unitPrice != null
+        ? <span className="mono" style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{baht(r.unitPrice)}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
+    { key: 'amount', header: 'จำนวนเงิน', align: 'right', cell: (r) => (r.amount != null
+        ? <span className="mono" style={{ fontSize: 13, color: 'var(--kpc-text-strong)' }}>{baht(r.amount)}</span>
+        : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'ref', header: 'เอกสารอ้างอิง', cell: (r) => (r.ref ? <span className="mono" style={{ fontSize: 13 }}>{r.ref}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'detail', header: 'รายละเอียด', cell: (r) => (r.detail ? <span style={{ fontSize: 13, color: 'var(--kpc-text-muted)' }}>{r.detail}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     { key: 'savedby', header: 'ผู้บันทึก', cell: (r) => <SavedBy by={r.by} at={r.at} /> },
@@ -365,12 +373,18 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
   )
 }
 
-type RcvLine = { code: string; qty: string }
+type RcvLine = { code: string; qty: string; price: string }
 
 function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open: boolean; onClose: () => void; receivedByCode: Record<string, number>; materials: StockMaterial[] }) {
   const created = useCreatedDocs()
   const suppliers = useSuppliers()
-  const emptyLine = (): RcvLine => ({ code: materials[0]?.code ?? '', qty: '' })
+  /* ต้นทุน/หน่วย ที่ตั้งไว้ (ถ้ามี) ใช้เป็นค่าเริ่มต้นของช่อง "หน่วยละ" — แก้ไขได้ต่อรายการ. */
+  const costOf = (code: string) => created.stockCosts[code] ?? materials.find((m) => m.code === code)?.cost
+  const priceFor = (code: string) => { const c = costOf(code); return c != null ? String(c) : '' }
+  const emptyLine = (): RcvLine => {
+    const code = materials[0]?.code ?? ''
+    return { code, qty: '', price: priceFor(code) }
+  }
   const [lines, setLines] = useState<RcvLine[]>([emptyLine()])
   const [date, setDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
@@ -406,17 +420,28 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
     const ts = Date.now()
     filled.forEach((l, i) => {
       const m = matOf(l.code)!
+      const qty = Math.round(Number(l.qty) * 100) / 100
+      const up = Number(l.price)
+      const hasPrice = l.price.trim() !== '' && Number.isFinite(up) && up > 0
       addStockReceipt({
         id: `sr_${ts}_${i}`,
-        code: m.code, material: m.name, unit: m.unit, qty: Math.round(Number(l.qty) * 100) / 100, date,
+        code: m.code, material: m.name, unit: m.unit, qty, date,
+        unitPrice: hasPrice ? Math.round(up * 100) / 100 : undefined,
+        amount: hasPrice ? Math.round(qty * up * 100) / 100 : undefined,
         supplier: supplier.trim() || undefined, voucherNo: voucherNo.trim() || undefined, note: note.trim() || undefined,
       })
     })
     onClose()
   }
 
+  /* มูลค่ารวมของรายการที่กรอกราคาไว้ (ไม่รวม VAT). */
+  const totalAmount = lines.reduce((s, l) => {
+    const q = Number(l.qty), p = Number(l.price)
+    return s + (q > 0 && Number.isFinite(p) && p > 0 ? q * p : 0)
+  }, 0)
+
   return (
-    <Modal open={open} title="รับเข้าวัตถุดิบ" onClose={onClose} maxWidth={620}
+    <Modal open={open} title="รับเข้าวัตถุดิบ" onClose={onClose} maxWidth={820}
       footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={submit}>บันทึกรับเข้า</Button></>}>
       {err && <div style={{ color: 'var(--kpc-danger)', fontSize: 13, marginBottom: 12 }}>{err}</div>}
 
@@ -451,23 +476,36 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
         <div className="stack" style={{ gap: 8 }}>
           <div className="row" style={{ gap: 8, fontSize: 11, color: 'var(--kpc-text-muted)', fontWeight: 600 }}>
             <span style={{ flex: 1 }}>วัตถุดิบ</span>
-            <span style={{ width: 96, textAlign: 'right' }}>จำนวน</span>
-            <span style={{ width: 120, textAlign: 'right' }}>คงเหลือ → ใหม่</span>
+            <span style={{ width: 84, textAlign: 'right' }}>จำนวน</span>
+            <span style={{ width: 90, textAlign: 'right' }}>หน่วยละ</span>
+            <span style={{ width: 96, textAlign: 'right' }}>จำนวนเงิน</span>
+            <span style={{ width: 110, textAlign: 'right' }}>คงเหลือ → ใหม่</span>
             <span style={{ width: 28 }} />
           </div>
           {lines.map((l, i) => {
             const cur = currentOf(l.code)
             const n = Number(l.qty)
+            const p = Number(l.price)
+            const amt = n > 0 && Number.isFinite(p) && p > 0 ? Math.round(n * p * 100) / 100 : undefined
             const after = Math.round((cur + (Number.isFinite(n) ? n : 0)) * 100) / 100
             return (
               <div className="row" key={i} style={{ gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
-                  <Select value={l.code} onChange={(e) => setLine(i, { code: e.target.value })}>
+                  {/* เปลี่ยนวัตถุดิบ = เติมราคาต้นทุนของวัตถุดิบใหม่ให้ (ถ้ายังไม่ได้พิมพ์ราคาเอง) */}
+                  <Select value={l.code} onChange={(e) => {
+                    const next = e.target.value
+                    const untouched = l.price === '' || l.price === priceFor(l.code)
+                    setLine(i, untouched ? { code: next, price: priceFor(next) } : { code: next })
+                  }}>
                     {materials.map((mm) => <option key={mm.code} value={mm.code}>{mm.name} ({mm.unit})</option>)}
                   </Select>
                 </div>
-                <Input style={{ width: 96, textAlign: 'right' }} type="number" step="0.01" min={0} placeholder="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
-                <span className="mono" style={{ width: 120, textAlign: 'right', fontSize: 12, color: n > 0 ? 'var(--kpc-primary-ink)' : 'var(--kpc-text-faint)' }}>
+                <Input style={{ width: 84, textAlign: 'right' }} type="number" step="0.01" min={0} placeholder="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
+                <Input style={{ width: 90, textAlign: 'right' }} type="number" step="0.01" min={0} placeholder="—" value={l.price} onChange={(e) => setLine(i, { price: e.target.value })} />
+                <span className="mono" style={{ width: 96, textAlign: 'right', fontSize: 12, color: amt != null ? 'var(--kpc-text-strong)' : 'var(--kpc-text-faint)' }}>
+                  {amt != null ? baht(amt) : '—'}
+                </span>
+                <span className="mono" style={{ width: 110, textAlign: 'right', fontSize: 12, color: n > 0 ? 'var(--kpc-primary-ink)' : 'var(--kpc-text-faint)' }}>
                   {qm(cur)}{n > 0 ? ` → ${qm(after)}` : ''}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => removeLine(i)} style={{ width: 28, color: 'var(--kpc-danger)' }} aria-label="ลบรายการ">✕</Button>
@@ -475,6 +513,13 @@ function ReceiveStockModal({ open, onClose, receivedByCode, materials }: { open:
             )
           })}
         </div>
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 10, fontSize: 13 }}>
+          <span style={{ color: 'var(--kpc-text-muted)' }}>มูลค่ารับเข้ารวม:&nbsp;</span>
+          <strong className="mono">{baht(Math.round(totalAmount * 100) / 100)}</strong>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 6, marginBottom: 0 }}>
+          * “หน่วยละ” ตั้งค่าเริ่มต้นจากต้นทุน/หน่วยของวัตถุดิบ แก้ไขได้ต่อรายการ · “จำนวนเงิน” = จำนวน × หน่วยละ (ไม่รวม VAT) · เว้นว่างได้ถ้ายังไม่ทราบราคา
+        </p>
       </div>
     </Modal>
   )

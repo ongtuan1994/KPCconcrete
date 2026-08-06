@@ -574,6 +574,8 @@ export interface StockReceipt {
   material: string    /* name snapshot */
   unit: string
   qty: number         /* received quantity (positive) */
+  unitPrice?: number  /* หน่วยละ (บาท/หน่วย) — ไม่รวม VAT */
+  amount?: number     /* จำนวนเงิน = qty × unitPrice — ไม่รวม VAT */
   date: string        /* ISO yyyy-mm-dd */
   supplier?: string
   voucherNo?: string  /* เลขใบสำคัญจ่าย (related goods-payment voucher) */
