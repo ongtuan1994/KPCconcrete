@@ -13,15 +13,35 @@ import {
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
-/* Plant raw materials only (foundry stays on its own page). These are the tabs. */
-const PLANT_MATERIALS = STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === 'plant')
-const PLANT_CODES = new Set(PLANT_MATERIALS.map((m) => m.code))
-/** Short tab labels mirroring the company's stock-card sheet tabs. */
+/** Which stock the card belongs to — the page carries one tab strip per site. */
+type Site = 'plant' | 'foundry'
+const SITE_LABEL: Record<Site, string> = { plant: 'แพล้นปูน', foundry: 'โรงหล่อ' }
+
+/** Short tab labels mirroring the company's stock-card sheet tabs (แพล้นปูน).
+    Foundry materials have no short form and use their full name. */
 const SHORT_LABEL: Record<string, string> = {
   SAN: 'ทราย', AGG: 'หิน 3/4"', 'CEM-1': 'ปูน SCG', 'CEM-2': 'ปูน ดอกบัว',
   'ADM-D': 'น้ำยา D', 'ADM-F': 'น้ำยา F', 'ADM-W': 'น้ำยากันซึม',
 }
 const shortOf = (m: StockMaterial) => SHORT_LABEL[m.code] ?? m.name
+
+/** One line of the stock card. Either a ledger movement (editable here) or a
+    รับเข้า booked with the รับเข้าวัตถุดิบ button on the คลังวัตถุดิบ page — both move
+    the same balance, so the card has to show both or its คงเหลือ is a fiction.
+    Receipts are read-only here; they are deleted from the คลังวัตถุดิบ page. */
+interface CardEntry {
+  id: string
+  date: string
+  kind: StockMovementKind
+  qty: number
+  unitPrice?: number
+  amount?: number
+  supplier?: string
+  voucherNo?: string
+  note?: string
+  createdAt?: string
+  move?: StockMovement   /* set = came from this ledger, so it can be edited/deleted */
+}
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -33,24 +53,57 @@ function fmtDate(iso: string): string {
   return `${d}/${m}/${String(Number(y) + 543).slice(-2)}`
 }
 const fmt2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const byDateAsc = (a: StockMovement, b: StockMovement) =>
+const byDateAsc = (a: CardEntry, b: CardEntry) =>
   (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
 
 export function MaterialLedger() {
   const created = useCreatedDocs()
   const canEdit = useCan('material-ledger').edit
   const navigate = useNavigate()
-  const [code, setCode] = useState(PLANT_MATERIALS[0]?.code ?? '')
+  const [site, setSite] = useState<Site>('plant')
+  const [code, setCode] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [form, setForm] = useState<{ kind: StockMovementKind; edit: StockMovement | null } | null>(null)
   const [openingOpen, setOpeningOpen] = useState(false)
 
-  const mat = PLANT_MATERIALS.find((m) => m.code === code) ?? PLANT_MATERIALS[0]
+  const isFoundry = site === 'foundry'
 
-  const allMoves = useMemo(() => created.stockMovements.filter((m) => m.code === code).sort(byDateAsc), [created.stockMovements, code])
-  const baseOpening = created.stockOpenings[code] ?? 0
-  const openingDate = created.stockOpeningDates[code]
+  /* The material universe for the selected site. Foundry mirrors the คลังวัตถุดิบโรงหล่อ
+     page — seed materials plus the ones added there, minus the ones removed — so both
+     pages always offer the same list. */
+  const materials = useMemo(() => {
+    const seed = STOCK_MATERIALS.filter((m) => (m.site ?? 'plant') === site && !(site === 'foundry' && created.foundryMaterialsHidden.includes(m.code)))
+    if (site !== 'foundry') return seed
+    const added: StockMaterial[] = created.foundryMaterialsAdded.map((m) => ({
+      code: m.code, name: m.name, en: m.en ?? '', unit: m.unit, balance: 0, reorder: m.reorder ?? 0, cost: m.cost, site: 'foundry',
+    }))
+    return [...seed, ...added]
+  }, [site, created.foundryMaterialsAdded, created.foundryMaterialsHidden])
+
+  /* Falling back to the first material keeps the page valid when the site is switched
+     (the remembered code belongs to the other site) or when the selected foundry
+     material is deleted on the คลังวัตถุดิบโรงหล่อ page. */
+  const mat = materials.find((m) => m.code === code) ?? materials[0]
+  const activeCode = mat?.code ?? ''
+
+  /* Ledger movements + คลังวัตถุดิบ receipts for this material, oldest first. */
+  const entriesFor = (c: string): CardEntry[] => {
+    const out: CardEntry[] = []
+    for (const m of created.stockMovements) {
+      if (m.code !== c) continue
+      out.push({ id: m.id, date: m.date, kind: m.kind, qty: m.qty, unitPrice: m.unitPrice, amount: m.amount, supplier: m.supplier, voucherNo: m.voucherNo, note: m.note, createdAt: m.createdAt, move: m })
+    }
+    for (const r of created.stockReceipts) {
+      if (r.code !== c) continue
+      out.push({ id: r.id, date: r.date, kind: 'in', qty: r.qty, unitPrice: r.unitPrice, amount: r.amount, supplier: r.supplier, voucherNo: r.voucherNo, note: r.note, createdAt: r.createdAt })
+    }
+    return out.sort(byDateAsc)
+  }
+
+  const allMoves = useMemo(() => entriesFor(activeCode), [created.stockMovements, created.stockReceipts, activeCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  const baseOpening = created.stockOpenings[activeCode] ?? 0
+  const openingDate = created.stockOpeningDates[activeCode]
   /* ยอดยกมา for the period = base opening + every movement before `from`. */
   const openingForPeriod = useMemo(() => {
     if (!from) return baseOpening
@@ -88,13 +141,13 @@ export function MaterialLedger() {
       m.kind === 'out' ? m.qty : '', balance, m.note ?? '',
     ])
     body.push(['', '', 'รวม', totalIn, '', totalAmount, totalOut, closing, ''])
-    downloadCsv(`material-ledger-${mat.code}`, [[`บันทึกวัตถุดิบ: ${mat.name} (${mat.unit}) · ${periodLabel}`], head, ...body])
+    downloadCsv(`material-ledger-${mat.code}`, [[`บันทึกวัตถุดิบ${SITE_LABEL[site]}: ${mat.name} (${mat.unit}) · ${periodLabel}`], head, ...body])
   }
 
   const createReport = () => {
     const inRange = (iso: string) => (!from || iso >= from) && (!to || iso <= to)
-    const rows = PLANT_MATERIALS.map((mm) => {
-      const moves = created.stockMovements.filter((x) => x.code === mm.code).sort(byDateAsc)
+    const rows = materials.map((mm) => {
+      const moves = entriesFor(mm.code)
       const opening = created.stockOpenings[mm.code] ?? 0
       let received = 0, issued = 0, bal = opening
       for (const x of moves) {
@@ -107,17 +160,16 @@ export function MaterialLedger() {
         status: bal <= mm.reorder ? 'ต่ำกว่าจุดสั่งซื้อ' : 'พอเพียง',
       }
     })
-    const movements = created.stockMovements
-      .filter((x) => PLANT_CODES.has(x.code) && inRange(x.date))
-      .sort(byDateAsc)
-      .map((x) => {
-        const mm = PLANT_MATERIALS.find((p) => p.code === x.code)
-        const detail = [x.supplier, x.note].filter(Boolean).join(' · ') || undefined
-        return { date: fmtDate(x.date), kind: x.kind, material: mm?.name ?? x.code, unit: mm?.unit ?? '', qty: x.qty, ref: x.voucherNo ?? '', detail }
-      })
+    const movements = materials
+      .flatMap((mm) => entriesFor(mm.code).filter((x) => inRange(x.date)).map((x) => ({ x, mm })))
+      .sort((a, b) => byDateAsc(a.x, b.x))
+      .map(({ x, mm }) => ({
+        date: fmtDate(x.date), kind: x.kind, material: mm.name, unit: mm.unit, qty: x.qty,
+        ref: x.voucherNo ?? '', detail: [x.supplier, x.note].filter(Boolean).join(' · ') || undefined,
+      }))
     const report: StockReport = {
-      id: `gr_${Date.now()}`, kind: 'stock', heading: 'รายงานบันทึกวัตถุดิบแยกประเภท',
-      title: `บันทึกวัตถุดิบแยกประเภท · ${periodLabel}`,
+      id: `gr_${Date.now()}`, kind: 'stock', heading: `รายงานบันทึกวัตถุดิบแยกประเภท · ${SITE_LABEL[site]}`,
+      title: `บันทึกวัตถุดิบแยกประเภท ${SITE_LABEL[site]} · ${periodLabel}`,
       fromLabel: from ? fmtDate(from) : '—', toLabel: to ? fmtDate(to) : 'ปัจจุบัน',
       scopeLabel: periodLabel, rows, movements, createdAt: new Date().toISOString(),
     }
@@ -126,15 +178,16 @@ export function MaterialLedger() {
   }
 
   return (
-    <>
+    <div className={isFoundry ? 'foundry-theme' : undefined}>
       <PageHeader
         title="บันทึกวัตถุดิบแยกประเภท"
-        sub={`Raw Material Ledger · ${mat.name} (${mat.unit})`}
+        sub={mat ? `Raw Material Ledger · ${SITE_LABEL[site]} · ${mat.name} (${mat.unit})` : `Raw Material Ledger · ${SITE_LABEL[site]}`}
         actions={
           <>
             <Button variant="secondary" onClick={exportExcel} disabled={cardRows.length === 0}>ส่งออก Excel</Button>
-            <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
-            {canEdit && (
+            <Button variant="secondary" onClick={createReport} disabled={!mat}>สร้างรายงาน</Button>
+            <Button variant="secondary" onClick={() => navigate(isFoundry ? '/foundry-materials' : '/stock')}>ไปที่คลังวัตถุดิบ{SITE_LABEL[site]}</Button>
+            {canEdit && mat && (
               <>
                 <Button variant="secondary" onClick={() => setForm({ kind: 'out', edit: null })}>− จ่ายออก</Button>
                 <Button variant="primary" onClick={() => setForm({ kind: 'in', edit: null })}><IconPlus /> รับเข้า</Button>
@@ -144,9 +197,21 @@ export function MaterialLedger() {
         }
       />
 
+      <div className="pills" style={{ marginBottom: 12 }}>
+        {(['plant', 'foundry'] as Site[]).map((s) => (
+          <Pill key={s} active={s === site} onClick={() => setSite(s)}>{SITE_LABEL[s]}</Pill>
+        ))}
+      </div>
+
+      {materials.length === 0 ? (
+        <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--kpc-text-faint)', fontSize: 13 }}>
+          ยังไม่มีวัตถุดิบใน{SITE_LABEL[site]} — เพิ่มได้ที่หน้าคลังวัตถุดิบ{SITE_LABEL[site]}
+        </div>
+      ) : (
+      <>
       <div className="pills" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-        {PLANT_MATERIALS.map((m) => (
-          <Pill key={m.code} active={m.code === code} onClick={() => setCode(m.code)}>{shortOf(m)}</Pill>
+        {materials.map((m) => (
+          <Pill key={m.code} active={m.code === activeCode} onClick={() => setCode(m.code)}>{shortOf(m)}</Pill>
         ))}
       </div>
 
@@ -204,10 +269,14 @@ export function MaterialLedger() {
                 <td style={{ fontSize: 12, color: 'var(--kpc-text-muted)' }}>{m.note}</td>
                 {canEdit && (
                   <td className="ctr">
-                    <div className="row" style={{ gap: 4, justifyContent: 'center' }}>
-                      <Button variant="ghost" size="sm" onClick={() => setForm({ kind: m.kind, edit: m })}>แก้ไข</Button>
-                      <Button variant="ghost" size="sm" onClick={() => remove(m)} style={{ color: 'var(--kpc-danger)' }}>✕</Button>
-                    </div>
+                    {m.move ? (
+                      <div className="row" style={{ gap: 4, justifyContent: 'center' }}>
+                        <Button variant="ghost" size="sm" onClick={() => setForm({ kind: m.move!.kind, edit: m.move! })}>แก้ไข</Button>
+                        <Button variant="ghost" size="sm" onClick={() => remove(m.move!)} style={{ color: 'var(--kpc-danger)' }}>✕</Button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }} title="บันทึกจากปุ่มรับเข้าวัตถุดิบในหน้าคลัง — แก้ไข/ลบได้ที่หน้านั้น">จากหน้าคลัง</span>
+                    )}
                   </td>
                 )}
               </tr>
@@ -234,22 +303,30 @@ export function MaterialLedger() {
       </div>
 
       <p style={{ fontSize: 12, color: 'var(--kpc-text-muted)', marginTop: 12 }}>
-        * คงเหลือ = ยอดยกมา + รับเข้า − จ่ายออก (คำนวณต่อเนื่องตามวันที่) · “หน่วยละ” และ “จำนวนเงิน” เป็นราคาไม่รวม VAT · แก้ไข “เลขที่ใบสำคัญ” ของรายการรับเข้าได้ภายหลังโดยกด “แก้ไข”
+        * คงเหลือ = ยอดยกมา + รับเข้า − จ่ายออก (คำนวณต่อเนื่องตามวันที่) · “หน่วยละ” และ “จำนวนเงิน” เป็นราคาไม่รวม VAT · รายการที่ทำเครื่องหมาย “จากหน้าคลัง” คือรับเข้าที่บันทึกด้วยปุ่มรับเข้าวัตถุดิบในหน้าคลังวัตถุดิบ{SITE_LABEL[site]}
+        {isFoundry
+          ? <> · <strong>จ่ายออก</strong>ที่บันทึกที่นี่ตัดยอดคลังวัตถุดิบโรงหล่อจริง (โรงหล่อไม่มีการตัดยอดอัตโนมัติจากใบจ่าย)</>
+          : <> · <strong>จ่ายออก</strong>ที่บันทึกที่นี่เก็บไว้ cross-check เท่านั้น — ยอดตัดจ่ายจริงของคลังแพล้นปูนคิดจากใบจ่ายคอนกรีต (ใบ DT) ตามสูตร Mix Design</>}
       </p>
+      </>
+      )}
 
-      {form && <MovementForm mat={mat} kind={form.kind} edit={form.edit} onClose={() => setForm(null)} />}
-      {openingOpen && <OpeningForm mat={mat} value={baseOpening} date={openingDate} onClose={() => setOpeningOpen(false)} />}
-    </>
+      {form && mat && <MovementForm mat={mat} kind={form.kind} edit={form.edit} onClose={() => setForm(null)} />}
+      {openingOpen && mat && <OpeningForm mat={mat} value={baseOpening} date={openingDate} onClose={() => setOpeningOpen(false)} />}
+    </div>
   )
 }
 
 /* ───────── รับเข้า / จ่ายออก form ───────── */
 function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: StockMovementKind; edit: StockMovement | null; onClose: () => void }) {
   const isIn = kind === 'in'
+  const created = useCreatedDocs()
   const suppliers = useSuppliers()
+  /* ต้นทุน/หน่วย ที่ตั้งไว้ในหน้าคลัง (ถ้ามี) มาก่อนราคา seed. */
+  const seedCost = created.stockCosts[mat.code] ?? mat.cost
   const [date, setDate] = useState(edit?.date ?? todayIso())
   const [qty, setQty] = useState(edit ? String(edit.qty) : '')
-  const [unitPrice, setUnitPrice] = useState(edit?.unitPrice != null ? String(edit.unitPrice) : (isIn ? String(mat.cost ?? '') : ''))
+  const [unitPrice, setUnitPrice] = useState(edit?.unitPrice != null ? String(edit.unitPrice) : (isIn ? String(seedCost ?? '') : ''))
   const [supplier, setSupplier] = useState(edit?.supplier ?? '')
   const [voucherNo, setVoucherNo] = useState(edit?.voucherNo ?? '')
   const [note, setNote] = useState(edit?.note ?? '')
