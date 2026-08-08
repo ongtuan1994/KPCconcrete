@@ -3,6 +3,7 @@ import { Pill } from '../components/ui'
 import { REPORT_TABS } from '../nav'
 import { canViewRoute, useCurrentUser, usePerms } from '../data/auth'
 import { MonthlyReport } from './MonthlyReport'
+import { IncomeExpenseReport } from './IncomeExpenseReport'
 import { GeneralReports } from './GeneralReports'
 import { TaxReports } from './TaxReports'
 import { AuditReport } from './AuditReport'
@@ -12,6 +13,7 @@ import { Ledger } from './Ledger'
     place (nav.tsx) and the routing in another. */
 const TAB_PAGE: Record<string, () => JSX.Element> = {
   monthly: MonthlyReport,
+  pl: IncomeExpenseReport,
   general: GeneralReports,
   tax: TaxReports,
   audit: AuditReport,

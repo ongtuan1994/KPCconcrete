@@ -110,6 +110,7 @@ export default function App() {
             route so existing links and per-report permissions are unchanged. */}
         <Route path="/reports" element={<ReportsIndex />} />
         <Route path="/monthly-report" element={<Reports />} />
+        <Route path="/pl-estimate" element={<Reports />} />
         <Route path="/tax-reports" element={<Reports />} />
         <Route path="/general-reports" element={<Reports />} />
         <Route path="/audit-report" element={<Reports />} />

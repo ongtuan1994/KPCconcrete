@@ -32,6 +32,7 @@ export interface ReportTab {
 }
 export const REPORT_TABS: ReportTab[] = [
   { id: 'monthly', to: '/monthly-report', label: 'รายงานประจำเดือน / ปี', en: 'Monthly / Yearly Report' },
+  { id: 'pl', to: '/pl-estimate', label: 'ประมาณการรายได้-ค่าใช้จ่าย', en: 'Income / Expense Estimate' },
   { id: 'general', to: '/general-reports', label: 'รายงานทั่วไป', en: 'General Reports' },
   { id: 'tax', to: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', en: 'Tax Reports (Buy / Sell)' },
   { id: 'audit', to: '/audit-report', label: 'รายงาน Audit', en: 'Audit Report' },

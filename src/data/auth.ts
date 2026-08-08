@@ -69,6 +69,7 @@ export const RESOURCES: Resource[] = [
   { key: 'monthly-report', route: '/monthly-report', label: 'รายงานประจำเดือน / ปี', section: 'รายงาน · Reports' },
   { key: 'tax-reports', route: '/tax-reports', label: 'รายงานภาษีซื้อ / ขาย', section: 'รายงาน · Reports' },
   { key: 'general-reports', route: '/general-reports', label: 'รายงานทั่วไป', section: 'รายงาน · Reports' },
+  { key: 'pl-estimate', route: '/pl-estimate', label: 'ประมาณการรายได้-ค่าใช้จ่าย', section: 'รายงาน · Reports' },
   { key: 'ledger', route: '/ledger', label: 'ลูกหนี้ / เจ้าหนี้', section: 'รายงาน · Reports' },
   { key: 'audit-report', route: '/audit-report', label: 'รายงาน Audit', section: 'รายงาน · Reports' },
 
@@ -130,6 +131,7 @@ ROUTE_RESOURCE['/foundry-stock-reconcile'] = 'foundry-stock'
 const ALL_BUT_MANAGER: Role[] = ['Admin', 'Board', 'Auditor', 'Accountant']
 export const RESOURCE_ROLE_ALLOW: Record<string, Role[]> = {
   'monthly-report': ['Admin', 'Board', 'Auditor', 'Guest'],
+  'pl-estimate': ALL_BUT_MANAGER,
   'salary-structure': ['Admin', 'Board', 'Auditor'],
   /* Manager cannot access these sales documents. */
   'delivery-tickets': ALL_BUT_MANAGER,
