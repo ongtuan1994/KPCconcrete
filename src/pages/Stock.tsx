@@ -427,10 +427,24 @@ type RcvLine = { code: string; qty: string; price: string }
 function ReceiveStockModal({ open, onClose, materials }: { open: boolean; onClose: () => void; materials: StockMaterial[] }) {
   const created = useCreatedDocs()
   const suppliers = useSuppliers()
-  /* ต้นทุน/หน่วย ที่ตั้งไว้ (ถ้ามี) ใช้เป็นค่าเริ่มต้นของช่อง "หน่วยละ" — แก้ไขได้ต่อรายการ. */
+  /* ราคาที่รับเข้าครั้งล่าสุดต่อวัตถุดิบ — ใช้เติม "หน่วยละ" ให้กรณีที่ยังไม่ได้ตั้งต้นทุน/หน่วย
+     (โรงหล่อไม่มี cost ตั้งต้น จึงต้องพึ่งราคาล่าสุดนี้เพื่อให้ค่าราคาไม่หายไป). */
+  const lastPriceByCode = useMemo(() => {
+    const best: Record<string, { at: string; price: number }> = {}
+    const consider = (code: string, unitPrice: number | undefined, at: string) => {
+      if (unitPrice == null) return
+      if (!best[code] || at > best[code].at) best[code] = { at, price: unitPrice }
+    }
+    for (const r of created.stockReceipts) consider(r.code, r.unitPrice, r.createdAt ?? r.date)
+    for (const mv of created.stockMovements) if (mv.kind === 'in') consider(mv.code, mv.unitPrice, mv.createdAt ?? mv.date)
+    return best
+  }, [created.stockReceipts, created.stockMovements])
+  /* ต้นทุน/หน่วย ที่ตั้งไว้ (ถ้ามี) → ราคาที่รับเข้าล่าสุด — ใช้เป็นค่าเริ่มต้นของช่อง "หน่วยละ". */
   const priceFor = (code: string) => {
     const c = materials.find((m) => m.code === code)?.cost
-    return c != null ? String(c) : ''
+    if (c != null) return String(c)
+    const last = lastPriceByCode[code]
+    return last ? String(last.price) : ''
   }
   const emptyLine = (): RcvLine => {
     const code = materials[0]?.code ?? ''

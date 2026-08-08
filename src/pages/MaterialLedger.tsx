@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/Layout'
-import { Button, Pill, Field, Input } from '../components/ui'
+import { Button, Pill, Field, Input, Select } from '../components/ui'
 import { Modal } from '../components/Modal'
 import { KpiCard } from '../components/charts'
 import { IconPlus } from '../components/icons'
@@ -58,18 +58,48 @@ const fmt2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2
 const byDateAsc = (a: CardEntry, b: CardEntry) =>
   (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
 
+const MONTH_TH = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+const _now = new Date()
+const CUR_MONTH = _now.getMonth() + 1
+const CUR_YEAR_BE = _now.getFullYear() + 543
+/** first/last ISO date (yyyy-mm-dd) of a พ.ศ. year + month (1–12, หรือ 'all' = ทั้งปี). */
+function periodRange(yearBE: number, month: number | 'all'): { from: string; to: string } {
+  const y = yearBE - 543
+  if (month === 'all') return { from: `${y}-01-01`, to: `${y}-12-31` }
+  const last = new Date(y, month, 0).getDate()
+  return { from: `${y}-${pad(month)}-01`, to: `${y}-${pad(month)}-${pad(last)}` }
+}
+
 export function MaterialLedger() {
   const created = useCreatedDocs()
   const canEdit = useCan('material-ledger').edit
   const navigate = useNavigate()
   const [site, setSite] = useState<Site>('plant')
   const [code, setCode] = useState('')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  /* ช่วงเวลาเริ่มต้น = เดือนปัจจุบัน. เลือก ปี/เดือน เพื่อตั้งช่วง ตั้งแต่–ถึง ให้อัตโนมัติ. */
+  const [pYear, setPYear] = useState<number>(CUR_YEAR_BE)
+  const [pMonth, setPMonth] = useState<number | 'all'>(CUR_MONTH)
+  const [from, setFrom] = useState(periodRange(CUR_YEAR_BE, CUR_MONTH).from)
+  const [to, setTo] = useState(periodRange(CUR_YEAR_BE, CUR_MONTH).to)
   const [form, setForm] = useState<{ kind: StockMovementKind; edit: StockMovement | null; editReceipt?: StockReceipt | null } | null>(null)
   const [openingOpen, setOpeningOpen] = useState(false)
 
   const isFoundry = site === 'foundry'
+
+  /* ปี (พ.ศ.) ที่เลือกได้ — จากข้อมูลที่มี + ปีปัจจุบัน + ปีที่เลือกอยู่. */
+  const years = useMemo(() => {
+    const s = new Set<number>([CUR_YEAR_BE, pYear])
+    for (const mv of created.stockMovements) { const y = Number(mv.date.slice(0, 4)); if (y) s.add(y + 543) }
+    for (const r of created.stockReceipts) { const y = Number(r.date.slice(0, 4)); if (y) s.add(y + 543) }
+    return [...s].sort((a, b) => b - a)
+  }, [created.stockMovements, created.stockReceipts, pYear])
+
+  /* Selecting ปี/เดือน fills the ตั้งแต่–ถึง range (still fine-tunable via the date inputs). */
+  const applyPeriod = (yearBE: number, month: number | 'all') => {
+    setPYear(yearBE); setPMonth(month)
+    const r = periodRange(yearBE, month)
+    setFrom(r.from); setTo(r.to)
+  }
 
   /* The material universe for the selected site. Foundry mirrors the คลังวัตถุดิบโรงหล่อ
      page — seed materials plus the ones added there, minus the ones removed — so both
@@ -229,6 +259,17 @@ export function MaterialLedger() {
 
       <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 16, gap: 12, alignItems: 'flex-end' }}>
         <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end' }}>
+          <Field label="ปี (พ.ศ.)" style={{ width: 120 }}>
+            <Select value={String(pYear)} onChange={(e) => applyPeriod(Number(e.target.value), pMonth)}>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </Select>
+          </Field>
+          <Field label="เดือน" style={{ width: 150 }}>
+            <Select value={String(pMonth)} onChange={(e) => applyPeriod(pYear, e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">ทั้งปี</option>
+              {MONTH_TH.map((nm, i) => <option key={i} value={i + 1}>{nm}</option>)}
+            </Select>
+          </Field>
           <Field label="ตั้งแต่วันที่" style={{ width: 160 }}><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="ถึงวันที่" style={{ width: 160 }}><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
           {(from || to) && <Button variant="ghost" size="sm" onClick={() => { setFrom(''); setTo('') }}>ล้างช่วง</Button>}
@@ -335,8 +376,19 @@ function MovementForm({ mat, kind, edit, editReceipt, onClose }: { mat: StockMat
   const suppliers = useSuppliers()
   /* Editing a รับเข้าวัตถุดิบ receipt (โรงหล่อ) reuses this form — prefill from it. */
   const src = editReceipt ?? edit
-  /* ต้นทุน/หน่วย ที่ตั้งไว้ในหน้าคลัง (ถ้ามี) มาก่อนราคา seed. */
-  const seedCost = created.stockCosts[mat.code] ?? mat.cost
+  /* ราคา "หน่วยละ" เริ่มต้น: ต้นทุน/หน่วย ที่ตั้งไว้ในหน้าคลัง → ราคา seed → ราคาที่รับเข้า
+     ครั้งล่าสุดของวัตถุดิบนี้. โรงหล่อไม่มี cost ตั้งต้น จึงต้องดึงราคาล่าสุดมาช่วยให้กรอกครบ. */
+  const lastUnitPrice = useMemo(() => {
+    let best: { at: string; price: number } | null = null
+    const consider = (code: string, unitPrice: number | undefined, at: string) => {
+      if (code !== mat.code || unitPrice == null) return
+      if (!best || at > best.at) best = { at, price: unitPrice }
+    }
+    for (const r of created.stockReceipts) consider(r.code, r.unitPrice, r.createdAt ?? r.date)
+    for (const mv of created.stockMovements) if (mv.kind === 'in') consider(mv.code, mv.unitPrice, mv.createdAt ?? mv.date)
+    return best ? (best as { price: number }).price : undefined
+  }, [created.stockReceipts, created.stockMovements, mat.code])
+  const seedCost = created.stockCosts[mat.code] ?? mat.cost ?? lastUnitPrice
   const [date, setDate] = useState(src?.date ?? todayIso())
   const [qty, setQty] = useState(src ? String(src.qty) : '')
   const [unitPrice, setUnitPrice] = useState(src?.unitPrice != null ? String(src.unitPrice) : (isIn ? String(seedCost ?? '') : ''))
