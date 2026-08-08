@@ -12,7 +12,7 @@ import { DocModal } from '../components/documents/DocModal'
 import { GoodsPaymentVoucherDoc } from '../components/documents/GoodsPaymentVoucherDoc'
 import { baht, monthName } from '../data/selectors'
 import {
-  useCreatedDocs, useSuppliers, useCostCenters, addCostCenter, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, markExpenseRecordsBilled, GOODS_PAYMENT_CATEGORIES,
+  useCreatedDocs, useSuppliers, useCostCenters, costCenterLabel, addCostCenter, addGoodsPayment, updateGoodsPayment, addPurchaseOrder, addGeneralReport, removeGoodsPayment, restoreGoodsPayment, markExpenseRecordsBilled, GOODS_PAYMENT_CATEGORIES,
   type GoodsPayment, type GoodsPaymentItem, type PayMethodOut, type PurchaseOrder, type PurchaseOrderItem,
   type GoodsPaymentCategory, type GoodsPaymentSite, type ExpenseReport, type PurchaseAccountReport, type PurchaseSiteAmount,
   type DeletedGoodsPayment,
@@ -216,7 +216,7 @@ export function GoodsPayments() {
     {
       key: 'cat', header: 'ประเภท',
       cell: (r) => (r.category
-        ? <span style={{ fontSize: 13 }}>{r.category}{r.site ? <span style={{ color: 'var(--kpc-text-muted)' }}> · {r.site}</span> : ''}</span>
+        ? <span style={{ fontSize: 13 }}>{costCenterLabel(r.category, created.costCenterLabels)}{r.site ? <span style={{ color: 'var(--kpc-text-muted)' }}> · {r.site}</span> : ''}</span>
         : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>),
     },
     { key: 'ref', header: 'อ้างอิง', cell: (r) => (r.ref ? <span className="mono" style={{ fontSize: 13 }}>{r.ref}</span> : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
@@ -408,6 +408,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
   const isEdit = !!editPayment
   const suppliers = useSuppliers()
   const costCenters = useCostCenters()
+  const ccLabels = useCreatedDocs().costCenterLabels
   const [payDate, setPayDate] = useState(todayIso())
   const [supplier, setSupplier] = useState('')
   const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
@@ -623,7 +624,7 @@ function NewGoodsPaymentForm({ open, onClose, existing, purchaseOrders, initial,
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
             <div className="select-dark" style={{ flex: 1, minWidth: 0 }}>
               <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-                {costCenters.map((c) => <option key={c} value={c}>{c}</option>)}
+                {costCenters.map((c) => <option key={c} value={c}>{costCenterLabel(c, ccLabels)}</option>)}
               </Select>
             </div>
             <Button variant="tonal" size="sm" onClick={() => {

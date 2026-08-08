@@ -137,6 +137,24 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
     return m
   }, [created.tickets, created.stockMovements, to, scopeCodes, isFoundry])
 
+  /* ปริมาณที่ใช้ไป "เฉพาะช่วงที่เลือก" (from–to) — ต่างจาก issuedByCode ที่เป็นยอดสะสม
+     ถึง `to` (ใช้คำนวณคงเหลือ). คอลัมน์ "ปริมาณที่ใช้ไป" ต้องนับเฉพาะช่วงนี้. */
+  const usedInPeriodByCode = useMemo(() => {
+    const m: Record<string, number> = {}
+    const inRange = (iso: string) => (!from || iso >= from) && (!to || iso <= to)
+    if (isFoundry) {
+      for (const mv of created.stockMovements) {
+        if (mv.kind === 'out' && scopeCodes.has(mv.code) && inRange(mv.date)) m[mv.code] = (m[mv.code] ?? 0) + mv.qty
+      }
+      return m
+    }
+    for (const t of created.tickets) {
+      if (!inRange(ticketIso(t.date))) continue
+      for (const c of ticketConsumption(t)) m[c.code] = (m[c.code] ?? 0) + c.qty
+    }
+    return m
+  }, [created.tickets, created.stockMovements, from, to, scopeCodes, isFoundry])
+
   /* ยอดยกมา set on the บันทึกวัตถุดิบแยกประเภท card. โรงหล่อ only: every foundry
      material seeds at balance 0, so the card's opening is the only starting figure
      there and has to count. แพล้นปูน already carries its opening in the seed balance
@@ -297,7 +315,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
       header: 'ปริมาณที่ใช้ไป',
       align: 'right',
       cell: (r) => {
-        const used = issuedByCode[r.code] ?? 0
+        const used = usedInPeriodByCode[r.code] ?? 0
         return used > 0
           ? <span className="mono" style={{ color: '#b91c1c' }}>{qm(used)}</span>
           : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
@@ -351,7 +369,7 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
           <>
             <Button variant="secondary" onClick={() => {
               const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'ปริมาณที่ใช้ไป', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่าคงคลัง', 'จุดสั่งซื้อ', 'สถานะ']
-              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, Math.round((issuedByCode[r.code] ?? 0) * 100) / 100, r.unit, r.cost ?? '', r.cost != null ? Math.round(r.balance * r.cost * 100) / 100 : '', r.reorder, status(r).th])
+              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, Math.round((usedInPeriodByCode[r.code] ?? 0) * 100) / 100, r.unit, r.cost ?? '', r.cost != null ? Math.round(r.balance * r.cost * 100) / 100 : '', r.reorder, status(r).th])
               downloadCsv(isFoundry ? 'foundry-materials' : 'stock', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>

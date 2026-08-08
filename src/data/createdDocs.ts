@@ -1092,6 +1092,16 @@ export interface CreatedDocs {
   expenseRecords: ExpenseRecord[]
   /** User-added ประเภทบัญชี cost center (beyond GOODS_PAYMENT_CATEGORIES). */
   costCenters: string[]
+  /** Optional grouping — maps a cost center name to its parent (group) cost center,
+      so a center can be a subgroup under another. Records still store the flat name;
+      this is only an organisational layer for the ประเภทบัญชี page/reports. */
+  costCenterParents: Record<string, string>
+  /** Display alias for a cost center — lets a built-in (GOODS_PAYMENT_CATEGORIES) be
+      "renamed" without changing its underlying value, so records + logic keyed on the
+      original name (e.g. ค่าน้ำมัน → fuel fields) keep working. */
+  costCenterLabels: Record<string, string>
+  /** Built-in cost centers the user has "deleted" (hidden from the list/pickers). */
+  costCentersHidden: string[]
   /** Set once the real ค่าน้ำมัน history (SEED_FUEL_EXPENSES) has been merged in. */
   fuelSeedV1?: boolean
   /** สินทรัพย์ (asset registry) — seeded from SEED_ASSETS, then user-maintained. */
@@ -1176,7 +1186,7 @@ export interface CreatedDocs {
 }
 
 const emptyHidden: Hidden = { tickets: [], invoices: [], billingNotes: [], receipts: [], employees: [], products: [] }
-const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], fuelSeedV1: false, dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedBillingNotes: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
+const empty: CreatedDocs = { invoices: [], billingNotes: [], receipts: [], tickets: [], hidden: emptyHidden, customerEdits: {}, customersAdded: [], suppliersAdded: [], supplierEdits: {}, productsAdded: [], productEdits: {}, mixDesignsAdded: [], mixDesignEdits: {}, foundryFormulas: [], transportAdjustments: [], priceAdjustments: [], employeeEdits: {}, employeesAdded: [], salesOrders: [], quotations: [], foundryBoqs: [], purchaseOrders: [], goodsPayments: [], expenseRecords: [], costCenters: [], costCenterParents: {}, costCenterLabels: {}, costCentersHidden: [], fuelSeedV1: false, dieselPrices: [], assets: SEED_ASSETS, foundryDeliveries: [], payrollPayments: [], salaryStructures: {}, advances: [], leaveRecords: [], salaryStructureAdjustments: [], truckTrips: {}, generalReports: [], commissionRates: DEFAULT_COMMISSION_RATES, terminations: [], appointments: [], todoNotes: [], stockReceipts: [], stockMovements: [], stockOpenings: {}, stockOpeningDates: {}, foundryReceipts: [], stockReconciles: [], stockCosts: {}, foundryMaterialsAdded: [], foundryMaterialsHidden: [], taxImports: [], invoicePayments: [], deletedTickets: [], deletedSalesOrders: [], deletedQuotations: [], deletedFoundryBoqs: [], deletedPurchaseOrders: [], deletedGoodsPayments: [], deletedExpenseRecords: [], deletedInvoices: [], deletedBillingNotes: [], deletedReceipts: [], deletedFoundryDeliveries: [] }
 
 const _masterPriceByCode = new Map(PRODUCTS.map((p) => [p.code, p.price]))
 
@@ -1237,6 +1247,9 @@ function read(): CreatedDocs {
       goodsPayments: v.goodsPayments ?? [],
       expenseRecords: v.expenseRecords ?? [],
       costCenters: v.costCenters ?? [],
+      costCenterParents: v.costCenterParents ?? {},
+      costCenterLabels: v.costCenterLabels ?? {},
+      costCentersHidden: v.costCentersHidden ?? [],
       fuelSeedV1: v.fuelSeedV1 ?? false,
       /* Migrate the legacy single last-used price into an open-ended schedule point. */
       dieselPrices: v.dieselPrices ?? (() => {
@@ -2028,32 +2041,103 @@ export function addSupplier(c: Creditor) {
   commit({ ...state, suppliersAdded: [c, ...state.suppliersAdded] })
 }
 
-/** Add a new ประเภทบัญชี cost center. No-op on blank input or a name that already
-    exists (built-in or user-added, case-insensitive). Returns the stored name. */
-export function addCostCenter(name: string): string | undefined {
+/** True if walking parent-links up from `start` reaches `target` — used to reject a
+    grouping that would create a cycle. */
+function costCenterReachesUp(start: string, target: string, parents: Record<string, string>): boolean {
+  let cur: string | undefined = start
+  const seen = new Set<string>()
+  while (cur && !seen.has(cur)) {
+    if (cur === target) return true
+    seen.add(cur)
+    cur = parents[cur]
+  }
+  return false
+}
+
+const isBuiltinCostCenter = (name: string) => GOODS_PAYMENT_CATEGORIES.some((c) => c === name)
+/** Effective display name of a cost center (its alias if renamed, else itself). */
+function costCenterEffective(name: string, labels: Record<string, string>): string {
+  return labels[name] ?? name
+}
+
+/** Add a new ประเภทบัญชี cost center, optionally under a parent (group). No-op on blank
+    input; an existing name still (re)sets its parent. Re-adding a hidden built-in
+    un-hides it. Returns the stored name. */
+export function addCostCenter(name: string, parent?: string): string | undefined {
   const trimmed = name.trim()
   if (!trimmed) return undefined
   const exists = [...GOODS_PAYMENT_CATEGORIES, ...state.costCenters].some((c) => c.toLowerCase() === trimmed.toLowerCase())
-  if (!exists) commit({ ...state, costCenters: [...state.costCenters, trimmed] })
+  const parents = { ...state.costCenterParents }
+  const p = parent?.trim()
+  if (p && p !== trimmed && !costCenterReachesUp(p, trimmed, parents)) parents[trimmed] = p
+  else delete parents[trimmed]
+  commit({
+    ...state,
+    costCenters: exists ? state.costCenters : [...state.costCenters, trimmed],
+    costCenterParents: parents,
+    costCentersHidden: state.costCentersHidden.filter((h) => h.toLowerCase() !== trimmed.toLowerCase()),
+  })
   return trimmed
 }
-/** Remove a user-added ประเภทบัญชี cost center (built-ins can't be removed). */
-export function removeCostCenter(name: string) {
-  commit({ ...state, costCenters: state.costCenters.filter((c) => c !== name) })
+/** Set (or clear, when parent is empty) the group a cost center belongs under.
+    Ignores cycles and self-parenting. */
+export function setCostCenterParent(name: string, parent?: string) {
+  const parents = { ...state.costCenterParents }
+  const p = parent?.trim()
+  if (p && p !== name && !costCenterReachesUp(p, name, parents)) parents[name] = p
+  else delete parents[name]
+  commit({ ...state, costCenterParents: parents })
 }
-/** Rename a ประเภทบัญชี cost center, cascading the new name onto every บันทึกรายจ่าย
-    and ใบสำคัญจ่าย that used it. Built-ins (GOODS_PAYMENT_CATEGORIES) can't be renamed.
-    Returns the trimmed new name, or undefined on blank / duplicate / built-in. */
+/** Remove a ประเภทบัญชี cost center. Built-ins are hidden (their value is a code constant,
+    so records/logic keyed on it stay intact); user-added ones are dropped, orphaning any
+    children (they become top-level). */
+export function removeCostCenter(name: string) {
+  if (isBuiltinCostCenter(name)) {
+    if (state.costCentersHidden.includes(name)) return
+    commit({ ...state, costCentersHidden: [...state.costCentersHidden, name] })
+    return
+  }
+  const parents: Record<string, string> = {}
+  for (const [child, par] of Object.entries(state.costCenterParents)) {
+    if (child === name || par === name) continue
+    parents[child] = par
+  }
+  const labels = { ...state.costCenterLabels }; delete labels[name]
+  commit({ ...state, costCenters: state.costCenters.filter((c) => c !== name), costCenterParents: parents, costCenterLabels: labels })
+}
+/** Rename a ประเภทบัญชี cost center. Built-ins get a display alias only (value + records
+    unchanged, so coupled logic like ค่าน้ำมัน → fuel fields keeps working); user-added
+    centers are truly renamed, cascading the new name onto every บันทึกรายจ่าย / ใบสำคัญจ่าย
+    and group link. Returns the new display name, or undefined on blank / duplicate. */
 export function renameCostCenter(oldName: string, newName: string): string | undefined {
   const trimmed = newName.trim()
-  if (!trimmed || trimmed === oldName) return undefined
-  if (GOODS_PAYMENT_CATEGORIES.some((c) => c === oldName)) return undefined
-  const clash = [...GOODS_PAYMENT_CATEGORIES, ...state.costCenters].some((c) => c !== oldName && c.toLowerCase() === trimmed.toLowerCase())
+  if (!trimmed) return undefined
+  const labels = { ...state.costCenterLabels }
+  /* Duplicate check compares against every OTHER center's effective display name. */
+  const clash = [...GOODS_PAYMENT_CATEGORIES, ...state.costCenters]
+    .filter((c) => c !== oldName)
+    .some((c) => costCenterEffective(c, labels).toLowerCase() === trimmed.toLowerCase())
   if (clash) return undefined
+
+  if (isBuiltinCostCenter(oldName)) {
+    if (trimmed === oldName) delete labels[oldName] /* reset to the original name */
+    else labels[oldName] = trimmed
+    commit({ ...state, costCenterLabels: labels })
+    return trimmed
+  }
+  /* User-added — real rename (value changes). */
+  if (trimmed === oldName) return oldName
   const cat = trimmed as GoodsPaymentCategory
+  const parents: Record<string, string> = {}
+  for (const [child, par] of Object.entries(state.costCenterParents)) {
+    parents[child === oldName ? trimmed : child] = par === oldName ? trimmed : par
+  }
+  if (labels[oldName]) { labels[trimmed] = labels[oldName]; delete labels[oldName] }
   commit({
     ...state,
     costCenters: state.costCenters.map((c) => (c === oldName ? trimmed : c)),
+    costCenterParents: parents,
+    costCenterLabels: labels,
     expenseRecords: state.expenseRecords.map((e) => (e.category === oldName ? { ...e, category: cat } : e)),
     goodsPayments: state.goodsPayments.map((g) => (g.category === oldName ? { ...g, category: cat } : g)),
   })
@@ -2389,9 +2473,15 @@ export function useCostCenters(): string[] {
   const s = useCreatedDocs()
   return useMemo(() => {
     const seen = new Set(GOODS_PAYMENT_CATEGORIES.map((c) => c.toLowerCase()))
-    const extra = s.costCenters.filter((c) => !seen.has(c.toLowerCase()))
-    return [...GOODS_PAYMENT_CATEGORIES, ...extra]
-  }, [s.costCenters])
+    const hidden = new Set(s.costCentersHidden)
+    const builtins = GOODS_PAYMENT_CATEGORIES.filter((c) => !hidden.has(c))
+    const extra = s.costCenters.filter((c) => !seen.has(c.toLowerCase()) && !hidden.has(c))
+    return [...builtins, ...extra]
+  }, [s.costCenters, s.costCentersHidden])
+}
+/** Display name of a cost center — its alias if renamed, else the value itself. */
+export function costCenterLabel(name: string, labels: Record<string, string>): string {
+  return labels[name] ?? name
 }
 
 /* Build-time switch: in production builds, hide the delete UI entirely. */

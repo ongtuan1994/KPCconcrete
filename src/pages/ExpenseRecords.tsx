@@ -12,7 +12,7 @@ import { downloadCsv } from '../utils/csv'
 import { VEHICLES } from '../data/real'
 import { FUEL_VEHICLES, fuelVehicleLabel } from '../data/fuelVehicles'
 import {
-  useCreatedDocs, useSuppliers, useCostCenters, addCostCenter, addExpenseRecord, updateExpenseRecord, removeExpenseRecord, restoreExpenseRecord, recordDieselPrice, dieselPriceOn,
+  useCreatedDocs, useSuppliers, useCostCenters, costCenterLabel, addCostCenter, addExpenseRecord, updateExpenseRecord, removeExpenseRecord, restoreExpenseRecord, recordDieselPrice, dieselPriceOn,
   type ExpenseRecord, type DeletedExpenseRecord, type GoodsPaymentCategory, type GoodsPaymentSite,
 } from '../data/createdDocs'
 import { useCan } from '../data/auth'
@@ -149,7 +149,7 @@ export function ExpenseRecords() {
         : <Checkbox checked={selected.has(r.id)} onChange={() => toggle(r.id)}>{''}</Checkbox>),
     }] : []),
     { key: 'date', header: 'วันที่', cell: (r) => fmtDate(r.date), className: 'date' },
-    { key: 'cat', header: 'ประเภทค่าใช้จ่าย', cell: (r) => <span style={{ fontSize: 13 }}>{r.category}</span> },
+    { key: 'cat', header: 'ประเภทค่าใช้จ่าย', cell: (r) => <span style={{ fontSize: 13 }}>{costCenterLabel(r.category, created.costCenterLabels)}</span> },
     { key: 'site', header: 'SITE', align: 'center', cell: (r) => <Badge tone={SITE_TONE[r.site]} pip={false} square>{r.site}</Badge> },
     { key: 'sup', header: 'ผู้รับเงิน', cell: (r) => (r.supplier ? r.supplier : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>) },
     {
@@ -295,7 +295,9 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
   const isEdit = !!editRec
   const suppliers = useSuppliers()
   const costCenters = useCostCenters()
-  const dieselPrices = useCreatedDocs().dieselPrices
+  const created = useCreatedDocs()
+  const dieselPrices = created.dieselPrices
+  const ccLabels = created.costCenterLabels
   const [date, setDate] = useState(todayIso())
   const [category, setCategory] = useState<GoodsPaymentCategory>('ค่าซื้อวัตถุดิบ')
   const [site, setSite] = useState<GoodsPaymentSite>('แพล้นปูน')
@@ -430,7 +432,7 @@ function ExpenseForm({ open, editRec, onClose, onSaved }: { open: boolean; editR
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
             <div className="select-dark" style={{ flex: 1, minWidth: 0 }}>
               <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-                {costCenters.map((c) => <option key={c} value={c}>{c}</option>)}
+                {costCenters.map((c) => <option key={c} value={c}>{costCenterLabel(c, ccLabels)}</option>)}
               </Select>
             </div>
             <Button variant="tonal" size="sm" onClick={addCostCenterInline} title="เพิ่มประเภทบัญชี cost center ใหม่">+</Button>
@@ -514,6 +516,7 @@ function ExpenseDetailModal({ record, canEdit, onClose, onIssue, onEdit }: {
   onIssue: (r: ExpenseRecord) => void
   onEdit: (r: ExpenseRecord) => void
 }) {
+  const ccLabels = useCreatedDocs().costCenterLabels
   const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
     <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12, fontSize: 14, padding: '8px 0', borderBottom: '1px solid var(--kpc-border)' }}>
       <span style={{ color: 'var(--kpc-text-muted)' }}>{k}</span>
@@ -537,7 +540,7 @@ function ExpenseDetailModal({ record, canEdit, onClose, onIssue, onEdit }: {
       {record && (
         <div>
           <Row k="วันที่" v={<span className="mono">{fmtDate(record.date)}</span>} />
-          <Row k="ประเภทค่าใช้จ่าย" v={record.category} />
+          <Row k="ประเภทค่าใช้จ่าย" v={costCenterLabel(record.category, ccLabels)} />
           <Row k="SITE" v={<Badge tone={SITE_TONE[record.site]} pip={false} square>{record.site}</Badge>} />
           {record.category === FUEL_CATEGORY && (
             <>
