@@ -1833,6 +1833,10 @@ export function addStockReceipt(r: Omit<StockReceipt, 'createdBy' | 'createdAt'>
 export function removeStockReceipt(id: string) {
   commit({ ...state, stockReceipts: state.stockReceipts.filter((r) => r.id !== id) })
 }
+/** Patch a รับเข้าวัตถุดิบ receipt in place (edit date / qty / price / supplier / …). */
+export function updateStockReceipt(id: string, patch: Partial<StockReceipt>) {
+  commit({ ...state, stockReceipts: state.stockReceipts.map((r) => (r.id === id ? { ...r, ...patch } : r)) })
+}
 
 /* ── Manual plant stock-card movements (บันทึกวัตถุดิบแยกประเภท) ── */
 export function addStockMovement(m: Omit<StockMovement, 'createdBy' | 'createdAt'>) {

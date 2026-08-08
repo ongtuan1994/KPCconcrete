@@ -9,7 +9,8 @@ import { STOCK_MATERIALS, type StockMaterial } from '../data/real'
 import { useCan } from '../data/auth'
 import {
   useCreatedDocs, useSuppliers, addStockMovement, updateStockMovement, removeStockMovement, setStockOpening,
-  addGeneralReport, type StockMovement, type StockMovementKind, type StockReport,
+  updateStockReceipt, removeStockReceipt,
+  addGeneralReport, type StockMovement, type StockMovementKind, type StockReceipt, type StockReport,
 } from '../data/createdDocs'
 import { downloadCsv } from '../utils/csv'
 
@@ -40,7 +41,8 @@ interface CardEntry {
   voucherNo?: string
   note?: string
   createdAt?: string
-  move?: StockMovement   /* set = came from this ledger, so it can be edited/deleted */
+  move?: StockMovement      /* set = came from this ledger, so it can be edited/deleted */
+  receipt?: StockReceipt    /* set = a รับเข้าวัตถุดิบ receipt (editable in-ledger for โรงหล่อ) */
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -64,7 +66,7 @@ export function MaterialLedger() {
   const [code, setCode] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [form, setForm] = useState<{ kind: StockMovementKind; edit: StockMovement | null } | null>(null)
+  const [form, setForm] = useState<{ kind: StockMovementKind; edit: StockMovement | null; editReceipt?: StockReceipt | null } | null>(null)
   const [openingOpen, setOpeningOpen] = useState(false)
 
   const isFoundry = site === 'foundry'
@@ -96,7 +98,7 @@ export function MaterialLedger() {
     }
     for (const r of created.stockReceipts) {
       if (r.code !== c) continue
-      out.push({ id: r.id, date: r.date, kind: 'in', qty: r.qty, unitPrice: r.unitPrice, amount: r.amount, supplier: r.supplier, voucherNo: r.voucherNo, note: r.note, createdAt: r.createdAt })
+      out.push({ id: r.id, date: r.date, kind: 'in', qty: r.qty, unitPrice: r.unitPrice, amount: r.amount, supplier: r.supplier, voucherNo: r.voucherNo, note: r.note, createdAt: r.createdAt, receipt: r })
     }
     return out.sort(byDateAsc)
   }
@@ -129,6 +131,9 @@ export function MaterialLedger() {
 
   const remove = (m: StockMovement) => {
     if (confirm(`ลบรายการ${m.kind === 'in' ? 'รับเข้า' : 'จ่ายออก'} ${fmt2(m.qty)} ${mat.unit} วันที่ ${fmtDate(m.date)} ?`)) removeStockMovement(m.id)
+  }
+  const removeReceipt = (r: StockReceipt) => {
+    if (confirm(`ลบรายการรับเข้า ${fmt2(r.qty)} ${mat.unit} วันที่ ${fmtDate(r.date)} ?\n(ยอดคงเหลือจะถูกปรับกลับ)`)) removeStockReceipt(r.id)
   }
 
   const exportExcel = () => {
@@ -274,6 +279,12 @@ export function MaterialLedger() {
                         <Button variant="ghost" size="sm" onClick={() => setForm({ kind: m.move!.kind, edit: m.move! })}>แก้ไข</Button>
                         <Button variant="ghost" size="sm" onClick={() => remove(m.move!)} style={{ color: 'var(--kpc-danger)' }}>✕</Button>
                       </div>
+                    ) : m.receipt && isFoundry ? (
+                      /* โรงหล่อ: รับเข้าที่บันทึกจากหน้าคลังก็แก้ไข/ลบได้ที่นี่ด้วย. */
+                      <div className="row" style={{ gap: 4, justifyContent: 'center' }}>
+                        <Button variant="ghost" size="sm" onClick={() => setForm({ kind: 'in', edit: null, editReceipt: m.receipt! })}>แก้ไข</Button>
+                        <Button variant="ghost" size="sm" onClick={() => removeReceipt(m.receipt!)} style={{ color: 'var(--kpc-danger)' }}>✕</Button>
+                      </div>
                     ) : (
                       <span style={{ fontSize: 11, color: 'var(--kpc-text-faint)' }} title="บันทึกจากปุ่มรับเข้าวัตถุดิบในหน้าคลัง — แก้ไข/ลบได้ที่หน้านั้น">จากหน้าคลัง</span>
                     )}
@@ -311,25 +322,27 @@ export function MaterialLedger() {
       </>
       )}
 
-      {form && mat && <MovementForm mat={mat} kind={form.kind} edit={form.edit} onClose={() => setForm(null)} />}
+      {form && mat && <MovementForm mat={mat} kind={form.kind} edit={form.edit} editReceipt={form.editReceipt ?? null} onClose={() => setForm(null)} />}
       {openingOpen && mat && <OpeningForm mat={mat} value={baseOpening} date={openingDate} onClose={() => setOpeningOpen(false)} />}
     </div>
   )
 }
 
 /* ───────── รับเข้า / จ่ายออก form ───────── */
-function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: StockMovementKind; edit: StockMovement | null; onClose: () => void }) {
+function MovementForm({ mat, kind, edit, editReceipt, onClose }: { mat: StockMaterial; kind: StockMovementKind; edit: StockMovement | null; editReceipt?: StockReceipt | null; onClose: () => void }) {
   const isIn = kind === 'in'
   const created = useCreatedDocs()
   const suppliers = useSuppliers()
+  /* Editing a รับเข้าวัตถุดิบ receipt (โรงหล่อ) reuses this form — prefill from it. */
+  const src = editReceipt ?? edit
   /* ต้นทุน/หน่วย ที่ตั้งไว้ในหน้าคลัง (ถ้ามี) มาก่อนราคา seed. */
   const seedCost = created.stockCosts[mat.code] ?? mat.cost
-  const [date, setDate] = useState(edit?.date ?? todayIso())
-  const [qty, setQty] = useState(edit ? String(edit.qty) : '')
-  const [unitPrice, setUnitPrice] = useState(edit?.unitPrice != null ? String(edit.unitPrice) : (isIn ? String(seedCost ?? '') : ''))
-  const [supplier, setSupplier] = useState(edit?.supplier ?? '')
-  const [voucherNo, setVoucherNo] = useState(edit?.voucherNo ?? '')
-  const [note, setNote] = useState(edit?.note ?? '')
+  const [date, setDate] = useState(src?.date ?? todayIso())
+  const [qty, setQty] = useState(src ? String(src.qty) : '')
+  const [unitPrice, setUnitPrice] = useState(src?.unitPrice != null ? String(src.unitPrice) : (isIn ? String(seedCost ?? '') : ''))
+  const [supplier, setSupplier] = useState(src?.supplier ?? '')
+  const [voucherNo, setVoucherNo] = useState(src?.voucherNo ?? '')
+  const [note, setNote] = useState(src?.note ?? '')
   const [err, setErr] = useState('')
 
   const qtyN = Number(qty), upN = Number(unitPrice)
@@ -347,7 +360,8 @@ function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: 
       voucherNo: voucherNo.trim() || undefined,
       note: note.trim() || undefined,
     }
-    if (edit) updateStockMovement(edit.id, patch)
+    if (editReceipt) updateStockReceipt(editReceipt.id, patch)
+    else if (edit) updateStockMovement(edit.id, patch)
     else addStockMovement({ id: `sm_${Date.now()}`, code: mat.code, kind, ...patch })
     onClose()
   }
@@ -355,7 +369,7 @@ function MovementForm({ mat, kind, edit, onClose }: { mat: StockMaterial; kind: 
   return (
     <Modal
       open
-      title={`${edit ? 'แก้ไข' : 'บันทึก'}${isIn ? 'รับเข้า' : 'จ่ายออก'}วัตถุดิบ · ${mat.name}`}
+      title={`${src ? 'แก้ไข' : 'บันทึก'}${isIn ? 'รับเข้า' : 'จ่ายออก'}วัตถุดิบ · ${mat.name}`}
       onClose={onClose}
       maxWidth={480}
       footer={<><Button variant="secondary" onClick={onClose}>ยกเลิก</Button><Button variant="primary" onClick={save}>บันทึก</Button></>}
