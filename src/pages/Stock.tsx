@@ -290,6 +290,19 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
         </span>
       ),
     },
+    {
+      /* ปริมาณที่ใช้ไป = จ่ายออกสะสม (แพล้นปูน: ตามใบจ่ายคอนกรีตผ่าน Mix Design ·
+         โรงหล่อ: จ่ายออกที่บันทึกในบัตรคุม) — ฐานเดียวกับที่หักออกจากยอดคงเหลือ. */
+      key: 'used',
+      header: 'ปริมาณที่ใช้ไป',
+      align: 'right',
+      cell: (r) => {
+        const used = issuedByCode[r.code] ?? 0
+        return used > 0
+          ? <span className="mono" style={{ color: '#b91c1c' }}>{qm(used)}</span>
+          : <span style={{ color: 'var(--kpc-text-faint)' }}>—</span>
+      },
+    },
     { key: 'unit', header: 'หน่วย', cell: (r) => <span className="th" style={{ color: 'var(--kpc-text-muted)' }}>{r.unit}</span> },
     {
       key: 'cost',
@@ -337,8 +350,8 @@ export function Stock({ scope = 'plant' }: { scope?: 'plant' | 'foundry' } = {})
         actions={
           <>
             <Button variant="secondary" onClick={() => {
-              const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่าคงคลัง', 'จุดสั่งซื้อ', 'สถานะ']
-              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, r.unit, r.cost ?? '', r.cost != null ? Math.round(r.balance * r.cost * 100) / 100 : '', r.reorder, status(r).th])
+              const head = ['รหัส', 'วัตถุดิบ', 'Material (EN)', 'คงเหลือ', 'ปริมาณที่ใช้ไป', 'หน่วย', 'ต้นทุน/หน่วย', 'มูลค่าคงคลัง', 'จุดสั่งซื้อ', 'สถานะ']
+              const body = rows.map((r) => [r.code, r.name, r.en, Math.round(r.balance * 100) / 100, Math.round((issuedByCode[r.code] ?? 0) * 100) / 100, r.unit, r.cost ?? '', r.cost != null ? Math.round(r.balance * r.cost * 100) / 100 : '', r.reorder, status(r).th])
               downloadCsv(isFoundry ? 'foundry-materials' : 'stock', [head, ...body])
             }}>ส่งออก Excel</Button>
             <Button variant="secondary" onClick={createReport}>สร้างรายงาน</Button>
