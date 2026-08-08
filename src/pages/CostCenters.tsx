@@ -6,7 +6,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { IconPlus } from '../components/icons'
 import { baht } from '../data/selectors'
 import { useCan } from '../data/auth'
-import { useCreatedDocs, useCostCenters, addCostCenter, removeCostCenter, GOODS_PAYMENT_CATEGORIES } from '../data/createdDocs'
+import { useCreatedDocs, useCostCenters, addCostCenter, removeCostCenter, renameCostCenter, GOODS_PAYMENT_CATEGORIES } from '../data/createdDocs'
 
 interface CostCenterRow {
   name: string
@@ -55,6 +55,16 @@ export function CostCenters() {
     if (name != null) addCostCenter(name)
   }
 
+  /* Rename a (non-built-in) cost center — cascades onto records that use it. */
+  const editName = (r: CostCenterRow) => {
+    const next = window.prompt(`เปลี่ยนชื่อประเภทบัญชี "${r.name}"`, r.name)
+    if (next == null) return
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === r.name) return
+    const ok = renameCostCenter(r.name, trimmed)
+    if (!ok) alert('เปลี่ยนชื่อไม่สำเร็จ — ชื่ออาจซ้ำกับที่มีอยู่แล้ว หรือเป็นประเภทค่าเริ่มต้นที่แก้ไขไม่ได้')
+  }
+
   const columns: Column<CostCenterRow>[] = [
     { key: 'name', header: 'ประเภทบัญชี cost center', cell: (r) => <span style={{ fontWeight: 500, color: 'var(--kpc-text-strong)' }}>{r.name}</span> },
     {
@@ -78,11 +88,17 @@ export function CostCenters() {
     ...(canEdit ? [{
       key: 'act', header: '', align: 'center' as const,
       cell: (r: CostCenterRow) => {
-        if (r.builtin) return <span style={{ color: 'var(--kpc-text-faint)', fontSize: 12 }}>—</span>
+        /* Built-ins (ค่าเริ่มต้น) are code defaults tied to app logic — not editable. */
+        if (r.builtin) return <span style={{ color: 'var(--kpc-text-faint)', fontSize: 12 }}>ค่าเริ่มต้น</span>
         const used = r.expCount + r.gpCount > 0
-        return used
-          ? <span style={{ color: 'var(--kpc-text-faint)', fontSize: 12 }} title="ลบไม่ได้ เพราะมีการใช้งานอยู่">ใช้งานอยู่</span>
-          : <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบประเภทบัญชี "${r.name}" ?`)) removeCostCenter(r.name) }} style={{ color: 'var(--kpc-danger)' }}>ลบ</Button>
+        return (
+          <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
+            <Button variant="ghost" size="sm" onClick={() => editName(r)}>แก้ไข</Button>
+            {used
+              ? <span style={{ color: 'var(--kpc-text-faint)', fontSize: 12 }} title="ลบไม่ได้เพราะมีการใช้งานอยู่ — กด “แก้ไข” เพื่อเปลี่ยนชื่อแทน (จะเปลี่ยนทุกรายการที่ใช้ให้)">ใช้งานอยู่</span>
+              : <Button variant="ghost" size="sm" onClick={() => { if (confirm(`ลบประเภทบัญชี "${r.name}" ?`)) removeCostCenter(r.name) }} style={{ color: 'var(--kpc-danger)' }}>ลบ</Button>}
+          </div>
+        )
       },
     }] : []),
   ]

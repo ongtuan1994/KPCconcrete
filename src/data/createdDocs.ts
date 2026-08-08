@@ -2037,6 +2037,24 @@ export function addCostCenter(name: string): string | undefined {
 export function removeCostCenter(name: string) {
   commit({ ...state, costCenters: state.costCenters.filter((c) => c !== name) })
 }
+/** Rename a ประเภทบัญชี cost center, cascading the new name onto every บันทึกรายจ่าย
+    and ใบสำคัญจ่าย that used it. Built-ins (GOODS_PAYMENT_CATEGORIES) can't be renamed.
+    Returns the trimmed new name, or undefined on blank / duplicate / built-in. */
+export function renameCostCenter(oldName: string, newName: string): string | undefined {
+  const trimmed = newName.trim()
+  if (!trimmed || trimmed === oldName) return undefined
+  if (GOODS_PAYMENT_CATEGORIES.some((c) => c === oldName)) return undefined
+  const clash = [...GOODS_PAYMENT_CATEGORIES, ...state.costCenters].some((c) => c !== oldName && c.toLowerCase() === trimmed.toLowerCase())
+  if (clash) return undefined
+  const cat = trimmed as GoodsPaymentCategory
+  commit({
+    ...state,
+    costCenters: state.costCenters.map((c) => (c === oldName ? trimmed : c)),
+    expenseRecords: state.expenseRecords.map((e) => (e.category === oldName ? { ...e, category: cat } : e)),
+    goodsPayments: state.goodsPayments.map((g) => (g.category === oldName ? { ...g, category: cat } : g)),
+  })
+  return trimmed
+}
 /** Merge an edit onto a supplier (by id) — works for both master and added
     suppliers; the display list applies supplierEdits on top. Empty / undefined
     values clear that key so display falls back to the base record. */

@@ -694,9 +694,11 @@ function ImportTaxModal({ open, kind, nameHeader, onClose }: { open: boolean; ki
   )
 }
 
-/* Rows per printed page. Conservative so a page never overflows onto a second
+/* Rows per printed page. An A4 page (271mm usable after the 13mm print margins)
+   fits ~38–39 rows of the print-size table; 34 fills the sheet while leaving a
+   clean bottom margin and a safety buffer so content never spills onto a second
    physical page (which would drop the header / carry rows). */
-const ROWS_PER_PAGE = 25
+const ROWS_PER_PAGE = 34
 
 function chunk<T>(arr: T[], n: number): T[][] {
   const out: T[][] = []
